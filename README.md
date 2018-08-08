@@ -243,7 +243,7 @@
      agent,so that it can accept proper arguemnts and you can receive
      proper result.
      
-     putTableConverter:put a converter support automatic table conversion
+     putTableConverter:put a converter to support automatic table conversion
 
 
 
