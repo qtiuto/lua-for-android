@@ -103,8 +103,6 @@ loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptContext 
 
 static void checkLuaType(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject &luaObject);
 
-static bool validJavaName(const char *s) noexcept;
-
 extern bool changeClassName(String &className);
 
 static void pushMember(lua_State *L, bool isStatic, int fieldCount, bool isMethod);
@@ -164,39 +162,48 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass thisClass, jlong ptr,
                           jobjectArray args);
 }
 
-static const luaL_Reg javaInterfaces[] = {{"type",       javaType},
-                                          {"instanceof", javaInstanceOf},
-                                          {"new",        javaNew},
-                                          {"newArray",   javaNewArray},
-                                          {"import",     javaImport},
-                                          {"proxy",      javaProxy},
-                                          {"lock",       javaLock},
-                                          {"unlock",     javaUnlock},
-                                          {"object",     javaToJavaObject},
-                                          {"charString",
-                                                         javaCharString},
-                                          {"charValue",  javaCharValue},
-                                          {"put",        javaPut},
-                                          {"get",        javaGet},
-                                          {"remove",     javaRemove},
-                                          {"throw",      javaThrow},
-                                          {"try",        javaTry},
-                                          {nullptr,      nullptr}};
+static const luaL_Reg javaInterfaces[] =
+        {{"type",       javaType},
+         {"instanceof", javaInstanceOf},
+         {"new",        javaNew},
+         {"newArray",   javaNewArray},
+         {"import",     javaImport},
+         {"proxy",      javaProxy},
+         {"lock",       javaLock},
+         {"unlock",     javaUnlock},
+         {"object",     javaToJavaObject},
+         {"charString",
+                        javaCharString},
+         {"charValue",  javaCharValue},
+         {"put",        javaPut},
+         {"get",        javaGet},
+         {"remove",     javaRemove},
+         {"throw",      javaThrow},
+         {"try",        javaTry},
+         {nullptr,      nullptr}};
 
-static const JNINativeMethod nativeMethods[] = {{"nativeOpen",        "(ZZ)J",                                                       (void *) nativeOpen},
-                                                {"nativeClose",       "(J)V",                                                        (void *) nativeClose},
-                                                {"nativeClean",       "(J)V",                                                        (void *) nativeClean},
-                                                {"registerLogger",    "(JLjava/io/OutputStream;Ljava/io/OutputStream;)V",            (void *) registerLogger},
-                                                {"compile",           "(JLjava/lang/String;Z)J",                                     (void *) compile},
-                                                {"runScript",         "(JLjava/lang/Object;Z[Ljava/lang/Object;"
-                                                                              ")[Ljava/lang/Object;",                                (void *) runScript},
-                                                {"addObject",         "(JLjava/lang/String;Ljava/lang/Object;Z)V",                   (void *) addJavaObject},
-                                                {"addMethod",         "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/Object;Z)V", (void *) addJavaMethod},
-                                                {"constructChild",    "(JLjava/lang/Class;J)Ljava/lang/Object;",                     (void *) constructChild},
-                                                {"releaseFunc",       "(J)V",                                                        (void *) releaseFunc},
-                                                {"invokeLuaFunction", "(JZJLjava/lang/Object;"
-                                                                              "[I[Ljava/lang/Object;)Ljava/lang/Object;",
-                                                                                                                                     (void *) invokeLuaFunction}};
+static const JNINativeMethod nativeMethods[] =
+        {{"nativeOpen",        "(ZZ)J",                            (void *) nativeOpen},
+         {"nativeClose",       "(J)V",                             (void *) nativeClose},
+         {"nativeClean",       "(J)V",                             (void *) nativeClean},
+         {"registerLogger",    "(JLjava/io/OutputStream;"
+                                       "Ljava/io/OutputStream;)V", (void *) registerLogger},
+         {"compile",           "(JLjava/lang/String;Z)J",          (void *) compile},
+         {"runScript",         "(JLjava/lang/Object;Z"
+                                       "[Ljava/lang/Object;"
+                                       ")[Ljava/lang/Object;",     (void *) runScript},
+         {"addObject",         "(JLjava/lang/String;"
+                                       "Ljava/lang/Object;Z)V",    (void *) addJavaObject},
+         {"addMethod",         "(JLjava/lang/String;"
+                                       "Ljava/lang/String;"
+                                       "Ljava/lang/Object;Z)V",    (void *) addJavaMethod},
+         {"constructChild",    "(JLjava/lang/Class;J)"
+                                       "Ljava/lang/Object;",       (void *) constructChild},
+         {"releaseFunc",       "(J)V",                             (void *) releaseFunc},
+         {"invokeLuaFunction", "(JZJLjava/lang/Object;"
+                                       "[I[Ljava/lang/Object;)"
+                                       "Ljava/lang/Object;",
+                                                                   (void *) invokeLuaFunction}};
 
 JavaVM *vm;
 jclass stringType;
@@ -580,8 +587,6 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     return result;
 }
 
-
-// consider use asm for return,but to ugly
 jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
                           jboolean isInterface,
                           jlong funcRef, jobject proxy, jintArray argTypes, jobjectArray args) {
@@ -2045,9 +2050,8 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                     if (hasMeta && lua_istable(L, -1)) {
                         CrossThreadLuaObject object;
                         lua_getfield(L,-1,"__gc");
-                        bool ok=true
-                        if(!lua_isnil(L,-1)) ok=false;
-                        lua_pop(L,1)
+                        bool ok=!lua_isnil(L,-1);
+                        lua_pop(L,1);
                         ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
                         lua_pop(L, 1);
                         if (ok) {
@@ -2097,9 +2101,8 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                 if (hasMeta && lua_istable(L, -1)) {
                     CrossThreadLuaObject object;
                     lua_getfield(L,-1,"__gc");
-                    bool ok=true
-                    if(!lua_isnil(L,-1)) ok=false;
-                    lua_pop(L,1)
+                    bool ok=!lua_isnil(L,-1);
+                    lua_pop(L,1);
                     ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
                     lua_pop(L, 1);
                     if (ok) {
