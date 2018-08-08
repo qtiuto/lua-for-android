@@ -50,16 +50,14 @@ public:
         lua_pushstring(L, "__tostring");
         lua_pushcfunction(L, i64toString);
         lua_rawset(L, -3);
-        const struct luaL_Reg i64Lib[] = {
-                {"new", newI64},
-                {NULL, NULL},
-        };
+
 #if LUA_VERSION_NUM >= 502
-        lua_createtable(L, 0, 1);
-        luaL_setfuncs(L, i64Lib, 0);
-        lua_setfield(L, -1, "__index");
-        luaL_requiref(L, "i64", luaGetJava,/*glb*/true);
+        luaL_requiref(L, "i64", LibInit,/*glb*/true);
 #else
+        const struct luaL_Reg i64Lib[] = {
+            {"new", newI64},
+            {NULL, NULL},
+        };
         luaL_register(L,"i64",i64Lib);
 #endif
         lua_pop(L, 1);
@@ -82,9 +80,13 @@ private:
     }
 
 
-    static int luaGetJava(lua_State *L) {
-        lua_newuserdata(L, 1);
-        luaL_setmetatable(L, LIB_NAME);
+    static int LibInit(lua_State *L) {
+        const struct luaL_Reg i64Lib[] = {
+                {"new", newI64},
+                {NULL, NULL},
+        };
+        lua_createtable(L, 0, 1);
+        luaL_setfuncs(L, i64Lib, 0);
         return 1;
     }
 

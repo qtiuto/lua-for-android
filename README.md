@@ -1,4 +1,5 @@
     Both lua(5.1-5.3) and luajit(2.0.5 and 2.1.0-beta3) are supported.
+     
     Configure Android.mk by setting LOCAL_STATIC_LIBRARIES :=(lua or luajit)
     to choose the proper version.
      
@@ -10,6 +11,7 @@
      
     Performance:
      700000 method call per second on my Oneplus 5 device
+     
     Functions:
      
      import:

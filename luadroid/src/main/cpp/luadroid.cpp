@@ -324,39 +324,30 @@ ScriptContext::pushAddedObject(TJNIEnv *env, lua_State *L, const char *name, con
 void ScriptContext::config(lua_State *L) {
     lua_atpanic(L, luaPanic);
     int top = lua_gettop(L);
-    if (luaL_newmetatable(L, JAVA_CONTEXT)) {
-        int index = lua_gettop(L);
-        lua_pushstring(L, "Can't change java metatable");
-        lua_setfield(L, index, "__metatable");
-        lua_pushstring(L, "Java table can't be changed");
-        lua_pushcclosure(L, reportError, 1);
-        lua_setfield(L, index, "__newindex");
+
 #if LUA_VERSION_NUM >= 502
-        int size = sizeof(javaInterfaces) / sizeof(luaL_Reg) - 1;
-        lua_createtable(L, 0, size);
-        luaL_setfuncs(L, javaInterfaces, 0);
-        lua_setfield(L, index, "__index");
-        luaL_requiref(L, "java", luaGetJava,/*glb*/true);
+    luaL_requiref(L, "java", luaGetJava,/*glb*/true);
 #else
-        luaL_register(L,"java",javaInterfaces);
+    luaL_register(L,"java",javaInterfaces);
+    lua_setglobal(L,"java");
 #endif
 #if LUA_VERSION_NUM < 503
-        Integer64::RegisterTo(L);
+    Integer64::RegisterTo(L);
 #endif
-        if (importAll) {
-            const luaL_Reg *l = javaInterfaces;
-            for (; l->name != NULL; l++) {
-                lua_pushcfunction(L, l->func);
-                lua_setglobal(L, l->name);
-            }
-            lua_pushcfunction(L, javaType);
-            lua_setglobal(L, "Type");
+    if (importAll) {
+        const luaL_Reg *l = javaInterfaces;
+        for (; l->name != NULL; l++) {
+            lua_pushcfunction(L, l->func);
+            lua_setglobal(L, l->name);
         }
-
-
-        lua_pushlightuserdata(L, this);
-        lua_setfield(L, LUA_REGISTRYINDEX, JAVA_CONTEXT);
+        lua_pushcfunction(L, javaType);
+        lua_setglobal(L, "Type");
     }
+
+
+    lua_pushlightuserdata(L, this);
+    lua_setfield(L, LUA_REGISTRYINDEX, JAVA_CONTEXT);
+
     if (luaL_newmetatable(L, JAVA_TYPE)) {
         int index = lua_gettop(L);
         lua_pushstring(L, "Can't change java metatable");
@@ -396,8 +387,9 @@ void ScriptContext::config(lua_State *L) {
 }
 
 int luaGetJava(lua_State *L) {
-    lua_newuserdata(L, 0);
-    luaL_setmetatable(L, JAVA_CONTEXT);
+    int size = sizeof(javaInterfaces) / sizeof(luaL_Reg) - 1;
+    lua_createtable(L, 0, size);
+    luaL_setfuncs(L, javaInterfaces, 0);
     return 1;
 }
 
@@ -1209,6 +1201,8 @@ int javaToJavaObject(lua_State *L) {
     ScriptContext *context = getContext(L);
     ValidLuaObject luaObject;
     parseLuaObject(env, L, context, 1, luaObject);
+    if(luaObject.type==T_OBJECT)
+        return 1;
     jobject object = context->luaObjectToJObject(env, std::move(luaObject));
     if (object == INVALID_OBJECT)
         luaL_error(L, "");
@@ -2050,7 +2044,11 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                     int hasMeta = lua_getmetatable(L, idx);
                     if (hasMeta && lua_istable(L, -1)) {
                         CrossThreadLuaObject object;
-                        bool ok = parseCrossThreadLuaObject(env, L, context, -1, object);
+                        lua_getfield(L,-1,"__gc");
+                        bool ok=true
+                        if(!lua_isnil(L,-1)) ok=false;
+                        lua_pop(L,1)
+                        ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
                         lua_pop(L, 1);
                         if (ok) {
                             data->metaTable = object.table;
@@ -2098,7 +2096,11 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                 int hasMeta = lua_getmetatable(L, idx);
                 if (hasMeta && lua_istable(L, -1)) {
                     CrossThreadLuaObject object;
-                    bool ok = parseCrossThreadLuaObject(env, L, context, -1, object);
+                    lua_getfield(L,-1,"__gc");
+                    bool ok=true
+                    if(!lua_isnil(L,-1)) ok=false;
+                    lua_pop(L,1)
+                    ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
                     lua_pop(L, 1);
                     if (ok) {
                         luaTable->metaTable = object.table;

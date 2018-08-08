@@ -346,7 +346,8 @@ public class ScriptContext implements GCTracker {
         if (lazyConverts().containsKey(cls)) return true;
         final Constructor constructor;
         try {
-            if (Map.class.isAssignableFrom(cls)) {
+            boolean isAbstract=Modifier.isAbstract(cls.getModifiers())|| cls.isInterface();
+            if (Map.class.isAssignableFrom(cls)&&!isAbstract) {
                 if ((constructor = cls.getConstructor()) == null)
                     return false;
                 sConverters.put(cls, table -> {
@@ -366,7 +367,7 @@ public class ScriptContext implements GCTracker {
                 });
                 return true;
             }*/
-            if (Collection.class.isAssignableFrom(cls)) {
+            if (Collection.class.isAssignableFrom(cls)&&!isAbstract) {
                 if ((constructor = cls.getConstructor()) == null)
                     return false;
                 sConverters.put(cls, table -> {
