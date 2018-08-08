@@ -1,0 +1,65 @@
+//
+// Created by Karven on 2018/2/19.
+//
+
+#ifndef HOOKMANAGER_GC_SCOPE_H
+#define HOOKMANAGER_GC_SCOPE_H
+
+#include <stdint.h>
+#include <memory>
+#include "common.h"
+
+typedef void (*GCFunction)(void *);
+
+class GCScope {
+    static constexpr int OBJ_SIZE = 8;
+    struct GCSection {
+        uint8_t used = 0;
+        int8_t lastReleased = OBJ_SIZE;
+        uint8_t assignMax = 0;
+        bool state[OBJ_SIZE] = {0};
+        struct {
+            void *ptr;
+            GCFunction func;
+        } objects[OBJ_SIZE] = {};
+        GCSection *next = nullptr;
+    };
+    struct GCFrame {
+        GCSection *top = nullptr;
+        GCFrame *prev = nullptr;
+    };
+    GCFrame *cur = nullptr;
+    int cacheState;
+    GCSection cacheSections[4];
+    GCFrame cacheFrame[5];
+    Allocator <GCFrame> frameAllocator;
+
+    GCScope() {}
+
+    GCSection **gotoSection(uint32_t idx);
+
+    GCFrame *acquireFrame();
+
+    void releaseFrame(GCFrame *);
+
+    GCSection *acquireSection();
+
+    void releaseSection(GCSection *sec);
+
+public:
+    GCScope(const GCScope &) = delete;
+
+    void pushFrame();
+
+    void popFrame();
+
+    void popAllFrames();
+
+    uint32_t put(void *ptr, GCFunction function);
+
+    void remove(uint32_t ref);
+
+    static GCScope &acquire();
+};
+
+#endif //HOOKMANAGER_GC_SCOPE_H

@@ -1,0 +1,166 @@
+//
+// Created by Karven on 2018/2/19.
+//
+#include <cstdlib>
+#include <cstring>
+#include "gc_scope.h"
+
+static thread_local GCScope *scope = nullptr;
+#define SEC_MASK 0xf
+#define FRAME_MASK 0x1f
+#define FRAME_OFFSET 4
+#define CLEAR_BIT(flag, index) flag&=~(1<<(index))
+#define SET_BIT(flag, index) flag|=(1<<(index))
+
+inline GCScope::GCFrame *GCScope::acquireFrame() {
+    int state = (cacheState >> FRAME_OFFSET) & FRAME_MASK;
+    if (state != FRAME_MASK) {
+#define GET_FRAME_CACHE(index)\
+        if((state&(1<<(index)))==0){\
+            SET_BIT(cacheState,index+FRAME_OFFSET);\
+            return &cacheFrame[index];\
+        }
+        GET_FRAME_CACHE(0);
+        GET_FRAME_CACHE(1);
+        GET_FRAME_CACHE(2);
+        GET_FRAME_CACHE(3);
+        return &cacheFrame[4];
+    }
+    return frameAllocator.allocate(1);
+}
+
+inline void GCScope::releaseFrame(GCScope::GCFrame *frame) {
+    if (frame >= cacheFrame && frame <= cacheFrame + 5) {
+        memset(frame, 0, sizeof(GCFrame));
+        uint8_t index = (uint8_t)(frame - cacheFrame);
+        CLEAR_BIT(cacheState, index + FRAME_OFFSET);
+    } else frameAllocator.deallocate(frame, 1);
+}
+
+GCScope::GCSection *GCScope::acquireSection() {
+    int state = cacheState & SEC_MASK;
+    if (state != SEC_MASK) {
+#define GET_SEC_CACHE(index)\
+        if((state&(1<<index))==0){\
+            SET_BIT(cacheState,index);\
+            return &cacheSections[index];\
+        }
+        GET_SEC_CACHE(0);
+        GET_SEC_CACHE(1);
+        GET_SEC_CACHE(2);
+        return &cacheSections[3];
+    }
+    return new GCSection();
+}
+
+void GCScope::releaseSection(GCScope::GCSection *sec) {
+    if (sec >= cacheSections && sec <= cacheSections + 3) {
+        *sec = GCSection();
+        uint8_t index = (uint8_t)(sec - cacheSections);
+        CLEAR_BIT(cacheState, index);
+    } else delete sec;
+}
+
+void GCScope::pushFrame() {
+    GCFrame *n = acquireFrame();
+    n->prev = cur;
+    cur = n;
+}
+
+void GCScope::popFrame() {
+    GCFrame *frame = cur;
+    GCSection *sec = frame->top;
+    while (sec != nullptr) {
+        if (sec->used > 0)
+            for (int i = 0; i < OBJ_SIZE; ++i) {
+                if (sec->state[i])
+                    sec->objects[i].func(sec->objects[i].ptr);
+            }
+        GCSection *old = sec;
+        sec = sec->next;
+        releaseSection(old);
+    }
+    cur = cur->prev;
+    releaseFrame(frame);
+}
+
+GCScope &GCScope::acquire() {
+    GCScope *s = scope;
+    if (s == nullptr) {
+        scope = s = new GCScope();
+    }
+    return *s;
+}
+
+uint32_t GCScope::put(void *ptr, GCFunction function) {
+    GCSection *sec = cur->top;
+    GCSection *prev = nullptr;
+    uint32_t secNum = 0;
+    while (sec != nullptr) {
+        if (sec->used < OBJ_SIZE) {
+            uint8_t index = (uint8_t) sec->lastReleased;
+            if (index == OBJ_SIZE) {
+                index = sec->assignMax;
+                if (index == OBJ_SIZE) {
+                    for (uint8_t i = 0; i < OBJ_SIZE; ++i) {
+                        if (!sec->state[i]) index = i;
+                    }
+                } else sec->assignMax++;
+            }
+            sec->state[index] = true;
+            sec->used++;
+            sec->objects[index].ptr = ptr;
+            sec->objects[index].func = function;
+            return secNum * OBJ_SIZE + index + 1;
+        }
+        prev = sec;
+        sec = sec->next;
+        secNum++;
+        continue;
+    }
+    sec = acquireSection();
+    sec->objects->ptr = ptr;
+    sec->objects->func = function;
+    sec->used++;
+    sec->assignMax = 1;
+    sec->state[0] = true;
+    if (prev == nullptr) {
+        cur->top = sec;
+    } else prev->next = sec;
+    return secNum * OBJ_SIZE + 1;
+}
+
+
+void GCScope::remove(uint32_t ref) {
+    if (ref == 0) return;
+    ref = ref - 1;
+    uint32_t sec = ref / OBJ_SIZE;
+    uint8_t idx = (uint8_t)(ref % OBJ_SIZE);
+    GCSection **sectionRef = gotoSection(sec);
+    GCSection *section = *sectionRef;
+    section->used--;
+    if (section->used == 0) {
+        releaseSection(section);
+        *sectionRef = nullptr;
+        return;
+    }
+    section->state[idx] = false;
+    section->lastReleased = idx;
+}
+
+GCScope::GCSection **GCScope::gotoSection(uint32_t idx) {
+    GCSection *&sec = cur->top;
+    for (int i = 0; i < idx; ++i) {
+        if (sec == nullptr) abort();
+        sec = sec->next;
+    }
+    return &sec;
+}
+
+void GCScope::popAllFrames() {
+    while (cur != nullptr)
+        popFrame();
+}
+
+
+

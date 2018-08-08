@@ -1,0 +1,72 @@
+//
+// Created by Karven on 2018/2/18.
+//
+
+#ifndef HOOKMANAGER_GC_H
+#define HOOKMANAGER_GC_H
+
+#include "common.h"
+#include "gc_scope.h"
+#include <sys/shm.h>
+
+template<typename _Tp, typename _Alloc=Allocator <_Tp>>
+void OnDelete(_Tp *p) {
+    _Alloc al;
+    al.destroy(p);
+    al.deallocate(p, 1);
+}
+
+template<typename _Tp, typename _Alloc=Allocator <_Tp>, void (*Des)(_Tp *) = OnDelete<_Tp, _Alloc>>
+class GC {
+    _Tp *obj;
+    uint32_t gcIdx;
+    _Alloc al;
+public:
+    GC(_Tp *p) {
+        obj = p;
+        gcIdx = GCScope::acquire().put(p, (GCFunction) Des);
+    }
+
+    GC() {
+        obj = al.allocate(1);
+        new((void *) obj)_Tp();
+        gcIdx = GCScope::acquire().put(obj, (GCFunction) Des);
+    }
+
+    template<typename... Targ>
+    GC(Targ &&... args) {
+        obj = al.allocate(1);
+        new((void *) obj)_Tp(std::forward<Targ>(args)...);
+        gcIdx = GCScope::acquire().put(obj, (GCFunction) Des);
+    }
+
+    GC(GC<_Tp, _Alloc, Des> &&other) {
+        gcIdx = other.gcIdx;
+        obj = other.obj;
+        other.gcIdx = 0;
+        other.obj = nullptr;
+    };
+
+    _Tp *get() {
+        return obj;
+    }
+
+    _Tp *operator->() {
+        return obj;
+    }
+
+    _Tp &operator*() {
+        return *obj;
+    }
+
+    ~GC() {
+        if (obj != nullptr) {
+            al.destroy(obj);
+            al.deallocate(obj, 1);
+        }
+        if (gcIdx)GCScope::acquire().remove(gcIdx);
+    }
+
+};
+
+#endif //HOOKMANAGER_GC_H

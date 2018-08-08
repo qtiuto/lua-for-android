@@ -1,0 +1,57 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 27
+
+    defaultConfig {
+        applicationId "com.oslorde.luadroid"
+        minSdkVersion 17
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        externalNativeBuild{
+            ndkBuild{
+                arguments 'NDK_APPLICATION_MK:=./src/main/cpp/Application.mk'
+                /*arguments 'APP_STL=c++_static'
+                cppFlags '-std=c++11','-fexceptions','-frtti','-O3'*/
+                abiFilters 'arm64-v8a' ,'armeabi-v7a','x86','x86_64'
+            }
+        }
+
+    }
+    externalNativeBuild{
+        ndkBuild{
+            path './src/main/cpp/Android.mk'
+        }
+    }
+
+    buildTypes {
+        debug{
+            minifyEnabled false
+
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+repositories  {
+    flatDir {
+        dirs 'libs'
+    }
+}
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation 'com.android.support.test:runner:1.0.2'
+    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+    implementation project(':dexmaker')
+    //implementation(name: 'jna', ext: 'aar')
+}
