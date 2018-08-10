@@ -14,7 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <setjmp.h>
-#include <lua/lua.h>
+#include <lua.h>
 
 #if LUA_VERSION_NUM < 503
 #include "int64_support.h"
@@ -1439,7 +1439,8 @@ int callMethod(lua_State *L) {
         }
     }
     int retCount = 1;
-    if (info->returnType->isVoid()) {
+    auto returnType=info->returnType;
+    if (returnType->isVoid()) {
         if (isStatic) env->CallStaticVoidMethodA(type->getType(), info->id, args);
         else
             env->CallNonvirtualVoidMethodA(objRef->object, objRef->type->getType(), info->id, args);
@@ -1447,7 +1448,7 @@ int callMethod(lua_State *L) {
     }
 
 #define PushResult(jtype, jname, NAME)\
-    if(info->returnType==context->jtype##Class){\
+    if(returnType==context->jtype##Class){\
         lua_push##NAME(L,isStatic?env->CallStatic##jname##MethodA(type->getType(),info->id\
         ,args):env->CallNonvirtual##jname##MethodA(objRef->object,objRef->type->getType(),info->id,args));\
     }
@@ -1458,7 +1459,7 @@ int callMethod(lua_State *L) {
 #if LUA_VERSION_NUM >= 503
     else PushIntegerResult(long, Long)
 #else
-        else if(info->returnType==context->longClass){
+        else if(returnType==context->longClass){
            jlong num=isStatic?env->CallStaticLongMethodA(type->getType(),info->id
            ,args):env->CallNonvirtualLongMethodA(objRef->object,objRef->type->getType(),
            info->id,args);
@@ -1473,7 +1474,7 @@ int callMethod(lua_State *L) {
     else PushFloatResult(float, Float)
     else PushIntegerResult(byte, Byte)
     else PushIntegerResult(short, Short)
-    else if (info->returnType->isChar()) {
+    else if (returnType==context->charClass) {
         jchar buf;
         if (isStatic) buf = env->CallStaticCharMethodA(type->getType(), info->id, args);
         else

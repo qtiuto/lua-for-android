@@ -1,10 +1,11 @@
 <resources>
-    <string name="app_name">LuaDroid</string>
-    <string name="run">运行</string>
-    <string name="undo">撤销</string>
-    <string name="redo">重做</string>
-    <string name="gotoLine">转至</string>
-    <string name="ok">确认</string>
-    <string name="search">搜索</string>
-    <string name="view_result">查看结果</string>
+    <string name="app_name" translatable="false">LuaDroid</string>
+    <string name="run">Run</string>
+    <string name="view_result">View Result</string>
+    <string name="search">Search</string>
+    <string name="ok">OK</string>
+    <string name="gotoLine">Go to Line</string>
+    <string name="redo">Redo</string>
+    <string name="undo">Undo</string>
+    <string name="not_found">Not Found</string>
 </resources>

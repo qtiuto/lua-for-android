@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="run">運行</string>
+
+    <string name="undo">撤銷</string>
+
+    <string name="redo">重做</string>
+
+    <string name="gotoLine">轉至</string>
+
+    <string name="ok">確認</string>
+
+    <string name="search">蒐索</string>
+
+    <string name="view_result">查看結果</string>
+    <string name="not_found">未找到</string>
+</resources>

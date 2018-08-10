@@ -296,7 +296,7 @@ public class ScriptContext implements GCTracker {
         if (sConverters != null)
             return sConverters;
         sConverters = new HashMap<>();
-        TableConverter<HashMap<?, ?>> mapConverter = HashMap::new;
+        TableConverter<HashMap<?, ?>> mapConverter = table -> (HashMap<?, ?>) table;
         sConverters.put(HashMap.class, mapConverter);
         sConverters.put(Map.class, mapConverter);
         sConverters.put(AbstractMap.class, mapConverter);
