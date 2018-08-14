@@ -11,8 +11,8 @@ jmethodID JavaType::sIsTableType = nullptr;
 jmethodID JavaType::sTableConvert = nullptr;
 jmethodID JavaType::sIsInterface = nullptr;
 
-jobject JavaType::newObject(Vector<JavaType *> &types, Vector<ValidLuaObject> &params) {
-    const MethodInfo *info = findMethod(FakeString("<init>"), false, types, &params);
+jobject JavaType::newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<ValidLuaObject> &params) {
+    const MethodInfo *info = findMethod(env,FakeString("<init>"), false, types, &params);
     uint32_t size = (uint32_t) types.size();
     jvalue argList[size];
     for (int i = 0; i < size; ++i) {
@@ -30,7 +30,7 @@ jobject JavaType::newObject(Vector<JavaType *> &types, Vector<ValidLuaObject> &p
     return ret;
 }
 
-jarray JavaType::newArray(jint size, Vector<ValidLuaObject> &params) {
+jarray JavaType::newArray(TJNIEnv* env,jint size, Vector<ValidLuaObject> &params) {
     uint32_t len = (uint32_t) params.size();
 
 #define ArrayHandle(jtype, jName, NAME) \
@@ -85,7 +85,7 @@ jarray JavaType::newArray(jint size, Vector<ValidLuaObject> &params) {
 
 }
 
-JavaType::MethodArray *JavaType::ensureMethod(const String &s, bool isStatic) {
+JavaType::MethodArray *JavaType::ensureMethod(TJNIEnv* env,const String &s, bool isStatic) {
     auto &&map = isStatic ? staticMethods : objectMethods;
     auto &&iter = map.find(s);
     if (iter != map.end())
@@ -125,7 +125,7 @@ JavaType::MethodArray *JavaType::ensureMethod(const String &s, bool isStatic) {
 
 }
 
-JavaType::FieldArray *JavaType::ensureField(const String &s, bool isStatic) {
+JavaType::FieldArray *JavaType::ensureField(TJNIEnv* env,const String &s, bool isStatic) {
     auto &&map = isStatic ? staticFields : objectFields;
     auto &&iter = map.find(s);
     if (iter != map.end())
@@ -153,11 +153,11 @@ JavaType::FieldArray *JavaType::ensureField(const String &s, bool isStatic) {
     return &map.emplace(s, std::move(fieldArray)).first->second;
 }
 
-const JavaType::MethodInfo *JavaType::findMethod(
+const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
         const String &name, bool isStatic,
         Vector<JavaType *> &types,
         Vector<ValidLuaObject> *arguments) {
-    auto &&array = ensureMethod(name, isStatic);
+    auto &&array = ensureMethod(env,name, isStatic);
     if (!array) return nullptr;
     int paramsLen = (int) types.size();
     const MethodInfo *select = nullptr;
@@ -213,7 +213,7 @@ const JavaType::MethodInfo *JavaType::findMethod(
                 case T_OBJECT: {
                     if (toCheck->isPrimitive()) goto bail;
                     JavaType *from = provided != nullptr ? provided : luaObject.objectRef->type;
-                    int weight = weightObject(toCheck, from);
+                    int weight = weightObject(env,toCheck, from);
                     if (scores[i] > weight) goto bail;
                     cacheScores[i] = weight;
                     break;
@@ -326,7 +326,7 @@ const JavaType::MethodInfo *JavaType::findMethod(
                         if (!env->IsAssignableFrom(provided->getType(), toCheck->getType()))
                             goto bail;
                     } else {
-                        if (!toCheck->isSingleInterface()) goto bail;
+                        if (!toCheck->isSingleInterface(env)) goto bail;
                     }
                     break;
                 }
@@ -336,8 +336,8 @@ const JavaType::MethodInfo *JavaType::findMethod(
                             goto bail;
                     } else {
                         int score;
-                        if (toCheck->isTableType()) score = 2;
-                        else if (toCheck->isInterface() && luaObject.lazyTable->isInterface()) {
+                        if (toCheck->isTableType(env)) score = 2;
+                        else if (toCheck->isInterface(env) && luaObject.lazyTable->isInterface()) {
                             score = 1;
                         } else score = 0;
                         if (score < scores[i]) goto bail;
@@ -358,8 +358,8 @@ const JavaType::MethodInfo *JavaType::findMethod(
     return select;
 }
 
-const JavaType::FieldInfo *JavaType::findField(const String &name, bool isStatic, JavaType *type) {
-    auto &&array = ensureField(name, isStatic);
+const JavaType::FieldInfo *JavaType::findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type) {
+    auto &&array = ensureField(env,name, isStatic);
     if (array == nullptr)
         return nullptr;
     if (type == nullptr) {
@@ -373,7 +373,7 @@ const JavaType::FieldInfo *JavaType::findField(const String &name, bool isStatic
 }
 
 
-int JavaType::weightObject(JavaType *target, JavaType *from) {
+int JavaType::weightObject(TJNIEnv* env,JavaType *target, JavaType *from) {
     auto key = std::make_pair<>(target, from);
     auto weightMap = context->weightMap;
     auto iter = weightMap.find(key);
@@ -385,7 +385,7 @@ int JavaType::weightObject(JavaType *target, JavaType *from) {
     return ret;
 }
 
-JObject JavaType::getSingleInterface() {
+JObject JavaType::getSingleInterface(TJNIEnv* env) {
     if (singleInterface == nullptr) {
         JObject ret = env->CallStaticObjectMethod(contextClass, sGetSingleInterface, type);
         if (ret != nullptr) singleInterface = env->FromReflectedMethod(ret);

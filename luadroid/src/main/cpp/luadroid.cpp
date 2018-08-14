@@ -50,9 +50,7 @@ static int javaToJavaObject(lua_State *L)noexcept;
 
 static int javaProxy(lua_State *L)noexcept;
 
-int javaUnlock(lua_State *L)noexcept;
-
-static int javaLock(lua_State *L)noexcept;
+static int javaSync(lua_State *L)noexcept;
 
 static int javaThrow(lua_State *L)noexcept;
 
@@ -169,8 +167,7 @@ static const luaL_Reg javaInterfaces[] =
          {"newArray",   javaNewArray},
          {"import",     javaImport},
          {"proxy",      javaProxy},
-         {"lock",       javaLock},
-         {"unlock",     javaUnlock},
+         {"sync",       javaSync},
          {"object",     javaToJavaObject},
          {"charString",
                         javaCharString},
@@ -214,6 +211,7 @@ jmethodID objectHash;
 jmethodID classGetName;
 jmethodID objectToString;
 jmethodID sLength;
+__thread TJNIEnv* _env;
 static __thread jmp_buf errorJmp;
 
 #if  LUA_VERSION_NUM == 502
@@ -390,6 +388,11 @@ void ScriptContext::config(lua_State *L) {
     for (auto &pair:addedMap) {
         pushAddedObject(env, L, pair.first.data(), pair.second.first.data(), pair.second.second);
     }
+
+    *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = ensureType(env,"com.oslorde.luadroid.ClassBuilder");
+    luaL_setmetatable(L, JAVA_TYPE);
+    lua_pushvalue(L, -1);
+    lua_setglobal(L, "ClassBuilder");
     lua_settop(L, top);
 }
 
@@ -516,7 +519,6 @@ jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) 
 jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean isFile,
                        jobjectArray args) {
     ScriptContext *context = (ScriptContext *) ptr;
-    auto L = context->getLua();
     if (_setjmp(errorJmp)) {
         //GCScope::acquire().popAllFrames();
         if (context->hasErrorPending()) {
@@ -524,9 +526,10 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
         }
         return nullptr;
     }
-    auto top = lua_gettop(L);
     Import myIMport;
     auto import = context->changeImport(&myIMport);
+    auto L = context->getLua();
+    auto top = lua_gettop(L);
     int ret;
     int argCount;
     jobjectArray result = nullptr;
@@ -732,7 +735,8 @@ int javaType(lua_State *L) {
                     goto Ok;
                 } else if (env->IsInstanceOf(objectRef->object, stringType)) {
                     type = context->ensureType(env, JString(env, (jstring) objectRef->object));
-                    goto Ok;
+                    if(type!= nullptr)
+                        goto Ok;
                 }
             }
             goto Error;
@@ -742,7 +746,7 @@ int javaType(lua_State *L) {
         luaL_setmetatable(L, JAVA_TYPE);
         continue;//never reach
         Error:
-        luaL_error(L, "Invalid type=%s", luaL_typename(L, i));
+        luaL_error(L, "Invalid type=%s", luaL_tolstring(L, i,NULL));
     }
     return count;
 }
@@ -775,7 +779,7 @@ static int proxyByTable(lua_State *L) {
             interfaces.erase(interfaces.begin());
         }
     }
-    auto env = main->getEnv();
+    AutoJNIEnv env;
     Vector<std::unique_ptr<BaseFunction>> luaFuncs;
     Vector<JObject> agentMethods;
     lua_getfield(L, 1, "methods");
@@ -785,7 +789,7 @@ static int proxyByTable(lua_State *L) {
             goto __ErrorHandle;
         }
     } else if (lua_isfunction(L, -1)) {
-        JObject single(main->getSingleInterface());
+        JObject single(main->getSingleInterface(env));
         if (single == nullptr) TopErrorHandle("All methods should be specified");
         agentMethods.push_back(std::move(single));
         if (context->isLocalFunction()) {
@@ -863,10 +867,10 @@ readProxyMethods(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<Java
                     paramTypes.push_back(*typeRef);
                 else if (lua_isfunction(L, -1)) {
                     JavaType *matchType = main;
-                    auto info = main->findMethod(methodName, false, paramTypes, nullptr);
+                    auto info = main->findMethod(env,methodName, false, paramTypes, nullptr);
                     if (info == nullptr) {
                         for (auto interface:interfaces) {
-                            info = interface->findMethod(methodName, false, paramTypes, nullptr);
+                            info = interface->findMethod(env,methodName, false, paramTypes, nullptr);
                             if (info != nullptr) {
                                 matchType = interface;
                                 break;
@@ -897,7 +901,7 @@ readProxyMethods(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<Java
             } else {
                 func = saveLuaFunction(env, L, context, -1);
             }
-            auto all = main->findAllObjectMethod(methodName);
+            auto all = main->findAllObjectMethod(env,methodName);
             bool found = false;
             if (all) {
                 for (auto &&info:*all) {
@@ -909,7 +913,7 @@ readProxyMethods(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<Java
                 }
             }
             for (auto interface:interfaces) {
-                all = main->findAllObjectMethod(methodName);
+                all = main->findAllObjectMethod(env,methodName);
                 if (!all) continue;
                 for (auto &&info:*all) {
                     func->javaRefCount++;
@@ -946,8 +950,7 @@ int javaProxy(lua_State *L) {
             interfaces.push_back(*typeRef);
         else break;
     }
-
-    auto env = main->getEnv();
+    AutoJNIEnv env;
     Vector<JavaType *> curMethodTypes;
     const char *curMethod = nullptr;
     Vector<JObject> agentMethods;
@@ -964,10 +967,10 @@ int javaProxy(lua_State *L) {
         } else if (lua_isfunction(L, j)) {
             if (curMethod != nullptr) {
                 JavaType *matchType = main;
-                auto info = main->findMethod(FakeString(curMethod), false, curMethodTypes, nullptr);
+                auto info = main->findMethod(env,FakeString(curMethod), false, curMethodTypes, nullptr);
                 if (info == nullptr) {
                     for (auto interface:interfaces) {
-                        info = interface->findMethod(FakeString(curMethod), false, curMethodTypes,
+                        info = interface->findMethod(env,FakeString(curMethod), false, curMethodTypes,
                                                      nullptr);
                         if (info != nullptr) {
                             matchType = interface;
@@ -983,7 +986,7 @@ int javaProxy(lua_State *L) {
                     agentMethods.push_back(
                             env->ToReflectedMethod(matchType->getType(), info->id, JNI_FALSE));
             } else if (curMethodTypes.size() == 0) {
-                JObject single(main->getSingleInterface());
+                JObject single(main->getSingleInterface(env));
                 if (single == nullptr) TopErrorHandle("methods should be specified");
                 agentMethods.push_back(std::move(single));
             } else {
@@ -1062,7 +1065,7 @@ JNIEXPORT jobject constructChild(TJNIEnv *env, jclass, jlong ptr, jclass target,
     void **constructInfo = (void **) nativeInfo;
     Vector<ValidLuaObject> *constructArgs = (Vector<ValidLuaObject> *) constructInfo[0];
     Vector<JavaType *> *argTypes = (Vector<JavaType *> *) constructInfo[1];
-    jobject ret = type->newObject(*argTypes, *constructArgs);
+    jobject ret = type->newObject(env,*argTypes, *constructArgs);
     if (context->hasErrorPending())
         context->throwToJava();
     return ret;
@@ -1091,7 +1094,7 @@ int javaImport(lua_State *L) {
             TopErrorHandle("Invalid type name:%s", s.c_str());
         }
         JClass c(env->FindClass(&s[0]));
-        HOLD_JAVA_EXCEPTION(context, { goto __ErrorHandle; });
+        HOLD_JAVA_EXCEPTION(context, {  TopErrorHandle(" Type:%s not found", s.c_str()); });
         const auto &iter = import->stubbed.find(name);
         if (iter != import->stubbed.end() && !env->IsSameObject(c, (*iter).second->getType())) {
             JString prevName(
@@ -1141,15 +1144,15 @@ int javaCharString(lua_State *L) {
 int javaNew(lua_State *L) {
     ScriptContext *context = getContext(L);
     JavaType *type = *(JavaType **) luaL_checkudata(L, 1, JAVA_TYPE);
-    TJNIEnv *env = type->getEnv();
-    auto component = type->getComponentType();
+    AutoJNIEnv env;
+    auto component = type->getComponentType(env);
     if (component != nullptr) {
         return newArray(env, L, 2, context, component);
     } else {
         Vector<JavaType *> types;
         Vector<ValidLuaObject> objects;
         readArguments(env, L, context, types, objects, 2);
-        JObject obj = JObject(env, type->newObject(types, objects));
+        JObject obj = JObject(env, type->newObject(env,types, objects));
         if (context->hasErrorPending()) {
             forceRelease(types, objects);
             luaL_error(L, "");
@@ -1162,7 +1165,7 @@ int javaNew(lua_State *L) {
 int javaNewArray(lua_State *L) {
     ScriptContext *context = getContext(L);
     JavaType *type = *(JavaType **) luaL_checkudata(L, 1, JAVA_TYPE);
-    return newArray(type->getEnv(), L, 2, context, type);
+    return newArray(AutoJNIEnv(), L, 2, context, type);
 }
 
 int newArray(TJNIEnv *env, lua_State *L, int index, ScriptContext *context, JavaType *type) {
@@ -1192,7 +1195,7 @@ int newArray(TJNIEnv *env, lua_State *L, int index, ScriptContext *context, Java
         checkLuaType(env, L, type, object);
         elements.push_back(std::move(object));
     }
-    JArray ret(env, type->newArray((jint) size, elements));
+    JArray ret(env, type->newArray(env,(jint) size, elements));
     if (ret == nullptr) {
         forceRelease(elements);
         luaL_error(L, "");
@@ -1219,37 +1222,57 @@ int javaToJavaObject(lua_State *L) {
 int javaInstanceOf(lua_State *L) {
     JavaObject *objectRef = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
     JavaType *typeRef = *(JavaType **) luaL_checkudata(L, -1, JAVA_TYPE);
-    lua_pushboolean(L, typeRef->getEnv()->IsInstanceOf(objectRef->object, typeRef->getType()));
+    lua_pushboolean(L, AutoJNIEnv()->IsInstanceOf(objectRef->object, typeRef->getType()));
     return 1;
 }
-
-int javaLock(lua_State *L) {
-    JavaObject *objectRef = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
-    auto env = objectRef->type->getEnv();
-    env->MonitorEnter(objectRef->object);
-    ScriptContext *context = getContext(L);
-    HOLD_JAVA_EXCEPTION(context, {});
-    if (context->hasErrorPending())
-        luaL_error(L, "");
-    return 0;
-}
-
-int javaUnlock(lua_State *L) {
-    lua_settop(L, 1);
-    JavaObject *objectRef = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
-    auto env = objectRef->type->getEnv();
+/*int javaSyncK(lua_State *L
+#if LUA_VERSION_NUM>502
+,int status,lua_KContext ctx
+#endif
+) {
+#if LUA_VERSION_NUM==502
+    int ctx;
+    int status=lua_getctx(L,&ctx);
+#endif
+    JavaObject *objectRef = (JavaObject *) lua_touserdata(L, 1);
+    AutoJNIEnv env;
     env->MonitorExit(objectRef->object);
     ScriptContext *context = getContext(L);
-    HOLD_JAVA_EXCEPTION(context, {});
-    if (context->hasErrorPending())
-        luaL_error(L, "");
+    HOLD_JAVA_EXCEPTION(context, {luaL_error(L, "");});
+    if(status!=LUA_YIELD){
+        lua_error(L);
+    }
+    return 0;
+}*/
+
+int javaSync(lua_State *L) {
+    JavaObject *objectRef = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
+    AutoJNIEnv env;
+    env->MonitorEnter(objectRef->object);
+    ScriptContext *context = getContext(L);
+    HOLD_JAVA_EXCEPTION(context, {luaL_error(L, "");});
+    lua_pushcfunction(L,luaPCallHandler);
+    lua_pushvalue(L,2);
+    int ret;
+//#if LUA_VERSION_NUM<502
+    ret = lua_pcall(L, 0, 0, -2);
+/*#else
+    ret=lua_pcallk(L,0,0,-2,0,javaSyncK);
+#endif*/
+    env->MonitorExit(objectRef->object);
+    HOLD_JAVA_EXCEPTION(context, {luaL_error(L, "");});
+    if(ret!=LUA_OK){
+        lua_error(L);
+    }
     return 0;
 }
+
+
 
 int javaThrow(lua_State *L) {
     lua_settop(L, 1);
     JavaObject *objectRef = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
-    if (!objectRef->type->getEnv()->IsInstanceOf(objectRef->object, throwableType))
+    if (!AutoJNIEnv()->IsInstanceOf(objectRef->object, throwableType))
         luaL_error(L, "Illegal exception");
     ScriptContext *context = getContext(L);
     context->setPendingException((jthrowable) objectRef->object);
@@ -1299,9 +1322,7 @@ int javaTry(lua_State *L) {
     lua_pushcfunction(L, luaPCallHandler);
     int handlerIndex = lua_gettop(L);
     lua_pushvalue(L, 1);
-    //GCScope::acquire().pushFrame();
     int ret = lua_pcall(L, 0, 0, handlerIndex);
-    //GCScope::acquire().popFrame();
     if (ret != LUA_OK) {
         if (!testType(L, -1, JAVA_RETHROW)) recordLuaError(env, context, L, ret);
         lua_pop(L, 1);
@@ -1314,9 +1335,8 @@ int javaTry(lua_State *L) {
 #define CALL_CATCH(index)\
                     lua_pushvalue(L,(index)+1);\
                     pushJavaObject(env,L,context,error);\
-                    /*GCScope::acquire().pushFrame();*/\
                     int code=lua_pcall(L,1,0,handlerIndex);\
-                    /*GCScope::acquire().popFrame();*/ forceRelease(catchFuncs);\
+                    forceRelease(catchFuncs);\
                     if(finallyIndex>0){lua_pushvalue(L,finallyIndex);lua_call(L,0,0);} \
                     if(code!=LUA_OK){\
                         if(env->IsSameObject(context->getPendingJavaError(),error)){\
@@ -1421,11 +1441,11 @@ int callMethod(lua_State *L) {
     JavaType *type = isStatic ? *(JavaType **) lua_touserdata(L, OBJ_INDEX) : objRef->type;
     Vector<JavaType *> types;
     Vector<ValidLuaObject> objects;
-    TJNIEnv *env = type->getEnv();
+    AutoJNIEnv env;
     readArguments(env, L, context, types, objects, 1 + flag->isNotOnlyMethod);
-    auto info = type->findMethod(FakeString(name), isStatic, types, &objects);
+    auto info = type->findMethod(env,FakeString(name), isStatic, types, &objects);
     if (info == nullptr) {
-        TopErrorHandle("No matched found for the method %s", name);
+        TopErrorHandle("No matched found for the method %s;%s",type->name(env).str(), name);
     }
     int argCount = static_cast<int>(objects.size());
     jvalue args[argCount];
@@ -1503,9 +1523,9 @@ int getFieldOrMethod(lua_State *L) {
     bool isStatic = typeRef != nullptr;
     JavaObject *obj = isStatic ? nullptr : (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
     JavaType *type = isStatic ? *typeRef : obj->type;
-    auto env = type->getEnv();
+    AutoJNIEnv env;
     if (!isStatic) {
-        auto component = obj->type->getComponentType();
+        auto component = obj->type->getComponentType(env);
         if (component != nullptr) {
             if (luaL_isstring(L, 2)) {
                 const char *s = lua_tostring(L, 2);
@@ -1526,10 +1546,10 @@ int getFieldOrMethod(lua_State *L) {
     FakeString name(lua_tostring(L, 2));
 
     /*if(!validJavaName(name))luaL_error(L,"The name is invalid for java use:%s",name);*/
-    int fieldCount = type->getFieldCount(name, isStatic);
-    bool isMethod = type->ensureMethod(name, isStatic) != nullptr;
+    int fieldCount = type->getFieldCount(env,name, isStatic);
+    bool isMethod = type->ensureMethod(env,name, isStatic) != nullptr;
     if (fieldCount == 1 && !isMethod) {
-        auto info = type->findField(std::move(name), isStatic, nullptr);
+        auto info = type->findField(env,std::move(name), isStatic, nullptr);
         JavaType *fieldType = info->type;
 #define GetField(jtype, jname, TYPE)\
         if(fieldType==context->jtype##Class){\
@@ -1574,8 +1594,12 @@ int getFieldOrMethod(lua_State *L) {
         PushField();
     } else {
         if (!isMethod && fieldCount == 0) {
+            if(isStatic&&strcmp(name,"class")==0){
+                pushJavaObject(env,L,context,type->getType());
+                return 1;
+            }
             lua_pushfstring(L, "No member is named %s in class %s", name.data(),
-                            type->name().str());
+                            type->name(env).str());
             lua_error(L);
             return 0;
         }
@@ -1589,8 +1613,8 @@ int getFieldOrMethod(lua_State *L) {
 int getObjectLength(lua_State *L) {
     lua_settop(L, 2);
     JavaObject *objRef = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
-    auto env = objRef->type->getEnv();
-    if (objRef->type->isArray()) lua_pushinteger(L, env->GetArrayLength((jarray) objRef->object));
+    AutoJNIEnv env;
+    if (objRef->type->isArray(env)) lua_pushinteger(L, env->GetArrayLength((jarray) objRef->object));
     else {
         int len = env->CallStaticIntMethod(contextClass, sLength, objRef->object);
         if (len == -1)
@@ -1617,10 +1641,10 @@ int getField(lua_State *L) {
                                    nullptr) {
         luaL_error(L, "The class has duplicated field name %s", name);
     }
-    auto info = type->findField(FakeString(name), isStatic,
+    AutoJNIEnv env;
+    auto info = type->findField(env,FakeString(name), isStatic,
                                 flag->isDuplicatedField ? nullptr : *fieldTypeRef);
     JavaType *fieldType = info->type;
-    auto env = fieldType->getEnv();
     PushField();
     return 1;
 }
@@ -1642,11 +1666,11 @@ int setField(lua_State *L) {
             luaL_testudata(L, 2, JAVA_TYPE)) == nullptr) {
         luaL_error(L, "The class has duplicated field name %s", name);
     }
-    auto info = type->findField(FakeString(name), isStatic,
+    AutoJNIEnv env;
+    auto info = type->findField(env,FakeString(name), isStatic,
                                 flag->isDuplicatedField ? nullptr : *fieldTypeRef);
     JavaType *fieldType = info->type;
     ValidLuaObject luaObject;
-    auto env = type->getEnv();
     if (!parseLuaObject(env, L, context, 3, luaObject)) {
         luaL_error(L, "Invalid value passed to java as a field with type:%s", luaL_typename(L, 3));
     }
@@ -1688,9 +1712,9 @@ int setFieldOrArray(lua_State *L) {
     bool isStatic = typeRef != nullptr;
     JavaObject *objRef = isStatic ? nullptr : (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
     JavaType *type = isStatic ? *typeRef : objRef->type;
-    auto env = type->getEnv();
+    AutoJNIEnv env;
     if (!isStatic) {
-        JavaType *component = objRef->type->getComponentType();
+        JavaType *component = objRef->type->getComponentType(env);
         if (component != nullptr) {
             type = component;
             int isnum;
@@ -1729,10 +1753,10 @@ int setFieldOrArray(lua_State *L) {
         luaL_error(L, "Invalid index for a field member:%s",
                    luaL_tolstring(L, 2, NULL));
     const FakeString name(lua_tostring(L, 2));
-    int fieldCount = type->getFieldCount(name, isStatic);
+    int fieldCount = type->getFieldCount(env,name, isStatic);
     if (fieldCount <= 0) TopErrorHandle("No such field");
     if (fieldCount > 1) TopErrorHandle("The name %s repsents not only one field", name.data());
-    auto info = type->findField(name, isStatic, nullptr);
+    auto info = type->findField(env,name, isStatic, nullptr);
     JavaType *fieldType = info->type;
     ValidLuaObject luaObject;
     if (!parseLuaObject(env, L, context, 3, luaObject)) {
@@ -1752,7 +1776,7 @@ int objectEquals(lua_State *L) {
     JavaObject *ob2 = (JavaObject *) luaL_testudata(L, 2, JAVA_OBJECT);
     if (ob1 == nullptr || ob2 == nullptr) {
         lua_pushboolean(L, false);
-    } else lua_pushboolean(L, ob1->type->getEnv()->IsSameObject(ob1->object, ob2->object));
+    } else lua_pushboolean(L, AutoJNIEnv()->IsSameObject(ob1->object, ob2->object));
     return 1;
 }
 
@@ -1761,15 +1785,13 @@ int concatString(lua_State *L) {
     size_t len2 = 0;
     const char *s1 = luaL_tolstring(L, 1, &len1);
     const char *s2 = luaL_tolstring(L, 2, &len2);
-    char s[len1 + len2 + 1];
-    sprintf(s, "%s%s", s1, s2);
-    lua_pushstring(L, s);
+    lua_pushfstring(L,"%s%s", s1,s2);
     return 1;
 }
 
 int javaObjectToString(lua_State *L) {
     JavaObject *ob = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
-    auto env = ob->type->getEnv();
+    AutoJNIEnv env;
     JString str = env->CallObjectMethod(ob->object, objectToString);
     const char *s = env->GetStringUTFChars(str, nullptr);
     lua_pushstring(L, s);
@@ -2289,20 +2311,20 @@ checkLuaTypeNoThrow(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObje
                 return false;
             else {
                 lua_pushfstring(L, "Incompatible object,expected:%s,received:%s",
-                                expected->name().str(), luaObject.objectRef->type->name().str());
+                                expected->name(env).str(), luaObject.objectRef->type->name(env).str());
                 return true;
             }
         }
         if (expected->isStringAssignable() && luaObject.type == T_STRING) return false;
         if (luaObject.type == T_FUNCTION) {
-            if (expected->isSingleInterface())return false;
+            if (expected->isSingleInterface(env))return false;
             forceRelease(luaObject);
             lua_pushstring(L, "Can't convert function to a class that is not a single interface");
             return true;
         }
         if (luaObject.type == T_TABLE) {
-            if (expected->isTableType() ||
-                (expected->isInterface() && luaObject.lazyTable->isInterface()))
+            if (expected->isTableType(env) ||
+                (expected->isInterface(env) && luaObject.lazyTable->isInterface()))
                 return false;
         }
     }
@@ -2325,8 +2347,9 @@ void checkLuaType(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject
 void readArguments(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<JavaType *> &types,
                    Vector<ValidLuaObject> &objects, int start) {
     int top = lua_gettop(L);
-    types.reserve(static_cast<unsigned long>(top - 1));
-    objects.reserve(static_cast<unsigned long>(top - 1));
+    auto expectedSize = top - (start - 1);
+    types.reserve(static_cast<unsigned long>(expectedSize));
+    objects.reserve(static_cast<unsigned long>(expectedSize));
     for (int i = start; i <= top; ++i) {
         JavaType **typeRef = (JavaType **) luaL_testudata(L, i, JAVA_TYPE);
         bool noType = typeRef == nullptr;

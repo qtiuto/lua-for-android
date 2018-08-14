@@ -19,9 +19,11 @@ import com.android.dx.dex.file.ClassDefItem;
 import com.android.dx.rop.annotation.Annotation;
 import com.android.dx.rop.annotation.AnnotationVisibility;
 import com.android.dx.rop.annotation.Annotations;
+import com.android.dx.rop.annotation.AnnotationsList;
 import com.android.dx.rop.annotation.NameValuePair;
 import com.android.dx.rop.cst.Constant;
 import com.android.dx.rop.cst.CstEnumRef;
+import com.android.dx.rop.cst.CstFieldRef;
 import com.android.dx.rop.cst.CstMethodRef;
 import com.android.dx.rop.cst.CstNat;
 import com.android.dx.rop.cst.CstString;
@@ -29,6 +31,7 @@ import com.android.dx.rop.cst.CstType;
 
 import java.lang.annotation.ElementType;
 import java.util.HashMap;
+import java.util.List;
 
 /**
  * Identifies an annotation on a program element, see {@link java.lang.annotation.ElementType}.
@@ -134,40 +137,119 @@ public final class AnnotationId<D, V> {
      * @param dexMaker DexMaker instance.
      * @param method   Method to be added to.
      */
-    public void addToMethod(DexMaker dexMaker, MethodId<?, ?> method) {
-        if (annotatedElement != ElementType.METHOD) {
-            throw new IllegalStateException("This annotation is not for method");
-        }
-
-        if (method.declaringType != declaringType) {
-            throw new IllegalArgumentException("Method" + method + "'s declaring type is inconsistent with" + this);
-        }
-
-        ClassDefItem classDefItem = dexMaker.getTypeDeclaration(declaringType).toClassDefItem();
+    public static void addToMethod(DexMaker dexMaker, MethodId<?, ?> method,List<AnnotationId<?,?>> ids) {
+        ClassDefItem classDefItem = dexMaker.getTypeDeclaration(method.declaringType).toClassDefItem();
 
         if (classDefItem == null) {
             throw new NullPointerException("No class defined item is found");
-        } else {
-            CstMethodRef cstMethodRef = method.constant;
+        }
+        CstMethodRef cstMethodRef = method.constant;
+        if (cstMethodRef == null) {
+            throw new NullPointerException("Method reference is NULL");
+        }
+        Annotations annotations = new Annotations();
+        for (AnnotationId<?, ?> id :
+                ids) {
+            if (id.annotatedElement != ElementType.METHOD) {
+                throw new IllegalStateException("This annotation is not for method");
+            }
 
-            if (cstMethodRef == null) {
-                throw new NullPointerException("Method reference is NULL");
-            } else {
+            if (method.declaringType != id.declaringType) {
+                throw new IllegalArgumentException("Method" + method + "'s declaring type is inconsistent with" + id);
+            }
+
+            // Generate CstType
+            CstType cstType = CstType.intern(id.type.ropType);
+
+            // Generate Annotation
+            Annotation annotation = new Annotation(cstType, AnnotationVisibility.RUNTIME);
+
+            // Add generated annotation
+            for (NameValuePair nvp : id.elements.values()) {
+                annotation.add(nvp);
+            }
+            annotations.add(annotation);
+        }
+        classDefItem.addMethodAnnotations(cstMethodRef, annotations, dexMaker.getDexFile());
+
+
+    }
+
+    public static void addToField(DexMaker dexMaker, FieldId<?, ?> field,List<AnnotationId<?,?>> ids) {
+        ClassDefItem classDefItem = dexMaker.getTypeDeclaration(field.declaringType).toClassDefItem();
+        if (classDefItem == null) {
+            throw new NullPointerException("No class defined item is found");
+        }
+        Annotations annotations = new Annotations();
+        for (AnnotationId<?,?> id:ids){
+            if (id.annotatedElement != ElementType.FIELD) {
+                throw new IllegalStateException("This annotation is not for method");
+            }
+
+            if (field.declaringType != id.declaringType) {
+                throw new IllegalArgumentException("Field" + field + "'s declaring type is inconsistent with" + id);
+            }
+
+            // Generate CstType
+            CstType cstType = CstType.intern(id.type.ropType);
+
+            // Generate Annotation
+            Annotation annotation = new Annotation(cstType, AnnotationVisibility.RUNTIME);
+
+            // Add generated annotation
+            for (NameValuePair nvp : id.elements.values()) {
+                annotation.add(nvp);
+            }
+            annotations.add(annotation);
+        }
+
+        CstFieldRef cstFieldRef = field.constant;
+        classDefItem.addFieldAnnotations(cstFieldRef, annotations, dexMaker.getDexFile());
+    }
+
+    public static void addToParameters(DexMaker dexMaker, MethodId<?, ?> methodId,
+                                       List<List<AnnotationId<?,?>>> annotationIds) {
+        ClassDefItem classDefItem = dexMaker.getTypeDeclaration(methodId.declaringType).toClassDefItem();
+
+        if (classDefItem == null) {
+            throw new NullPointerException("No class defined item is found");
+        }
+        CstMethodRef cstMethodRef = methodId.constant;
+        if (cstMethodRef == null) {
+            throw new NullPointerException("Method reference is NULL");
+        }
+        AnnotationsList list=new AnnotationsList(annotationIds.size());
+        for (int i=list.size()-1;i>=0;--i) {
+            List<AnnotationId<?, ?>> ids =
+            annotationIds.get(i);
+            if(ids==null) continue;
+            Annotations annotations = new Annotations();
+            for (AnnotationId<?,?> id:ids) {
+
+                if (id.annotatedElement != ElementType.PARAMETER) {
+                    throw new IllegalStateException("This annotation is not for method");
+                }
+
+                if (id.declaringType != methodId.declaringType) {
+                    throw new IllegalArgumentException("Method" + methodId + "'s declaring type is inconsistent with" + id);
+                }
                 // Generate CstType
-                CstType cstType = CstType.intern(type.ropType);
+                CstType cstType = CstType.intern(id.type.ropType);
 
                 // Generate Annotation
                 Annotation annotation = new Annotation(cstType, AnnotationVisibility.RUNTIME);
 
                 // Add generated annotation
-                Annotations annotations = new Annotations();
-                for (NameValuePair nvp : elements.values()) {
+                for (NameValuePair nvp : id.elements.values()) {
                     annotation.add(nvp);
                 }
                 annotations.add(annotation);
-                classDefItem.addMethodAnnotations(cstMethodRef, annotations, dexMaker.getDexFile());
             }
+            list.set(i,annotations);
         }
+
+
+        classDefItem.addParameterAnnotations(cstMethodRef,list , dexMaker.getDexFile());
     }
 
     /**

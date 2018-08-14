@@ -212,7 +212,7 @@ public class LuaEditor extends FreeScrollingTextField {
             @Override
             public boolean onCreateActionMode(ActionMode mode, Menu menu) {
                 // TODO: Implement this method
-                mode.setTitle("转到");
+                mode.setTitle(getContext().getString(R.string.gotoLine));
                 mode.setSubtitle(null);
 
                 edit = new EditText(getContext()) {
@@ -293,7 +293,7 @@ public class LuaEditor extends FreeScrollingTextField {
             @Override
             public boolean onCreateActionMode(ActionMode mode, Menu menu) {
                 // TODO: Implement this method
-                mode.setTitle("搜索");
+                mode.setTitle(getContext().getString(R.string.search));
                 mode.setSubtitle(null);
 
                 edit = new EditText(getContext()) {
@@ -354,7 +354,7 @@ public class LuaEditor extends FreeScrollingTextField {
                 idx = finder.find(getText(), kw, idx, getText().length(), false, false);
                 if (idx == -1) {
                     selectText(false);
-                    Toast.makeText(getContext(), "未找到", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), R.string.not_found, Toast.LENGTH_SHORT).show();
                     idx = 0;
                     return;
                 }
@@ -485,7 +485,7 @@ public class LuaEditor extends FreeScrollingTextField {
         idx = finder.find(getText(), kw, idx, getText().length(), false, false);
         if (idx == -1) {
             selectText(false);
-            Toast.makeText(getContext(), "未找到", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), R.string.not_found, Toast.LENGTH_SHORT).show();
             idx = 0;
             return false;
         }

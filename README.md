@@ -51,9 +51,11 @@
       to check whether the given object is an instance of the give type.
       usage: instanceof(object,type)
       
-     lock/unlock:
-      equals to sychronized(object),don't forget to unlock after lock
-      usages:lock(object) code unlock(object)
+     sync:
+      equals to sychronized(object)
+      usages:sync(object,function()... end)
+      Note:yield is not supported cause it will break lock scope and have
+       object unlocked
       
      object:
       convert a lua object to java object,here is the mapping
@@ -94,6 +96,8 @@
           }
        The handler order and re-throw is according to java specification
        However, you can just try without finally or catch
+       Note:yeild is not supported inside any function you passed in,
+        cause it may have finally function un-called
        
      throw:
       throw a java exception to the code,it will be caught by the above
@@ -167,6 +171,19 @@
      To distinguish it,use (Type or obj).name[according type] to operate
      on the field.
      
+     Note:
+       Type.class will return the Class object represented by the type
+       '.length' of an array object will return its length,you can use '#' 
+       operator to get the length of an array object also.'#' operator also
+       works for Collection,Map,JsonArray and SparseArray.
+       The lua method tostring works for any java object,and toString method
+       will be invoked.
+       '==' operator for java object will always return true if the two object
+       is the same java object
+       '..' operator will concat a java object with any lua object with tostring
+       to be called,and return a lua string.
+       
+     
     Type Specifaction:
          You can add a type before the arg in method call,new(),newArray
      or the args in proxy(),so as to indicate the type you wish the
@@ -223,6 +240,8 @@
      the table.
      
       User date is treated as integer.
+      
+      Note: autobox is not supported because it is time-consuming.
           
     Module name in lua:
      
@@ -246,6 +265,13 @@
      proper result.
      
      putTableConverter:put a converter to support automatic table conversion
+     
+    ClassBuilder api:
+     Class Builder is imported default to support dynamic class generation
+     
+    For more information,see java doc in doc directory  
+      
+     
 
 
 

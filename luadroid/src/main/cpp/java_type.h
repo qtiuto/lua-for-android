@@ -54,7 +54,6 @@ private:
     static jmethodID sIsTableType;
     static jmethodID sTableConvert;
     jclass type;
-    TJNIEnv *env;
     bool primitive;
     bool isInteger;
     bool _isString;
@@ -69,54 +68,51 @@ private:
     jmethodID singleInterface = invalid<jmethodID>();
     JavaType *componentType = invalid<JavaType *>();
 
-    JavaType(JNIEnv *env, jclass type, ScriptContext *context) : env(static_cast<TJNIEnv *>(env)),
-                                                                 context(context) {
+    JavaType(JNIEnv *env, jclass type, ScriptContext *context) : context(context) {
         this->type = (jclass) env->NewGlobalRef(type);
         _isStringAssignable = env->IsAssignableFrom(stringType, type);
         _isString = env->IsSameObject(type, stringType);
+        primitive=false;
+        isInteger=false;
     }
 
     inline static JClass getComponentType(TJNIEnv *env, jclass type) {
         return (JClass) env->CallObjectMethod(type, sGetComponentType);
     }
 
-    int weightObject(JavaType *target, JavaType *from);
+    int weightObject(TJNIEnv* env,JavaType *target, JavaType *from);
 
 public:
-    jobject newObject(Vector<JavaType *> &types, Vector<ValidLuaObject> &params);
+    jobject newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<ValidLuaObject> &params);
 
-    jarray newArray(jint size, Vector<ValidLuaObject> &params);
+    jarray newArray(TJNIEnv* env,jint size, Vector<ValidLuaObject> &params);
 
     jclass getType() const { return type; }
 
-    JString name() { return (JString) env->CallObjectMethod(type, classGetName); }
+    JString name(TJNIEnv* env) { return (JString) env->CallObjectMethod(type, classGetName); }
 
-    MethodArray *ensureMethod(const String &s, bool isStatic);
+    MethodArray *ensureMethod(TJNIEnv* env,const String &s, bool isStatic);
 
-    FieldArray *ensureField(const String &s, bool isStatic);
+    FieldArray *ensureField(TJNIEnv* env,const String &s, bool isStatic);
 
-    bool isTableType() {
+    bool isTableType(TJNIEnv* env) {
         return env->CallBooleanMethod(context->javaRef, sIsTableType, type);
     }
 
-    jobject convertTable(jobject map) {
+    jobject convertTable(TJNIEnv* env,jobject map) {
         return env->asJNIEnv()->CallObjectMethod(context->javaRef, sTableConvert, map, type);
     }
 
-    bool isArray() {
-        return getComponentType() != NULL;
+    bool isArray(TJNIEnv* env) {
+        return getComponentType(env) != NULL;
     }
 
-    JavaType *getComponentType() {
+    JavaType *getComponentType(TJNIEnv* env) {
         if (componentType == invalid<JavaType *>()) {
             auto cType = getComponentType(env, type);
             componentType = cType ? context->ensureType(env, cType) : nullptr;
         }
         return componentType;
-    }
-
-    TJNIEnv *getEnv() {
-        return env;
     }
 
     bool isPrimitive() {
@@ -156,16 +152,16 @@ public:
 #define DOUBLE_MAX (((long long)1<<54))
 #define DOUBLE_MIN (-((long long)1<<54))
 
-    const MethodInfo *findMethod(const String &name, bool isStatic, Vector<JavaType *> &types,
+    const MethodInfo *findMethod(TJNIEnv* env,const String &name, bool isStatic, Vector<JavaType *> &types,
                                  Vector<ValidLuaObject> *arguments);
 
-    const Array<MethodInfo> *findAllObjectMethod(const String &name) {
-        return ensureMethod(name, false);
+    const Array<MethodInfo> *findAllObjectMethod(TJNIEnv* env,const String &name) {
+        return ensureMethod(env,name, false);
     }
 
-    JObject getSingleInterface();
+    JObject getSingleInterface(TJNIEnv* env);
 
-    bool isSingleInterface() {
+    bool isSingleInterface(TJNIEnv* env) {
         if (singleInterface == invalid<jmethodID>()) {
             JObject ret = env->CallStaticObjectMethod(contextClass, sGetSingleInterface, type);
             if (ret != nullptr)
@@ -175,14 +171,14 @@ public:
         return singleInterface != nullptr;
     }
 
-    const FieldInfo *findField(const String &name, bool isStatic, JavaType *type);
+    const FieldInfo *findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type);
 
-    int getFieldCount(const String &name, bool isStatic) {
-        auto &&array = ensureField(name, isStatic);
+    int getFieldCount(TJNIEnv* env,const String &name, bool isStatic) {
+        auto &&array = ensureField(env,name, isStatic);
         return array ? array->size() : 0;
     }
 
-    const bool isInterface() {
+    const bool isInterface(TJNIEnv* env) {
         return env->CallBooleanMethod(type, sIsInterface);
     }
 

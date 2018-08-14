@@ -33,42 +33,6 @@ import java.util.List;
  * Uses heuristics to guess the application's private data directory.
  */
 class AppDataDirGuesser {
-    private static Method CurrentPackageName;
-
-    private static String getPackageName() {
-        try {
-            if (CurrentPackageName == null)
-                CurrentPackageName = Class.forName("android.app.ActivityThread").
-                        getDeclaredMethod("currentPackageName");
-            if (Build.VERSION.SDK_INT >= 18 || Looper.getMainLooper() == Looper.myLooper())
-                return String.valueOf(CurrentPackageName.invoke(null));
-            else {
-                final String[] ret = new String[1];
-                Handler handler = new Handler(Looper.getMainLooper(), new Handler.Callback() {
-                    @Override
-                    public boolean handleMessage(Message msg) {
-                        try {
-                            ret[0] = (String) CurrentPackageName.invoke(null);
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                        synchronized (ret) {
-                            ret.notify();
-                        }
-                        return true;
-                    }
-                });
-                handler.sendEmptyMessage(0);
-                synchronized (ret) {
-                    ret.wait();
-                }
-                return ret[0];
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return "";
-    }
 
     /**
      * Given the result of a ClassLoader.toString() call, process the result so that guessPath
@@ -163,12 +127,8 @@ class AppDataDirGuesser {
         } catch (ClassCastException ignored) {
         } catch (ClassNotFoundException ignored) {
         }*/
-        String packageName = getPackageName();
-        if (TextUtils.isEmpty(packageName)) return null;
-        File ret = new File(Environment.getDataDirectory() + "/data/" + packageName + "/cache");
-        if (!ret.exists())
-            ret.mkdir();
-        return ret;
+
+        return   new File(System.getProperty("java.io.tmpdir", "."));
     }
 
     private ClassLoader guessSuitableClassLoader() {

@@ -43,7 +43,7 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
     lock.lock();
     if (object == nullptr) {
         addedMap.erase(name);
-    } else
+    } else if(!currentOnly)
         addedMap.emplace(name,
                          std::make_pair(methodName == nullptr ? String() : methodName, object));
     lock.unlock();
@@ -215,6 +215,7 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
     MatchPrimitive(char);
     MatchPrimitive(float);
     MatchPrimitive(double);
+    MatchPrimitive(void);
 
 
     JClass type;
@@ -249,8 +250,11 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
 void ScriptContext::setPendingException(TJNIEnv *env, const String &msg) {
 
     if (pendingJavaError == nullptr) {
+        static jclass luaExceptionType = (jclass) env->NewGlobalRef(
+                env->FindClass("com/oslorde/luadroid/LuaException"));
         jmethodID con = env->GetMethodID(throwableType, "<init>", "()V");
-        pendingJavaError = ((jthrowable) env->NewObject(throwableType, con));
+        pendingJavaError = ((jthrowable) env->NewObject(luaExceptionType, con));
+
     }
     static jfieldID id = env->GetFieldID(throwableType, "detailMessage", "Ljava/lang/String;");
     JString oldMsg = (JString) env->GetObjectField(pendingJavaError, id);
@@ -274,7 +278,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
         ret.d = luaObject.number;
     } else {
         if (luaObject.type == T_FUNCTION) {
-            JObject method = type->getSingleInterface();
+            JObject method = type->getSingleInterface(env);
             Vector<JObject> methods;
             methods.push_back(std::move(method));
             BaseFunction *info = luaObject.func;
@@ -288,7 +292,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
                 func.begin()->release();
             }
         } else if (luaObject.type == T_TABLE) {
-            if (type->isTableType()) {
+            if (type->isTableType(env)) {
                 JavaType *mapType = HashMapType(env);
                 ValidLuaObject lenObject;
                 lenObject.type = T_INTEGER;
@@ -297,7 +301,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
                 Vector<JavaType *> types{nullptr};
                 Vector<ValidLuaObject> args;
                 args.push_back(std::move(lenObject));
-                JObject map = JObject(env, mapType->newObject(types, args));
+                JObject map = JObject(env, mapType->newObject(env,types, args));
                 for (auto &&pair:table) {
                     jobject key = luaObjectToJObject(env, std::move(pair.first));
                     if (key == INVALID_OBJECT) goto ERROR_HANDLE;
@@ -309,8 +313,8 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
                     env->CallObjectMethod(map, sMapPut, JObject(env, key).get(),
                                           JObject(env, value).get());
                 }
-                ret.l = type->convertTable(map);
-            } else if (type->isInterface()) {
+                ret.l = type->convertTable(env,map);
+            } else if (type->isInterface(env)) {
                 ret.l = luaObject.lazyTable->asInterface(env, this, type);
             }
 
@@ -410,21 +414,21 @@ jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObje
             Vector<ValidLuaObject> args;
             args.push_back(std::move(luaObject));
             Vector<JavaType *> types{longClass};
-            return type->newObject(types, args);
+            return type->newObject(env,types, args);
         }
         case T_BOOLEAN: {
             JavaType *type = BooleanType(env);
             Vector<ValidLuaObject> args;
             args.push_back(std::move(luaObject));
             Vector<JavaType *> types{booleanClass};
-            return type->newObject(types, args);
+            return type->newObject(env,types, args);
         }
         case T_FLOAT: {
             JavaType *type = DoubleType(env);
             Vector<ValidLuaObject> args;
             args.push_back(std::move(luaObject));
             Vector<JavaType *> types{doubleClass};
-            return type->newObject(types, args);
+            return type->newObject(env,types, args);
         }
         case T_OBJECT: {
             jvalue v = luaObjectToJValue(env, luaObject, FunctionType(env));

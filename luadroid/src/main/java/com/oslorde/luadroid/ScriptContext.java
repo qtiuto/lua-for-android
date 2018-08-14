@@ -6,6 +6,7 @@ import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 
+import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
 
 import org.json.JSONArray;
@@ -72,6 +73,10 @@ public class ScriptContext implements GCTracker {
         this(importAllFunctions, false);
     }
 
+    /**
+     * @param importAllFunctions whether to use short name
+     * @param localFunction whether functions to be use only in current thread
+     */
     public ScriptContext(boolean importAllFunctions, boolean localFunction) {
         nativePtr = nativeOpen(importAllFunctions, localFunction);
         gcListener = new WeakReference<>(new GCListener(new WeakReference<>(this)));
@@ -99,16 +104,16 @@ public class ScriptContext implements GCTracker {
 
     private native static void releaseFunc(long ptr);
 
+    /**
+     * change a lua function to a functional interface instance
+     */
     @SuppressWarnings("unchecked")
     public static <T> T changeCallSite(LuaFunction function, Class<T> target) {
         if (target == LuaFunction.class)
             return (T) function;
-        return (T) Proxy.newProxyInstance(target.getClassLoader(), new Class[]{target}, new InvocationHandler() {
-            @Override
-            public Object invoke(Object proxy, Method method, Object[] args) {
-                return function.invoke(args)[0];
-            }
-        });
+        InvokeHandler handler= (InvokeHandler) Proxy.getInvocationHandler(function);
+        handler.changeCallSite(target);
+        return (T) Proxy.newProxyInstance(target.getClassLoader(), new Class[]{target}, handler);
 
     }
 
@@ -177,7 +182,7 @@ public class ScriptContext implements GCTracker {
             } while (cl != null);
             return retList.toArray();
         }
-        if (name.equals("<init>")) {
+        if (name.equals("<init>")&&!isStatic) {
             return cl.getDeclaredConstructors();
         }
         ArrayList<Object> retList = new ArrayList<>();
@@ -338,9 +343,17 @@ public class ScriptContext implements GCTracker {
         return sConverters;
     }
 
+    /**
+     *
+     * @param type type to convert
+     * @param converter table converter
+     * @param <T> type to convert
+     * @param <F> sub type of T
+     */
     public <T, F extends T> void putTableConverter(Class<T> type, TableConverter<F> converter) {
         lazyConverts().put(type, converter);
     }
+
 
     private boolean isTableType(Class<?> cls) {
         if (lazyConverts().containsKey(cls)) return true;
@@ -459,24 +472,9 @@ public class ScriptContext implements GCTracker {
         TableConverter<?> converter = sConverters.get(target);
         if (converter != null)
             return converter.convert(table);
-        else if (target.isInterface() && table.size() > 0) {
-            Method[] methods = target.getMethods();
-            for (Method m : methods) {
-                Object object = table.get(m.getName());
-                if (!(object instanceof LuaFunction))
-                    throw new LuaException("Method " + m + " is not implemented");
-            }
-
-            Proxy.newProxyInstance(target.getClassLoader(), new Class[]{target}, new InvocationHandler() {
-                @Override
-                public Object invoke(Object proxy, Method method, Object[] args) {
-                    LuaFunction func = (LuaFunction) table.get(method.getName());
-                    return func.invoke(args)[0];
-                }
-            });
-        }
         return null;
     }
+
 
     private Object proxy(final long nativePtr, final Class<?> main,
                          Class<?>[] leftInterfaces, Method[] methods,
@@ -532,22 +530,38 @@ public class ScriptContext implements GCTracker {
         }
     }
 
+    /**
+     *
+     * @param outLogger
+     * @param errLogger
+     */
     public void setLogger(OutputStream outLogger, OutputStream errLogger) {
         this.errLogger = errLogger;
         this.outLogger = outLogger;
         registerLogger(nativePtr, outLogger, errLogger);
     }
 
+    /**
+     *
+     * @param errLogger
+     */
     public void setErrLogger(OutputStream errLogger) {
         this.errLogger = errLogger;
         registerLogger(nativePtr, outLogger, errLogger);
     }
 
+    /**
+     *
+     * @param outLogger
+     */
     public void setOutLogger(OutputStream outLogger) {
         this.outLogger = outLogger;
         registerLogger(nativePtr, outLogger, errLogger);
     }
 
+    /**
+     * flush log
+     */
     public void flushLog() {
         try {
             Thread.sleep(50);
@@ -556,59 +570,110 @@ public class ScriptContext implements GCTracker {
         }
     }
 
+    /**
+     *
+     * @param script script string
+     * @return Compiled Script
+     */
     public CompiledScript compile(String script) {
         long compile = 0;
         compile = compile(nativePtr, script, false);
         return new CompiledScript(compile);
 
     }
-
+    /**
+     *
+     * @param file script file
+     * @return Compiled Script
+     */
     public CompiledScript compile(File file) {
         return new CompiledScript(compile(nativePtr, file.getPath(), true));
 
     }
 
-    public Object[] run(String script) {
-        return runScript(nativePtr, script, false);
-    }
-
-    private Object[] run(Object script) {//for reflection
-        return runScript(nativePtr, script, false);
-    }
-
+    /**
+     *
+     * @param scriptFile file
+     * @return script result,conversion see README
+     */
     public Object[] run(File scriptFile) {//for reflection
         return runScript(nativePtr, scriptFile.getPath(), true);
     }
 
+    /**
+     *
+     * @param script script
+     * @param args script arguments
+     * @return script result,conversion see README
+     */
     public Object[] run(CompiledScript script, Object... args) {
         return runScript(nativePtr, script, false, args);
     }
-
+    /**
+     *
+     * @param script script
+     * @param args script arguments
+     * @return script result,conversion see README
+     */
     public Object[] run(String script, Object... args) {
         return runScript(nativePtr, script, false, args);
     }
-
+    /**
+     *
+     * @param scriptFile script
+     * @param args script arguments
+     * @return script result,conversion see README
+     */
     public Object[] run(File scriptFile, Object... args) {
         return runScript(nativePtr, scriptFile.getPath(), true, args);
     }
 
+    /**
+     * remove a global value from lua state
+     * @param name lua global name
+     * @return this
+     */
     public final ScriptContext removeFromLua(String name) {
         return addToLua(name, null, false);
     }
 
+    /**
+     * @see ScriptContext#addToLua(String, Object, boolean)
+     */
     public final ScriptContext addToLua(String name, Object obj) {
         return addToLua(name, obj, false);
     }
 
+    /**
+     *
+     * @param name lua global name
+     * @param obj value,null to remove the global value
+     * @param local false:the method to be added to all lua State
+     *              true:the method to be added to only current state.
+     * @return this
+     */
     public final ScriptContext addToLua(String name, Object obj, boolean local) {
         addObject(nativePtr, name, obj, local);
         return this;
     }
 
+    /**
+     * @see ScriptContext#addToLua(String, String, Object, boolean)
+     */
     public ScriptContext addToLua(String luaName, String methodName, Object instOrType) throws NoSuchMethodException {
         return addToLua(luaName, methodName, instOrType, false);
     }
 
+    /**
+     *
+     * @param luaName lua global name
+     * @param methodName method name in the class
+     * @param instOrType object for method or the declaring class
+     * @param local false:the method to be added to all lua State
+     *              true:the method to be added to only current state.
+     * @return this
+     * @throws NoSuchMethodException if the method not found
+     */
     public ScriptContext addToLua(String luaName, String methodName, Object instOrType, boolean local) throws NoSuchMethodException {
         if (instOrType == null) throw new IllegalArgumentException("No permitted:null");
         boolean isStatic = instOrType instanceof Class;
@@ -717,7 +782,7 @@ public class ScriptContext implements GCTracker {
     public static class CompiledScript extends Number {
         private long address;
 
-        public CompiledScript(long address) {
+        CompiledScript(long address) {
             this.address = address;
         }
 
@@ -727,6 +792,10 @@ public class ScriptContext implements GCTracker {
                 releaseFunc(address);
         }
 
+        /**
+         *
+         * @throws UnsupportedOperationException
+         */
         @Override
         public int intValue() {
             throw new UnsupportedOperationException();
@@ -736,12 +805,18 @@ public class ScriptContext implements GCTracker {
         public long longValue() {
             return address;
         }
-
+        /**
+         *
+         * @throws UnsupportedOperationException
+         */
         @Override
         public float floatValue() {
             throw new UnsupportedOperationException();
         }
-
+        /**
+         *
+         * @throws UnsupportedOperationException
+         */
         @Override
         public double doubleValue() {
             throw new UnsupportedOperationException();
@@ -759,6 +834,20 @@ public class ScriptContext implements GCTracker {
             }
             this.isInterface = isInterface;
 
+        }
+
+        void changeCallSite(Class c){
+            Method m=getSingleInterface(c);
+            if(m==null)
+                throw new IllegalArgumentException("Not a single interfaces");
+            MethodSetEntry entry= methodMap.keySet().iterator().next();
+            if(methodMap.size()!=1||entry.m.getDeclaringClass()!=LuaFunction.class)
+                throw new IllegalStateException("Unchangeable handler");
+            MethodInfo old=methodMap.remove(entry);
+            MethodSetEntry key=new MethodSetEntry(m);
+            MethodInfo info=new MethodInfo(old.luaFuncInfo,generateParamTypes(key.paramTypes),key.returnType);
+            old.luaFuncInfo=0;
+            methodMap.put(key,info);
         }
 
         @Override
@@ -790,22 +879,57 @@ public class ScriptContext implements GCTracker {
                 return ((Double) ret).floatValue();
             return ret;//void case
         }
-
-        void changeCallSite(Method orig, Method other) {
-            MethodInfo only = methodMap.get(new MethodSetEntry(orig));
-            only.paramsTypes = generateParamTypes(other.getParameterTypes());
-            only.returnType = other.getReturnType();
-        }
-
-        @Override
-        protected void finalize() throws Throwable {
-            super.finalize();
+        private ScriptContext context(){
+            return ScriptContext.this;
         }
 
         private void deprecate() {
             methodMap.clear();
         }
 
+    }
+    static Func getFunc(LuaFunction function,TypeId[] argTypes){
+        InvokeHandler handler= (InvokeHandler) Proxy.getInvocationHandler(function);
+        MethodInfo info=handler.methodMap.values().iterator().next();
+        Func func=handler.context().new Func(info.luaFuncInfo,argTypes);
+        info.luaFuncInfo=0;
+        return func;
+    }
+    private static int getTypeLuaType(TypeId<?> type) {
+        int retType;
+        if (type == TypeId.CHAR) {
+            retType = JAVA_CHAR;
+        } else if (type == TypeId.BOOLEAN) {
+            retType = JAVA_BOOLEAN;
+        } else if (type == TypeId.INT || type ==  TypeId.LONG || type ==  TypeId.SHORT|| type ==  TypeId.BYTE) {
+            retType = JAVA_INTEGER;
+        } else if (type == TypeId.DOUBLE || type == TypeId.FLOAT) {
+            retType = JAVA_DOUBLE;
+        } else if (type == TypeId.VOID) {
+            retType = JAVA_VOID;
+        } else {
+            retType = JAVA_OBJECT;
+        }
+        return retType;
+    }
+    public class Func{
+        long funcRef;
+        int[] argTypes;
+        private Func(long funcRef,TypeId[] argTypes){
+            this.funcRef=funcRef;
+            this.argTypes=new int[argTypes.length];
+            for (int i = 0; i < argTypes.length; i++) {
+                this.argTypes[i]=getTypeLuaType(argTypes[i]);
+            }
+        }
 
+        public Object call(Object thiz,Object... args){
+            return invokeLuaFunction(nativePtr,false,funcRef,thiz,argTypes,args);
+        }
+
+        @Override
+        protected void finalize() {
+            releaseFunc(funcRef);
+        }
     }
 }

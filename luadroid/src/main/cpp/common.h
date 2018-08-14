@@ -10,6 +10,7 @@
 #include "lua.hpp"
 #include <android/log.h>
 #include "jtype.h"
+#include "TJNIEnv.h"
 
 #define LOGE(msg, ...) __android_log_print(ANDROID_LOG_ERROR,"Lua",msg,##__VA_ARGS__)
 #define LOGV(msg, ...) __android_log_print(ANDROID_LOG_VERBOSE,"Lua",msg,##__VA_ARGS__)
@@ -19,6 +20,7 @@
 #define __thread thread_local
 #endif
 extern JavaVM *vm;
+extern __thread TJNIEnv* _env;
 extern jclass stringType;
 extern jclass classType;
 extern jclass throwableType;
