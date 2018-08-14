@@ -130,8 +130,8 @@ public:
     JavaType *ensureType(TJNIEnv *env, const char *typeName);
 
     jobject proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *interfaces,
-                  const Vector<JObject> &principal,
-                  Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared, long nativeInfo);
+                  const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
+                  bool shared= false, long nativeInfo=0,jobject superObject= nullptr);
 
     jvalue luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type);
 

@@ -136,17 +136,17 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
     if (sProxy == nullptr) {
         JClass cl = env->GetObjectClass(javaObject);
         contextClass = (jclass) env->NewGlobalRef(cl);
-        sProxy = env->GetMethodID(cl, "proxy",
-                                  "(JLjava/lang/Class;[Ljava/lang/Class;[Ljava/lang/reflect/Method;[JZJ)Ljava/lang/Object;");
+        sProxy = env->GetMethodID(cl, "proxy", "(JLjava/lang/Class;[Ljava/lang/Class;"
+                "[Ljava/lang/reflect/Method;[JZJLjava/lang/Object;)Ljava/lang/Object;");
         sLength = env->GetStaticMethodID(cl, "length", "(Ljava/lang/Object;)I");
-        JavaType::sFindMembers = env->GetStaticMethodID(cl, "findMembers",
-                                                        "(Ljava/lang/Class;Ljava/lang/String;ZZ)[Ljava/lang/Object;");
+        JavaType::sFindMembers = env->GetStaticMethodID(cl, "findMembers"
+                , "(Ljava/lang/Class;Ljava/lang/String;ZZ)[Ljava/lang/Object;");
         JavaType::sWeightObject = env->GetStaticMethodID(cl, "weightObject",
                                                          "(Ljava/lang/Class;Ljava/lang/Class;)I");
-        JavaType::sGetSingleInterface = env->GetStaticMethodID(cl, "getSingleInterface",
-                                                               "(Ljava/lang/Class;)Ljava/lang/reflect/Method;");
-        JavaType::sGetParameterTypes = env->GetStaticMethodID(cl, "getParameterTypes",
-                                                              "(Ljava/lang/Object;)[Ljava/lang/Class;");
+        JavaType::sGetSingleInterface = env->GetStaticMethodID(cl, "getSingleInterface"
+                , "(Ljava/lang/Class;)Ljava/lang/reflect/Method;");
+        JavaType::sGetParameterTypes = env->GetStaticMethodID(cl, "getParameterTypes"
+                , "(Ljava/lang/Object;)[Ljava/lang/Class;");
         JavaType::sIsTableType = env->GetMethodID(cl, "isTableType", "(Ljava/lang/Class;)Z");
         JavaType::sTableConvert = env->GetMethodID(cl, "convertTable", "(Ljava/util/Map;"
                 "Ljava/lang/Class;)Ljava/lang/Object;");
@@ -286,7 +286,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
             Vector<std::unique_ptr<BaseFunction>> func;
             func.emplace_back(info);
             info->javaRefCount++;
-            ret.l = proxy(env, type, nullptr, methods, func, false, 0);
+            ret.l = proxy(env, type, nullptr, methods, func);
 
             if (ret.l != INVALID_OBJECT) {
                 func.begin()->release();
@@ -355,7 +355,7 @@ ScriptContext::~ScriptContext() {
 jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *interfaces,
                              const Vector<JObject> &principal,
                              Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared,
-                             long nativeInfo) {
+                             long nativeInfo,jobject superObject) {
     jsize interfaceCount;
     JObjectArray interfaceArray;
     if (interfaces != nullptr && (interfaceCount = (jsize) interfaces->size())) {
@@ -380,7 +380,7 @@ jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *i
     env->SetLongArrayRegion(proxyArray, 0, proxyCount, buf);
     jobject ret = env->asJNIEnv()->CallObjectMethod(
             javaRef, sProxy, (jlong) this, main->getType(), interfaceArray.get(),
-            principalArray.get(), proxyArray.get(), shared, nativeInfo);
+            principalArray.get(), proxyArray.get(), shared, nativeInfo,superObject);
     HOLD_JAVA_EXCEPTION(this, {
         return INVALID_OBJECT;
     });

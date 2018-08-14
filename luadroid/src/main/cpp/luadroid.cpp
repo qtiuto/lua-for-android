@@ -759,8 +759,12 @@ static int proxyByTable(lua_State *L) {
     lua_getfield(L, 1, "super");
     JavaType **typeRef;
     JavaType *main = nullptr;
+    JavaObject* superObject= nullptr;
     if ((typeRef = (JavaType **) luaL_testudata(L, -1, JAVA_TYPE)) != nullptr)
         main = *typeRef;
+    else if((superObject=(JavaObject*)luaL_testudata(L,-1,JAVA_OBJECT))!= nullptr){
+        main=superObject->type;
+    }
     lua_getfield(L, 1, "interfaces");
     if (lua_istable(L, -1)) {
         lua_pushnil(L);
@@ -805,32 +809,38 @@ static int proxyByTable(lua_State *L) {
     else if (lua_isboolean(L, -1)) shared = lua_toboolean(L, -1) != 0;
     else if (lua_isnumber(L, -1)) shared = lua_tointeger(L, -1) != 0;
     else shared = true;
-
-    lua_getfield(L, 1, "args");
-    Vector<ValidLuaObject> constructArgs;
-    Vector<JavaType *> argTypes;
-    if (lua_istable(L, -1)) {
-        lua_pushnil(L);
-        JavaType *type = nullptr;
-        while (lua_next(L, -2)) {
-            typeRef = (JavaType **) luaL_testudata(L, -1, JAVA_TYPE);
-            if (typeRef != nullptr) {
-                type = *typeRef;
-            } else {
-                ValidLuaObject luaObject;
-                if (!parseLuaObject(env, L, context, -1, luaObject)) {
-                    context->setPendingException(env, "Arg type not support");
-                    goto __ErrorHandle;
+    jobject proxy;
+    if(superObject){
+       proxy = context->proxy(env, main, &interfaces, agentMethods, luaFuncs, shared,
+                                     0,superObject->object);
+    } else{
+        Vector<ValidLuaObject> constructArgs;
+        Vector<JavaType *> argTypes;
+        lua_getfield(L, 1, "args");
+        if (lua_istable(L, -1)) {
+            lua_pushnil(L);
+            JavaType *type = nullptr;
+            while (lua_next(L, -2)) {
+                typeRef = (JavaType **) luaL_testudata(L, -1, JAVA_TYPE);
+                if (typeRef != nullptr) {
+                    type = *typeRef;
+                } else {
+                    ValidLuaObject luaObject;
+                    if (!parseLuaObject(env, L, context, -1, luaObject)) {
+                        context->setPendingException(env, "Arg type not support");
+                        goto __ErrorHandle;
+                    }
+                    argTypes.push_back(type);
+                    constructArgs.push_back(std::move(luaObject));
+                    type= nullptr;
                 }
-                argTypes.push_back(type);
-                constructArgs.push_back(std::move(luaObject));
-            }
 
+            }
         }
+        void *constructInfo[] = {&constructArgs, &argTypes};
+        proxy = context->proxy(env, main, &interfaces, agentMethods, luaFuncs, shared,
+                               (long) &constructInfo);
     }
-    void *constructInfo[] = {&constructArgs, &argTypes};
-    jobject proxy = context->proxy(env, main, &interfaces, agentMethods, luaFuncs, shared,
-                                   (long) &constructInfo);
     if (proxy == INVALID_OBJECT) {
         goto __ErrorHandle;
     }
@@ -938,8 +948,15 @@ int javaProxy(lua_State *L) {
     if (lua_gettop(L) == 1)
         return proxyByTable(L);
     ScriptContext *context = getContext(L);
-    JavaType **typeRef = (JavaType **) luaL_checkudata(L, 1, JAVA_TYPE);
-    JavaType *main = *typeRef;
+    JavaType **typeRef;
+    JavaType *main;
+    JavaObject* superObject;
+    if((superObject=(JavaObject*)luaL_testudata(L,1,JAVA_OBJECT))!= nullptr){
+        main=superObject->type;
+    } else{
+        typeRef = (JavaType **) luaL_checkudata(L, 1, JAVA_TYPE);
+        main = *typeRef;
+    }
     SetErrorJMP();
 
     int top = lua_gettop(L);
@@ -1017,28 +1034,34 @@ int javaProxy(lua_State *L) {
             shared = lua_toboolean(L, i) == 1;
             ++i;
         }
-    Vector<ValidLuaObject> constructArgs;
-    Vector<JavaType *> argTypes;
-    for (; i <= top; ++i) {
-        JavaType *type = nullptr;
-        typeRef = (JavaType **) luaL_testudata(L, i, JAVA_TYPE);
-        if (typeRef != nullptr) {
-            type = *typeRef;
-            if (++i > top) {
-                TopErrorHandle("no arg found for the No.%d type", argTypes.size());
+    jobject proxy;
+    if(superObject){
+        proxy = context->proxy(env, main, &interfaces, agentMethods, luaFuncs, shared,
+                               0,superObject->object);
+    } else{
+        Vector<ValidLuaObject> constructArgs;
+        Vector<JavaType *> argTypes;
+        for (; i <= top; ++i) {
+            JavaType *type = nullptr;
+            typeRef = (JavaType **) luaL_testudata(L, i, JAVA_TYPE);
+            if (typeRef != nullptr) {
+                type = *typeRef;
+                if (++i > top) {
+                    TopErrorHandle("no arg found for the No.%d type", argTypes.size());
+                }
             }
+            argTypes.push_back(type);
+            ValidLuaObject luaObject;
+            if (!parseLuaObject(env, L, context, i, luaObject)) {
+                context->setPendingException(env, "Arg type not support");
+                goto __ErrorHandle;
+            }
+            constructArgs.push_back(std::move(luaObject));
         }
-        argTypes.push_back(type);
-        ValidLuaObject luaObject;
-        if (!parseLuaObject(env, L, context, i, luaObject)) {
-            context->setPendingException(env, "Arg type not support");
-            goto __ErrorHandle;
-        }
-        constructArgs.push_back(std::move(luaObject));
+        void *constructInfo[] = {&constructArgs, &argTypes};
+        proxy = context->proxy(env, main, &interfaces, agentMethods, luaFuncs, shared,
+                               (long) &constructInfo);
     }
-    void *constructInfo[] = {&constructArgs, &argTypes};
-    jobject proxy = context->proxy(env, main, &interfaces, agentMethods, luaFuncs, shared,
-                                   (long) &constructInfo);
     if (proxy == INVALID_OBJECT) {
         goto __ErrorHandle;
     }
@@ -2235,7 +2258,7 @@ jobject LazyTable::asInterface(TJNIEnv *env, ScriptContext *context, JavaType *m
     Vector<JObject> agentMethods;
     if (!readProxyMethods(env, L, context, interfaces, main, luaFuncs, agentMethods))
         return INVALID_OBJECT;
-    return context->proxy(env, main, nullptr, agentMethods, luaFuncs, false, 0);
+    return context->proxy(env, main, nullptr, agentMethods, luaFuncs);
 }
 
 LuaTable<ValidLuaObject> *LazyTable::getTable(TJNIEnv *env, ScriptContext *context) {

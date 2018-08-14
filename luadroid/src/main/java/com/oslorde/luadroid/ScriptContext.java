@@ -478,7 +478,7 @@ public class ScriptContext implements GCTracker {
 
     private Object proxy(final long nativePtr, final Class<?> main,
                          Class<?>[] leftInterfaces, Method[] methods,
-                         long[] values, boolean shared, long nativeInfo) throws Exception {
+                         long[] values, boolean shared, long nativeInfo,Object superObject) throws Exception {
         if (main == null) throw new IllegalArgumentException("No proxy class");
         if (values == null) throw new IllegalArgumentException("No lua functions");
         if (leftInterfaces != null) {
@@ -520,7 +520,8 @@ public class ScriptContext implements GCTracker {
                 if (leftInterfaces != null) builder.implementing(leftInterfaces);
                 if (shared) builder.withSharedClassLoader();
                 Class proxyClass = builder.onlyMethods(methods).buildProxyClass();
-                Object ret = constructChild(nativePtr, proxyClass, nativeInfo);
+                Object ret =superObject==null?constructChild(nativePtr, proxyClass, nativeInfo)
+                        :ClassBuilder.cloneFromSuper(proxyClass,superObject);
                 ProxyBuilder.setInvocationHandler(ret, handler);
                 return ret;
             }
@@ -884,7 +885,10 @@ public class ScriptContext implements GCTracker {
         }
 
         private void deprecate() {
-            methodMap.clear();
+            for (MethodInfo info :
+                    methodMap.values()) {
+                info.luaFuncInfo = 0;
+            }
         }
 
     }

@@ -17,17 +17,22 @@ import java.lang.annotation.ElementType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.locks.LockSupport;
 
 import static java.lang.reflect.Modifier.PUBLIC;
 
 @SuppressWarnings("unchecked")
 public class ClassBuilder {
+    private static Object sUnsafe;
+    private static Method sAllocInstance;
     private static final Map<TypeId<?>, TypeId<?>> PRIMITIVE_TO_BOXED;
     private static final Map<TypeId<?>, MethodId<?, ?>> PRIMITIVE_TYPE_TO_BOX_METHOD;
     /**
@@ -171,7 +176,7 @@ public class ClassBuilder {
         name = fixName(name);
         DexMaker maker = new DexMaker();
         TypeId[] inters = getTypeIds(interfaces);
-        if(inters.length==0&&superType.isInterface()){
+        if(inters.length==0&&superType!=null&&superType.isInterface()){
             inters=new TypeId[]{TypeId.get(superType)};
             superType=null;
         }
@@ -563,5 +568,48 @@ public class ClassBuilder {
         Field field = ob.getClass().getDeclaredField(FUNC_REFS);
         field.setAccessible(true);
         field.set(ob, funcRefs.toArray(new ScriptContext.Func[0]));
+    }
+
+    /**
+     * build the class,alloc a object of class it and copy field of superObject to it.
+     * No constructor is called in this method
+     * the object is setup automatically
+     * @see ClassBuilder#cloneFromSuper(Class, Object)
+     */
+    public Object newInstance(Object superObject) throws Exception {
+        Object object= cloneFromSuper(build(),superObject);
+        setup(object);
+        return object;
+    }
+
+    /**
+     * alloc a object of class c and copy field of superObject to it.
+     * No constructor is called in this method
+     * @param c class from build
+     * @param superObject an instance of the superType
+     * @return an instance of class c
+     * @throws Exception
+     */
+
+    public static Object cloneFromSuper(Class c,Object superObject) throws Exception {
+        if(!c.getSuperclass().isAssignableFrom(superObject.getClass()))
+            throw new IllegalArgumentException("Not an instance of the super class");
+        if(sUnsafe==null){
+            Field u=LockSupport.class.getDeclaredField("U");
+            u.setAccessible(true);
+            sUnsafe=u.get(null);
+            sAllocInstance=sUnsafe.getClass().getMethod("allocateInstance",Class.class);
+        }
+        Object object=sAllocInstance.invoke(sUnsafe,c);
+        while ((c = c.getSuperclass()) != Object.class){
+            Field[] fields=c.getDeclaredFields();
+            for (Field field:fields){
+                if(Modifier.isStatic(field.getModifiers()))
+                    continue;
+                field.setAccessible(true);
+                field.set(object,field.get(superObject));
+            }
+        }
+        return object;
     }
 }
