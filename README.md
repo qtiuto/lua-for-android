@@ -108,12 +108,13 @@
       
      proxy:
       to implement interfaces ,alternatively plus with extending a class
-      usage:proxy([class to extend],[interfaces to implement]...,
-      [method name,parameter types...,handler function]...,
-      [shared classloader],--extend type only
+      usage:proxy([class to extend or object of class to extend],
+      [interfaces to implement]..., [method name,parameter types...,
+      handler function]..., [shared classloader],--extend type only
       [initial args for constructor])--extend type only
       or proxy{
-       super=class to extends or implement,--auto dectect,nilable
+       super=class to extends or implement or object of class to extend,
+       --auto dectect,nilable
        interfaces={interfaces to implement},--nilable
        --super and interfaces can't be nil at the same time
        methods=function (...) end,--function to handle all method call
@@ -129,7 +130,13 @@
        args={...}---alternative
       }
       Notice:
-       A value represent the proxy object is appended after args
+       if you passed an object to extend,then the proxy object is 
+       directly allocated and have all fields from the object to be
+       copied into the proxied object without constructor call.
+       See ClassBuilder#cloneFromSuper for more informations
+       
+       A value represent the proxy object is appended after args during
+       function callback
        
        For extension usage,a value represent the super is appended
        
@@ -268,6 +275,7 @@
      
     ClassBuilder api:
      Class Builder is imported default to support dynamic class generation
+     Lua function callback rule is the same as proxy
      
     For more information,see java doc in doc directory  
       
