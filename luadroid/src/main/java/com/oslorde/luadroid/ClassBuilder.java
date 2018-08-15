@@ -187,6 +187,8 @@ public class ClassBuilder {
 
     private static String fixName(String name) {
         if (!validateName(name)) throw new LuaException("Invalidate Type Name:" + name);
+        if(name.length()==1) return name;
+        if(name.charAt(0)=='[') return name;
         if (name.charAt(0) != 'L' || name.charAt(name.length()) != ';')
             name = 'L' + name + ';';
         name = name.replace('.', '/');
@@ -230,6 +232,7 @@ public class ClassBuilder {
                 names) {
             if (name.isEmpty()) return false;
             int c = name.codePointAt(0);
+            if(c=='[') continue;
             if (!Character.isJavaIdentifierStart(c))
                 return false;
             for (int i = 1, len = name.codePointCount(0, name.length()); i < len; i++) {
