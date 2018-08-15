@@ -1,9 +1,5 @@
 package com.oslorde.luadroid;
 
-import android.annotation.TargetApi;
-import android.os.Parcel;
-import android.os.Parcelable;
-
 import com.android.dx.AnnotationId;
 import com.android.dx.Code;
 import com.android.dx.DexMaker;
@@ -24,12 +20,11 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.locks.LockSupport;
 
 import static java.lang.reflect.Modifier.PUBLIC;
 
-@SuppressWarnings("unchecked")
+@SuppressWarnings("ALL")
 public class ClassBuilder {
     private static Object sUnsafe;
     private static Method sAllocInstance;
@@ -189,7 +184,7 @@ public class ClassBuilder {
         if (!validateName(name)) throw new LuaException("Invalidate Type Name:" + name);
         if(name.length()==1) return name;
         if(name.charAt(0)=='[') return name;
-        if (name.charAt(0) != 'L' || name.charAt(name.length()) != ';')
+        if (name.charAt(0) != 'L' || name.charAt(name.length()-1) != ';')
             name = 'L' + name + ';';
         name = name.replace('.', '/');
         return name;
@@ -224,7 +219,7 @@ public class ClassBuilder {
         if (name.length() == 1) {
             return isPrimitiveType(name);
         }
-        if (name.charAt(0) == 'L' && name.charAt(name.length()) == ';')
+        if (name.charAt(0) == 'L' && name.charAt(name.length()-1) == ';')
             name = name.substring(1, name.length() - 1);
         name = name.replace('.', '/');
         String[] names = name.split("/");
