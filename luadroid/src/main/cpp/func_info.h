@@ -48,6 +48,9 @@ public:
     const Array<char> funcData;
     const lua_CFunction cFunc;
     const bool isCFunc;
+#if LUA_VERSION_NUM >502
+    int globalIndex=0;
+#endif
 
     explicit FuncInfo(const lua_CFunction func) : cFunc(func), isCFunc(true) {}
 

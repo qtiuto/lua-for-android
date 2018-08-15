@@ -86,8 +86,6 @@ static ScriptContext *getContext(lua_State *L);
 
 static FuncInfo *saveLuaFunction(JNIEnv *env, lua_State *L, ScriptContext *context, int funcIdx);
 
-static JavaObject *pushJavaObject(TJNIEnv *env, lua_State *L, ScriptContext *context, jobject obj);
-
 static int newArray(TJNIEnv *env, lua_State *L, int start, ScriptContext *context, JavaType *type);
 
 static bool parseLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, int idx,
@@ -95,6 +93,13 @@ static bool parseLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, in
 
 static bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, int idx,
                                       CrossThreadLuaObject &luaObject);
+
+static JavaObject *pushJavaObject(TJNIEnv *env, lua_State *L, ScriptContext *context, jobject obj);
+
+static bool pushLuaObject(TJNIEnv *env, lua_State *L, ScriptContext *context,
+                          const CrossThreadLuaObject &luaObject);
+
+static inline void pushJavaType(lua_State *L,JavaType* type);
 
 static void
 loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptContext *context);
@@ -112,9 +117,6 @@ pushArrayElement(TJNIEnv *env, lua_State *L, ScriptContext *context, const JavaO
 static void
 readArguments(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<JavaType *> &types,
               Vector<ValidLuaObject> &objects, int start);
-
-static bool pushLuaObject(TJNIEnv *env, lua_State *L, ScriptContext *context,
-                          const CrossThreadLuaObject &luaObject);
 
 static int luaPCallHandler(lua_State *L);
 
@@ -211,7 +213,6 @@ jmethodID objectHash;
 jmethodID classGetName;
 jmethodID objectToString;
 jmethodID sLength;
-__thread TJNIEnv* _env;
 static __thread jmp_buf errorJmp;
 
 #if  LUA_VERSION_NUM == 502
@@ -388,9 +389,7 @@ void ScriptContext::config(lua_State *L) {
     for (auto &pair:addedMap) {
         pushAddedObject(env, L, pair.first.data(), pair.second.first.data(), pair.second.second);
     }
-
-    *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = ensureType(env,"com.oslorde.luadroid.ClassBuilder");
-    luaL_setmetatable(L, JAVA_TYPE);
+    pushJavaType(L,ensureType(env,"com.oslorde.luadroid.ClassBuilder"));
     lua_pushvalue(L, -1);
     lua_setglobal(L, "ClassBuilder");
     lua_settop(L, top);
@@ -710,6 +709,10 @@ int reportError(lua_State *L) {
     luaL_error(L, s);
     return 0;
 }
+static inline void pushJavaType(lua_State *L,JavaType* type){
+    *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = type;
+    luaL_setmetatable(L, JAVA_TYPE);
+}
 
 ScriptContext *getContext(lua_State *L) {
     lua_pushstring(L, JAVA_CONTEXT);
@@ -742,8 +745,7 @@ int javaType(lua_State *L) {
             goto Error;
         }
         Ok:
-        *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = type;
-        luaL_setmetatable(L, JAVA_TYPE);
+        pushJavaType(L,type);
         continue;//never reach
         Error:
         luaL_error(L, "Invalid type=%s", luaL_tolstring(L, i,NULL));
@@ -1127,10 +1129,9 @@ int javaImport(lua_State *L) {
                                        ",with previous class: %s", name.c_str(), prevName.str());
             }
         }
-        auto pJavaType = context->ensureType(env, c);
-        import->stubbed.emplace(name, pJavaType);
-        *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = pJavaType;
-        luaL_setmetatable(L, JAVA_TYPE);
+        auto type = context->ensureType(env, c);
+        import->stubbed.emplace(name, type);
+        pushJavaType(L,type);
         lua_pushvalue(L, -1);
         lua_setglobal(L, name.data());
         return 1;
@@ -1863,19 +1864,21 @@ FuncInfo *saveLuaFunction(JNIEnv *env, lua_State *L, ScriptContext *context, int
     }
     lua_pop(L, 1);
     parsedFuncs->push_back(std::make_pair(funcIndex, ret));
-    bool ignoredFirst = false;
-#if LUA_VERSION_NUM > 502
-    if (!ret->cFunc) ignoredFirst = true;//the first for lua function is the _ENV,ignored it
-#endif
     Vector<CrossThreadLuaObject> upvalues;
 
-    for (int i = ignoredFirst + 1;;) {
-        if (lua_getupvalue(L, funcIndex, i) == NULL)
+    for (int i = 1;; ++i) {
+        const char* name;
+        if ((name=lua_getupvalue(L, funcIndex, i)) == NULL)
             break;
         CrossThreadLuaObject object;
-        object.type = T_TABLE;
+#if LUA_VERSION_NUM>=502
+        if(strcmp(name,"_ENV")==0)
+            ret->globalIndex=i;
+        else
+#endif
         parseCrossThreadLuaObject(env, L, context, -1, object);
         upvalues.push_back(std::move(object));
+        lua_pop(L,1);
     }
     ret->setUpValues(Array<CrossThreadLuaObject>(std::move(upvalues)));
 
@@ -1912,15 +1915,18 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
     int funcIndex = lua_gettop(L);
     loadedFuncs->emplace(info, funcIndex);
     auto &upvalues = info->getUpValues();
-    bool hasFirst = false;
-#if LUA_VERSION_NUM > 502
-    if (!info->cFunc) hasFirst = true;//the first for lua function is the _ENV
-#endif
+
     for (int i = upvalues.size() - 1; i >= 0; --i) {
         CrossThreadLuaObject &luaObject = upvalues[i];
         if (!pushLuaObject(env, L, context, luaObject))continue;
-        lua_setupvalue(L, funcIndex, i + 1 + hasFirst);//start at the second;
+        lua_setupvalue(L, funcIndex, i + 1);//start at the second;
     }
+#if LUA_VERSION_NUM>502
+    if(info->globalIndex>0){
+        lua_rawgeti(L,LUA_REGISTRYINDEX,LUA_RIDX_GLOBALS);
+        lua_setupvalue(L,funcIndex,info->globalIndex);
+    }
+#endif
     if (isOwner) {
         delete loadedFuncs;
         loadedFuncs = nullptr;
@@ -2002,7 +2008,13 @@ bool pushLuaObject(TJNIEnv *env, lua_State *L, ScriptContext *context,
                     lua_rawset(L, LUA_REGISTRYINDEX);
                 }
             }
+            break;
         }
+        case T_JAVA_TYPE:
+            pushJavaType(L,luaObject.javaType);
+            break;
+        default:
+            return false;
     }
     return true;
 }
@@ -2078,6 +2090,9 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                 luaObject.objectRef = new JavaObject;
                 luaObject.objectRef->type = orig->type;
                 luaObject.objectRef->object = env->NewGlobalRef(orig->object);
+            }else if(luaL_testudata(L,idx,JAVA_TYPE)){
+                luaObject.type = T_JAVA_TYPE;
+                luaObject.javaType=*(JavaType**) lua_touserdata(L,idx);
             }
 #if LUA_VERSION_NUM < 503
                 else if(luaL_testudata(L,idx,Integer64::LIB_NAME)){
@@ -2225,7 +2240,7 @@ bool parseLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, int idx,
             break;
         }
         case LUA_TLIGHTUSERDATA: {
-            luaObject.type = T_LIGHT_USER_DATA;
+            luaObject.type = T_INTEGER;
             luaObject.userdata = lua_touserdata(L, idx);
             break;
         }

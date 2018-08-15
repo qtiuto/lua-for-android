@@ -218,8 +218,6 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                     cacheScores[i] = weight;
                     break;
                 }
-                case T_USER_DATA:
-                case T_LIGHT_USER_DATA:
                 case T_INTEGER: {
                     bool isInteger = toCheck->isLuaInteger();
                     if (!isInteger && !toCheck->isFloat()) goto bail;

@@ -407,8 +407,6 @@ jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObje
     switch (luaObject.type) {
         case T_NIL:
             return nullptr;
-        case T_USER_DATA:
-        case T_LIGHT_USER_DATA:
         case T_INTEGER: {
             JavaType *type = LongType(env);
             Vector<ValidLuaObject> args;

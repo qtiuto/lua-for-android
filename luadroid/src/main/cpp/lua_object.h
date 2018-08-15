@@ -21,8 +21,11 @@ enum LUA_TYPE {
     T_OBJECT,
     T_FUNCTION,
     T_TABLE,
-    T_LIGHT_USER_DATA,
-    T_USER_DATA
+};
+enum EXTRA_LUA_TYPE{
+    T_LIGHT_USER_DATA=T_TABLE+1,
+    T_USER_DATA,
+    T_JAVA_TYPE
 };
 
 class FuncInfo;
@@ -76,10 +79,6 @@ struct ValidLuaObject {
                 return "function";
             case T_TABLE:
                 return "table";
-            case T_LIGHT_USER_DATA:
-                return "light user data";
-            case T_USER_DATA:
-                return "user data";
         }
         return "";
     }
@@ -162,7 +161,7 @@ inline ValidLuaObject::~ValidLuaObject() {
 }
 
 struct CrossThreadLuaObject {
-    LUA_TYPE type = T_NIL;
+    int type = T_NIL;
     union {
         uint8_t isTrue;
         lua_Integer integer = 0;
@@ -173,6 +172,7 @@ struct CrossThreadLuaObject {
         LuaTable<CrossThreadLuaObject> *table;
         void *lightData;
         UserData *userData;
+        JavaType* javaType;
     };
 
     CrossThreadLuaObject() {};
