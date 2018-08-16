@@ -529,7 +529,7 @@ public class ClassBuilder {
      */
 
     public Class build() throws IOException, ClassNotFoundException {
-        addField(FUNC_REFS, Modifier.PRIVATE, ScriptContext.Func[].class);
+        addField(FUNC_REFS, Modifier.PRIVATE|Modifier.TRANSIENT, ScriptContext.Func[].class);
         if(!isInterface){
             for (Constructor<?> constructor : getConstructorsToOverwrite(superType)) {
                 if (constructor.getModifiers() == Modifier.FINAL) {
