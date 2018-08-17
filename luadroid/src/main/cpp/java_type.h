@@ -34,8 +34,6 @@ private:
         J_SHORT,
         J_INT,
         J_LONG,
-        J_FLOAT,
-        J_DOUBLE
     };
     typedef Array<MethodInfo> MethodArray;
     typedef Array<FieldInfo> FieldArray;
@@ -54,10 +52,16 @@ private:
     static jmethodID sIsTableType;
     static jmethodID sTableConvert;
     jclass type;
-    bool primitive;
-    bool isInteger;
-    bool _isString;
-    bool _isStringAssignable;
+
+    bool primitive = false;
+    bool _isInteger = false;
+    bool _isChar = false;
+    bool _isFloat = false;
+    bool _isVoid = false;
+    bool _isBox = false;
+    bool _isString = false;
+    bool _isStringAssignable = false;
+
     ScriptContext *context;
     MethodMap staticMethods;
     MethodMap objectMethods;
@@ -71,16 +75,13 @@ private:
     JavaType(JNIEnv *env, jclass type, ScriptContext *context) : context(context) {
         this->type = (jclass) env->NewGlobalRef(type);
         _isStringAssignable = env->IsAssignableFrom(stringType, type);
-        _isString = env->IsSameObject(type, stringType);
-        primitive=false;
-        isInteger=false;
     }
 
     inline static JClass getComponentType(TJNIEnv *env, jclass type) {
         return (JClass) env->CallObjectMethod(type, sGetComponentType);
     }
 
-    int weightObject(TJNIEnv* env,JavaType *target, JavaType *from);
+    uint weightObject(TJNIEnv* env,JavaType *target, JavaType *from);
 
 public:
     jobject newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<ValidLuaObject> &params);
@@ -119,24 +120,68 @@ public:
         return primitive;
     }
 
-    bool isLuaInteger() {
-        return isInteger;
+    bool isInteger() {
+        return _isInteger&&!_isBox;
+    }
+    bool isBoxedInteger(){
+        return _isInteger&&_isBox;
     }
 
     bool isChar() {
-        return this == context->charClass;
+        return _isChar;
+    }
+    bool isBoxedChar() {
+        return this==context->CharacterClass;
+    }
+    bool isBool() {
+        return this==context->booleanClass;
+    }
+    bool isBoxedBool() {
+        return this==context->BooleanClass;
     }
 
-    bool isBool() {
-        return this == context->booleanClass;
+    bool canAcceptBoxedNumber(JavaType* boxed){
+        if(!_isBox||isBoxedChar()||isBoxedBool()) return false;
+        if(this==context->doubleClass)
+            return true;
+        if(boxed==context->DoubleClass)
+            return false;
+        if(this==context->floatClass)
+            return true;
+        if(boxed==context->FloatClass)
+            return false;
+        if(this==context->longClass)
+            return true;
+        if(boxed==context->LongClass)
+            return false;
+        if(this==context->intClass)
+            return true;
+        if(boxed==context->IntegerClass)
+            return false;
+        if(this==context->shortClass)
+            return true;
+        return boxed != context->ShortClass;
+    }
+
+    jmethodID getConstructorForBoxType(TJNIEnv* env){
+        if(!_isBox) return nullptr;
+        auto&& array=ensureMethod(env,FakeString("<init>"),false);
+        for (const MethodInfo& info:*array){
+            if(info.params[0]->isPrimitive())
+                return info.id;
+        }
+        return nullptr;
     }
 
     bool isFloat() {
-        return this == context->doubleClass || this == context->floatClass;
+        return _isFloat&&!_isBox;
+    }
+    bool isBoxedFloat() {
+        return _isFloat&&_isBox;
     }
 
     bool isVoid() {
-        return this == context->voidClass;
+        return _isVoid;
     }
 
     bool isStringAssignable() {

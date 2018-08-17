@@ -21,6 +21,7 @@ enum LUA_TYPE {
     T_OBJECT,
     T_FUNCTION,
     T_TABLE,
+    T_CHAR//For conversion use only
 };
 enum EXTRA_LUA_TYPE{
     T_LIGHT_USER_DATA=T_TABLE+1,
@@ -33,10 +34,13 @@ class FuncInfo;
 class LazyTable;
 
 struct ValidLuaObject {
-    LUA_TYPE type = T_NIL;
+    LUA_TYPE type:16;
+    bool shouldRelease:16;
+
     union {
         uint8_t isTrue;
-        lua_Integer integer = 0;
+        char16_t character;
+        int64_t integer=0;
         lua_Number number;
         const char *string;
         JavaObject *objectRef;
@@ -45,9 +49,9 @@ struct ValidLuaObject {
         void *userdata;
     };
 
-    ValidLuaObject() {}
+    ValidLuaObject():type(T_NIL),shouldRelease(false){}
 
-    ValidLuaObject(ValidLuaObject &&object) : type(object.type), integer(object.integer) {
+    ValidLuaObject(ValidLuaObject &&object) : type(object.type),shouldRelease(object.shouldRelease), integer(object.integer) {
         object.integer = 0;
     }
 
@@ -79,6 +83,8 @@ struct ValidLuaObject {
                 return "function";
             case T_TABLE:
                 return "table";
+            case T_CHAR:
+                return "char";
         }
         return "";
     }

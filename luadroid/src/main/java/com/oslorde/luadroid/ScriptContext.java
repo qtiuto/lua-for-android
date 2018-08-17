@@ -229,12 +229,12 @@ public class ScriptContext implements GCTracker {
             }
         }
     }
-
+    /** 1-5 is left for box type,6 left for object,interfaces is always 7*/
     private static int weightObject(Class<?> target, Class<?> from) {
         if (target.isPrimitive() || from.isPrimitive()) return 0;
-        if (target == Object.class) return 1;
+        if (target == Object.class) return 6;
         if (target.isInterface() && target.isAssignableFrom(from)) {
-            return 2;
+            return 7;
         }
         if (target.isArray()) {
             if (from.isArray())
@@ -248,7 +248,7 @@ public class ScriptContext implements GCTracker {
             from = from.getSuperclass();
             ++weight;
         }
-        ret = ret == 0 ? 0 : weight - ret + 1;
+        ret = ret == 0 ? 0 : weight - ret + 6;
         return ret;
     }
 
@@ -475,7 +475,6 @@ public class ScriptContext implements GCTracker {
         return null;
     }
 
-
     private Object proxy(final long nativePtr, final Class<?> main,
                          Class<?>[] leftInterfaces, Method[] methods,
                          long[] values, boolean shared, long nativeInfo,Object superObject) throws Exception {
@@ -487,6 +486,7 @@ public class ScriptContext implements GCTracker {
                     throw new IllegalArgumentException("Only one class can be extent");
             }
         }
+        if(methods==null) methods=new Method[0];
         Map<MethodSetEntry, Long> methodMap = new HashMap<>(values.length);
         if (methods.length != values.length) {
             throw new IllegalArgumentException("Java method count doesn't equal lua method count");

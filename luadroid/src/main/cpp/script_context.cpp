@@ -87,7 +87,7 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
 }
 
 bool changeClassName(String &className) noexcept;
-
+#define BOX_INIT(Type) Type##Class(ensureType(env,env->FindClass("java/lang/"#Type)))
 ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, bool localFunction) :
         importAll(importAll), localFunction(localFunction),
         javaRef((init(env, javaObject), env->NewWeakGlobalRef(javaObject))),
@@ -99,21 +99,40 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
         charClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[C")))),
         floatClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[F")))),
         doubleClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[D")))),
-        voidClass(getVoidClass(env)) {
-    byteClass->isInteger = true;
+        voidClass(getVoidClass(env)),StringClass(ensureType(env,stringType)),
+        ObjectClass(ensureType(env,env->GetObjectClass(stringType))),
+        BOX_INIT(Byte),BOX_INIT(Character), BOX_INIT(Boolean),BOX_INIT(Integer),BOX_INIT(Long),
+        BOX_INIT(Short),BOX_INIT(Float), BOX_INIT(Double){
+    byteClass->_isInteger = true;
     byteClass->primitive = true;
-    shortClass->isInteger = true;
+    shortClass->_isInteger = true;
     shortClass->primitive = true;
     intClass->primitive = true;
-    intClass->isInteger = true;
+    intClass->_isInteger = true;
     longClass->primitive = true;
-    longClass->isInteger = true;
+    longClass->_isInteger = true;
     floatClass->primitive = true;
-    floatClass->isInteger = false;
     doubleClass->primitive = true;
-    doubleClass->isInteger = false;
+    floatClass->_isFloat = true;
+    doubleClass->_isFloat = true;
+    charClass->_isChar= true;
     voidClass->primitive = true;
-    voidClass->isInteger = false;
+    voidClass->_isVoid=true;
+    StringClass->_isString=true;
+    ByteClass->_isBox=true;
+    ShortClass->_isBox=true;
+    IntegerClass->_isBox=true;
+    LongClass->_isBox=true;
+    FloatClass->_isBox=true;
+    DoubleClass->_isBox=true;
+    CharacterClass->_isBox=true;
+    BooleanClass->_isBox=true;
+    ByteClass->_isInteger=true;
+    ShortClass->_isInteger=true;
+    IntegerClass->_isInteger=true;
+    LongClass->_isInteger=true;
+    FloatClass->_isFloat = true;
+    DoubleClass->_isFloat = true;
 }
 
 void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
@@ -267,17 +286,30 @@ void ScriptContext::setPendingException(TJNIEnv *env, const String &msg) {
 jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type) {
     jvalue ret;
     if (type->isChar()) {
-        strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
+        if(luaObject.type==T_OBJECT){
+            ret.c=env->CallCharMethod(luaObject.objectRef->object,charValue);
+        } else if(luaObject.type==T_CHAR)
+            ret.c=luaObject.character;
+        else strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
     } else if (type == booleanClass) {
-        ret.b = luaObject.isTrue;
-    } else if (type->isLuaInteger()) {
-        ret.j = luaObject.integer;
+        if(luaObject.type==T_OBJECT){
+            ret.z=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
+        } else ret.z = luaObject.isTrue;
+    } else if (type->isInteger()) {
+        if(luaObject.type==T_OBJECT){
+            ret.j=env->CallLongMethod(luaObject.objectRef->object,longValue);
+        } else ret.j = luaObject.integer;
     } else if (type == floatClass) {
-        ret.f = (float) luaObject.number;
+        if(luaObject.type==T_OBJECT){
+            ret.f= float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
+        } else ret.f = (float) luaObject.number;
     } else if (type == doubleClass) {
-        ret.d = luaObject.number;
+        if(luaObject.type==T_OBJECT){
+            ret.d= env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
+        } else ret.d = luaObject.number;
     } else {
         if (luaObject.type == T_FUNCTION) {
+            luaObject.shouldRelease=true;
             JObject method = type->getSingleInterface(env);
             Vector<JObject> methods;
             methods.push_back(std::move(method));
@@ -292,6 +324,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
                 func.begin()->release();
             }
         } else if (luaObject.type == T_TABLE) {
+            luaObject.shouldRelease=true;
             if (type->isTableType(env)) {
                 JavaType *mapType = HashMapType(env);
                 ValidLuaObject lenObject;
@@ -324,11 +357,33 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
         } else if (luaObject.type == T_NIL) {
             ret.l = nullptr;
         } else if (luaObject.type == T_STRING) {
+            luaObject.shouldRelease=true;
             ret.l = env->NewStringUTF(luaObject.string).invalidate();
         } else if (luaObject.type == T_OBJECT) {
             ret.l = luaObject.objectRef->object;
         } else {
-            ret.l = INVALID_OBJECT;
+            luaObject.shouldRelease=true;
+            if (type->isBoxedBool()) {
+                ret.l = env->NewObject(type->getType(), type->
+                        getConstructorForBoxType(env), luaObject.isTrue);
+            } else if (type == DoubleClass) {
+                ret.l = env->NewObject(type->getType(), type->getConstructorForBoxType(env),
+                                       luaObject.type == T_INTEGER ? (double) luaObject.integer : luaObject.number);
+            } else if (type == DoubleClass) {
+                ret.l = env->NewObject(type->getType(), type->getConstructorForBoxType(env),
+                                       luaObject.type == T_INTEGER ? (float) luaObject.integer : (float) luaObject.number);
+            }else if (type->isBoxedChar()) {
+                if (luaObject.type == T_STRING)
+                    strcpy8to16(&luaObject.character, luaObject.string, NULL);
+                ret.l = env->NewObject(type->getType(), type->
+                        getConstructorForBoxType(env), luaObject.character);
+            } else  if (type->_isBox) {
+                ret.l = env->NewObject(type->getType(), type->
+                        getConstructorForBoxType(env), luaObject.integer);
+            } else {
+                luaObject.shouldRelease = false;
+                ret.l = INVALID_OBJECT;
+            }
         }
     }
     return ret;
@@ -339,14 +394,14 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
 
 
 ScriptContext::~ScriptContext() {
-    for (auto &pair :typeMap) {//ide support for libstdc++  bug fix
+    for (auto &&pair :typeMap) {//ide support for libstdc++  bug fix
         delete pair.second;
     }
     ScopeLock sentry(lock);
-    for (auto &pair :stateMap)
+    for (auto &&pair :stateMap)
         lua_close(pair.second);
     AutoJNIEnv env;
-    for (auto &object:addedMap) {
+    for (auto &&object:addedMap) {
         env->DeleteGlobalRef(object.second.second);
     }
     env->DeleteWeakGlobalRef(javaRef);
@@ -366,8 +421,8 @@ jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *i
         }
     }
     jsize principalCount = (jsize) principal.size();
-    JClass methodType = env->GetObjectClass(principal[0]);
-    JObjectArray principalArray = env->NewObjectArray(principalCount, methodType, nullptr);
+    JObjectArray principalArray =principalCount==0? JObjectArray():
+                                 env->NewObjectArray(principalCount, env->GetObjectClass(principal[0]), nullptr);
     for (jsize i = principalCount - 1; i >= 0; --i) {
         env->SetObjectArrayElement(principalArray, i, principal[i]);
     }
@@ -408,25 +463,16 @@ jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObje
         case T_NIL:
             return nullptr;
         case T_INTEGER: {
-            JavaType *type = LongType(env);
-            Vector<ValidLuaObject> args;
-            args.push_back(std::move(luaObject));
-            Vector<JavaType *> types{longClass};
-            return type->newObject(env,types, args);
+            return env->NewObject(LongClass->getType(), LongClass->
+                    getConstructorForBoxType(env), luaObject.integer);
         }
         case T_BOOLEAN: {
-            JavaType *type = BooleanType(env);
-            Vector<ValidLuaObject> args;
-            args.push_back(std::move(luaObject));
-            Vector<JavaType *> types{booleanClass};
-            return type->newObject(env,types, args);
+            return env->NewObject(BooleanClass->getType(), BooleanClass->
+                    getConstructorForBoxType(env), luaObject.integer);
         }
         case T_FLOAT: {
-            JavaType *type = DoubleType(env);
-            Vector<ValidLuaObject> args;
-            args.push_back(std::move(luaObject));
-            Vector<JavaType *> types{doubleClass};
-            return type->newObject(env,types, args);
+            return env->NewObject(DoubleClass->getType(), DoubleClass->
+                    getConstructorForBoxType(env), luaObject.integer);
         }
         case T_OBJECT: {
             jvalue v = luaObjectToJValue(env, luaObject, FunctionType(env));
@@ -438,6 +484,10 @@ jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObje
         case T_FUNCTION: {
             jvalue v = luaObjectToJValue(env, luaObject, FunctionType(env));
             return v.l;
+        }
+        case T_CHAR:{
+            return env->NewObject(CharacterClass->getType(), CharacterClass->
+                    getConstructorForBoxType(env), luaObject.integer);
         }
     }
     return nullptr;

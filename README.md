@@ -200,12 +200,13 @@
     Method deduction:
      If type is supplied,the closet type is considered first.
      
-     For integer value,if it's in int32 range,then int ranks first, or
-     the rank is according to which range is closer to the value.Float
-     type can accpet integer value if no integer type found and float
-     is considered berfore double.For long type below lua 5.3,a library
-     call 'i64' is imported to reprsent value can't be represent by
-     double,so long type accept i64 value also.
+     For integer value,if it's in int32 range,then it's aussumed to be 
+     int.The rank is according to which range is closer to the value.
+     Float type can accpet integer value if no integer type found and 
+     float is considered before double.For long type below lua 5.3,a 
+     library call 'i64' is imported to reprsent value can't be represent
+     by double,so long type accept i64 value also.Boxed type will be used
+     if no primitive type found.
      
      For float value,double have more weight than float.
      
@@ -215,7 +216,9 @@
      
      For nil,treated as (Type)null;
      
-     For java object,evaluating in terms of class hierarchy.
+     For java object,evaluating in terms of class hierarchy.Specically,
+     if no object type found for a boxed type, primitive type will be
+     in consideration.
      
      For function,any functional interface is considered ok
      
@@ -248,7 +251,9 @@
      
       User date is treated as integer.
       
-      Note: autobox is not supported because it is time-consuming.
+      Note: All primitive type accept their boxed type and all boxed type
+      accept their primitive type.Autobox and auto-unbox will be performed
+      if necessary
           
     Module name in lua:
      

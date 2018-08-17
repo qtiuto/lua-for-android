@@ -32,8 +32,7 @@ if(env->ExceptionCheck()){\
 template<typename TypeArr>
 inline void cleanArgs(jvalue *args, int argSize, TypeArr &arr, JNIEnv *env) {
     for (int i = 0; i < argSize; ++i) {
-        LUA_TYPE luaType = arr[i].type;
-        if (luaType == T_FUNCTION || luaType == T_STRING || luaType == T_TABLE) {
+        if (arr[i].shouldRelease) {
             jobject ref = args[i].l;
             if (ref != INVALID_OBJECT)
                 env->DeleteLocalRef(ref);
@@ -42,8 +41,8 @@ inline void cleanArgs(jvalue *args, int argSize, TypeArr &arr, JNIEnv *env) {
     }
 }
 
-inline void cleanArg(JNIEnv *env, const jobject j, LUA_TYPE luaType) {
-    if (luaType == T_FUNCTION || luaType == T_STRING || luaType == T_TABLE) {
+inline void cleanArg(JNIEnv *env, const jobject j, bool should) {
+    if (should) {
         env->DeleteLocalRef(j);
     }
 }
@@ -97,10 +96,6 @@ class ScriptContext {
 
     JavaType *HashMapClass = nullptr;
     JavaType *FunctionClass = nullptr;
-    JavaType *LongClass = nullptr;
-    JavaType *DoubleClass = nullptr;
-    JavaType *BooleanClass = nullptr;
-
     jweak outLogger = nullptr;
     jweak errLogger = nullptr;
 
@@ -109,7 +104,7 @@ class ScriptContext {
     JavaType *HashMapType(TJNIEnv *env);
 
 public:
-    Map<std::pair<JavaType *, JavaType *>, int> const weightMap;
+    Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
     jobject const javaRef;
     JavaType *const byteClass;
     JavaType *const shortClass;
@@ -119,7 +114,18 @@ public:
     JavaType *const charClass;
     JavaType *const floatClass;
     JavaType *const doubleClass;
+    JavaType *const ByteClass;
+    JavaType *const ShortClass;
+    JavaType *const IntegerClass;
+    JavaType *const LongClass;
+    JavaType *const BooleanClass;
+    JavaType *const CharacterClass;
+    JavaType *const FloatClass;
+    JavaType *const DoubleClass;
     JavaType *const voidClass;
+    JavaType *const StringClass;
+    JavaType *const ObjectClass;
+
 
     ScriptContext(TJNIEnv *env, jobject con, bool importAll = true, bool localFunction = false);
 
@@ -146,7 +152,7 @@ public:
 
     void clean() {
         ScopeLock sentry(lock);
-        for (auto pair = stateMap.begin(); pair != stateMap.end();) {
+        for (auto&& pair = stateMap.begin(); pair != stateMap.end();) {
             int status = pthread_kill(pair->first, 0);
             if (status == 0) {
                 ++pair;
@@ -160,28 +166,9 @@ public:
 
     CrossThreadLuaObject *getLuaObject(const char *name) {
         ScopeLock sentry(mapLock);
-        const auto &iter = crossThreadMap.find(String(name));
+         auto &&iter = crossThreadMap.find(String(name));
         if (iter == crossThreadMap.end()) return nullptr;
         else return &(iter->second);
-    }
-
-
-    JavaType *LongType(TJNIEnv *env) {
-        if (LongClass == nullptr)
-            LongClass = ensureType(env, "Long");
-        return LongClass;
-    }
-
-    JavaType *DoubleType(TJNIEnv *env) {
-        if (DoubleClass == nullptr)
-            DoubleClass = ensureType(env, "Double");
-        return DoubleClass;
-    }
-
-    JavaType *BooleanType(TJNIEnv *env) {
-        if (BooleanClass == nullptr)
-            BooleanClass = ensureType(env, "Boolean");
-        return BooleanClass;
     }
 
     void deleteLuaObject(const char *name) {

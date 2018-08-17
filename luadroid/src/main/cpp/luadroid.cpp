@@ -565,7 +565,7 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     {
         int resultSize = lua_gettop(L) - handlerIndex;
         if (resultSize > 0) {
-            result = env->asJNIEnv()->NewObjectArray(resultSize, env->GetSuperclass(stringType),
+            result = env->asJNIEnv()->NewObjectArray(resultSize, context->ObjectClass->getType(),
                                                      NULL);
             for (int i = resultSize - 1; i >= 0; --i) {
                 ValidLuaObject object;
@@ -613,8 +613,8 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
         lua_pushlightuserdata(L, info);
         lua_rawget(L, LUA_REGISTRYINDEX);
         if (lua_isnil(L, -1)) {
-            context->setPendingException(env,
-                                         "Local Function must run in the given thread it's extracted from");
+            context->setPendingException(
+                    env, "Local Function must run in the given thread it's extracted from");
             context->throwToJava();
             return 0;
         }
@@ -662,15 +662,12 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
 
     pushJavaObject(env, L, context, proxy);
     if (!isInterface) {
-        pushJavaObject(env, L, context, proxy)->type = context->ensureType(env,
-                                                                           env->GetSuperclass(
-                                                                                   (JClass) env->GetObjectClass(
-                                                                                           proxy)));
+        pushJavaObject(env, L, context, proxy)->type =
+                context->ensureType(env, env->GetSuperclass(
+                        (JClass) env->GetObjectClass(proxy)));
     }
     len += 1 + !isInterface;
-    //GCScope::acquire().pushFrame();
     int err = lua_pcall(L, len, LUA_MULTRET, handlerIndex);
-    //GCScope::acquire().popFrame();
     jobject ret = nullptr;
     int retCount;
     if (err != LUA_OK)recordLuaError(env, context, L, err);
@@ -679,7 +676,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
                 env->IsInstanceOf(proxy, context->FunctionType(env)->getType()) && isInterface;
         if (multiRet) {
             JObjectArray result(
-                    env->NewObjectArray(retCount, env->GetSuperclass(stringType), NULL));
+                    env->NewObjectArray(retCount, context->ObjectClass->getType(), NULL));
             for (int i = handlerIndex + 1, top = lua_gettop(L), j = 0; i <= top; ++i, ++j) {
                 ValidLuaObject object;
                 parseLuaObject(env, L, context, i, object);
@@ -1518,7 +1515,7 @@ int callMethod(lua_State *L) {
     else PushFloatResult(float, Float)
     else PushIntegerResult(byte, Byte)
     else PushIntegerResult(short, Short)
-    else if (returnType==context->charClass) {
+    else if (returnType->isChar()) {
         jchar buf;
         if (isStatic) buf = env->CallStaticCharMethodA(type->getType(), info->id, args);
         else
@@ -1608,7 +1605,7 @@ int getFieldOrMethod(lua_State *L) {
         else GetFloatField(float,Float)\
         else GetFloatField(double,Double)\
         else GetField(boolean,Boolean,boolean)\
-        else if(fieldType==context->charClass){\
+        else if(fieldType->isChar()){\
             jchar c=isStatic?env->GetStaticCharField(type->getType(),info->id):env->GetCharField(obj->object,info->id);\
             PushChar(c);\
         } else{\
@@ -1768,7 +1765,7 @@ int setFieldOrArray(lua_State *L) {
                 jobject v = context->luaObjectToJValue(env, luaObject, type).l;
                 if (v == INVALID_OBJECT) goto __ErrorHandle;
                 env->SetObjectArrayElement((jobjectArray) objRef->object, (jsize) index, v);
-                cleanArg(env, v, luaObject.type);
+                cleanArg(env, v, luaObject.shouldRelease);
             }
             return 0;
         }
@@ -2329,18 +2326,58 @@ JavaObject *pushJavaObject(TJNIEnv *env, lua_State *L, ScriptContext *context, j
 static bool
 checkLuaTypeNoThrow(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject &luaObject) {
     if (expected == nullptr) return false;
-    if (expected->isLuaInteger()) {
-        if (luaObject.type != T_INTEGER) goto bail;
-    } else if (expected->isFloat()) {
-        if (luaObject.type != T_FLOAT) goto bail;
-    } else if (expected->isChar()) {
-        if (luaObject.type != T_STRING) goto bail;
-        if (strlen8to16(luaObject.string) != 1) {
-            lua_pushstring(L, "String length for char type must be 1");
-            return true;
+    if (expected->isInteger()) {
+        if (luaObject.type != T_INTEGER){
+            if(luaObject.type==T_FLOAT){
+                luaObject.type=T_INTEGER;
+                luaObject.integer= int64_t(luaObject.number);
+            } else if(luaObject.type==T_OBJECT){
+                JavaType* type=luaObject.objectRef->type;
+                if(!expected->canAcceptBoxedNumber(type)) goto bail;
+                luaObject.type=T_INTEGER;
+                luaObject.integer=env->CallLongMethod(luaObject.objectRef->object,longValue);
+            } else goto bail;
         }
+    } else if (expected->isFloat()) {
+        if (luaObject.type != T_FLOAT){
+            if(luaObject.type==T_INTEGER){
+                luaObject.type=T_FLOAT;
+                luaObject.number=luaObject.integer;
+            } else if(luaObject.type==T_OBJECT){
+                JavaType* type=luaObject.objectRef->type;
+                if(!expected->canAcceptBoxedNumber(type)) goto bail;
+                luaObject.type=T_FLOAT;
+                luaObject.number=env->CallDoubleMethod(luaObject.objectRef->object,doubleValue);
+            } else goto bail;
+        }
+    } else if (expected->isChar()) {
+        if (luaObject.type == T_STRING){
+            if (strlen8to16(luaObject.string) != 1) {
+                lua_pushstring(L, "String length for char type must be 1");
+                return true;
+            } else{
+                luaObject.type=T_CHAR;
+                strcpy8to16(&luaObject.character,luaObject.string,NULL);
+            }
+        } else if(luaObject.type==T_INTEGER){
+            if(luaObject.integer<0||luaObject.integer>65535){
+                lua_pushstring(L, "The integer is too large for char value");
+                return true;
+            }else luaObject.type=T_CHAR;
+        } else if(luaObject.type==T_OBJECT&&luaObject.objectRef->type->isBoxedChar()){
+            luaObject.type=T_CHAR;
+            luaObject.character=env->CallCharMethod(luaObject.objectRef->object,charValue);
+            return false;
+        } else goto bail;
+
     } else if (expected->isBool()) {
-        if (luaObject.type != T_BOOLEAN) goto bail;
+        if (luaObject.type != T_BOOLEAN){
+            if(luaObject.type==T_OBJECT&&luaObject.objectRef->type->isBoxedChar()){
+                luaObject.type=T_BOOLEAN;
+                luaObject.isTrue=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
+                return false;
+            } else goto bail;
+        }
     } else {
         if (luaObject.type == T_NIL) return false;
         if (luaObject.type == T_OBJECT) {
@@ -2365,8 +2402,21 @@ checkLuaTypeNoThrow(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObje
                 (expected->isInterface(env) && luaObject.lazyTable->isInterface()))
                 return false;
         }
+        if(luaObject.type==T_FLOAT){
+            if(expected->isBoxedFloat()){
+                return false;
+            }
+        } else if(luaObject.type==T_INTEGER){
+            if(expected->isBoxedInteger()||expected->isBoxedFloat())
+                return false;
+        }
+        if(expected->isBoxedChar()&&luaObject.type == T_STRING)
+            return false;
+        if(expected->isBoxedBool()&&luaObject.type == T_BOOLEAN)
+            return false;
+        goto bail;
     }
-
+    return false;
     bail:
     lua_pushfstring(L, "Expected type is %s,but receive %s",
                     JString(env->CallObjectMethod(expected->getType(), classGetName)).str(),
@@ -2404,6 +2454,7 @@ void readArguments(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<Ja
             lua_error(L);
         }
         objects.push_back(std::move(luaObject));
+
     }
 }
 
