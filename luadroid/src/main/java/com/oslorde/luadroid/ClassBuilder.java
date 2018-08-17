@@ -592,6 +592,8 @@ public class ClassBuilder {
     public static Object cloneFromSuper(Class c,Object superObject) throws Exception {
         if(!c.getSuperclass().isAssignableFrom(superObject.getClass()))
             throw new IllegalArgumentException("Not an instance of the super class");
+        if(c.isInterface()||Modifier.isAbstract(c.getModifiers()))
+            throw new IllegalArgumentException("Abstract class can't have an instance");
         if(sUnsafe==null){
             Field u=LockSupport.class.getDeclaredField("U");
             u.setAccessible(true);
