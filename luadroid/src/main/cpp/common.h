@@ -77,6 +77,11 @@ template<typename T>
 inline T invalid() {
     return reinterpret_cast<T>(-1);
 }
+template<typename T>
+inline T ptrTypeJudge(T*) {
+    abort();
+}
+#define PTR_TYPE(v) decltype(ptrTypeJudge(v))
 
 class FakeString {
     String::size_type __cap_;

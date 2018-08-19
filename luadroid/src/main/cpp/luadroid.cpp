@@ -2099,11 +2099,16 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
 #endif
 
             else {
-                static thread_local UserData *record = nullptr;
-                UserData *data = record;
+                lua_pushvalue(L, idx);
+                lua_rawget(L, LUA_REGISTRYINDEX);
+                UserData *data = static_cast<UserData *>(lua_touserdata(L, -1));
+                lua_pop(L,1);
                 if (data == nullptr) {
                     size_t len = lua_rawlen(L, idx);
-                    record = data = new UserData(len);
+                    data = new UserData(len);
+                    lua_pushvalue(L,idx);
+                    lua_pushlightuserdata(L,data);
+                    lua_rawset(L,LUA_REGISTRYINDEX);
                     int hasMeta = lua_getmetatable(L, idx);
                     if (hasMeta && lua_istable(L, -1)) {
                         CrossThreadLuaObject object;
@@ -2119,14 +2124,18 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                         }
                         if (!ok) {
                             delete data;
-                            record = nullptr;
+                            lua_pushvalue(L,idx);
+                            lua_pushnil(L);
+                            lua_rawset(L,LUA_REGISTRYINDEX);
                             return false;
                         }
                     }
                     void *orig = lua_touserdata(L, idx);
                     memcpy(&data->data[0], orig, len);
                     luaObject.userData = data;
-                    record = nullptr;
+                    lua_pushvalue(L,idx);
+                    lua_pushnil(L);
+                    lua_rawset(L,LUA_REGISTRYINDEX);
                 } else {
                     luaObject.userData = data;
                 }
@@ -2134,10 +2143,15 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
             }
             break;
         case LUA_TTABLE: {
-            static thread_local LuaTable<CrossThreadLuaObject> *record = nullptr;
-            LuaTable<CrossThreadLuaObject> *luaTable = record;
+            lua_pushvalue(L, idx);
+            lua_rawget(L, LUA_REGISTRYINDEX);
+            LuaTable<CrossThreadLuaObject> *luaTable = (LuaTable<CrossThreadLuaObject> *)(lua_touserdata(L, -1));
+            lua_pop(L,1);
             if (luaTable == nullptr) {
-                record = luaTable = new LuaTable<CrossThreadLuaObject>();
+                luaTable = new LuaTable<CrossThreadLuaObject>();
+                lua_pushvalue(L,idx);
+                lua_pushlightuserdata(L,luaTable);
+                lua_rawset(L,LUA_REGISTRYINDEX);
                 luaTable->get().reserve(lua_rawlen(L, idx));
                 lua_pushnil(L);
                 while (lua_next(L, idx)) {
@@ -2150,7 +2164,9 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                         luaTable->get().push_back({std::move(key), std::move(value)});
                     else {
                         delete luaTable;
-                        record = nullptr;
+                        lua_pushvalue(L,idx);
+                        lua_pushnil(L);
+                        lua_rawset(L,LUA_REGISTRYINDEX);
                         return false;
                     }
                 }
@@ -2169,12 +2185,16 @@ bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context
                         object.table = nullptr;
                     } else {
                         delete luaTable;
-                        record = nullptr;
+                        lua_pushvalue(L,idx);
+                        lua_pushnil(L);
+                        lua_rawset(L,LUA_REGISTRYINDEX);
                         return false;
                     }
                 }
                 luaObject.table = luaTable;
-                record = nullptr;
+                lua_pushvalue(L,idx);
+                lua_pushnil(L);
+                lua_rawset(L,LUA_REGISTRYINDEX);
             } else {
                 luaObject.table = luaTable;
             }

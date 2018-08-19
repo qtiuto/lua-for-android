@@ -326,31 +326,45 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
         } else if (luaObject.type == T_TABLE) {
             luaObject.shouldRelease=true;
             if (type->isTableType(env)) {
-                JavaType *mapType = HashMapType(env);
-                ValidLuaObject lenObject;
-                lenObject.type = T_INTEGER;
-                auto &&table = luaObject.lazyTable->getTable(env, this)->get();
-                lenObject.integer = static_cast<lua_Integer>(table.size());
-                Vector<JavaType *> types{nullptr};
-                Vector<ValidLuaObject> args;
-                args.push_back(std::move(lenObject));
-                JObject map = JObject(env, mapType->newObject(env,types, args));
-                for (auto &&pair:table) {
-                    jobject key = luaObjectToJObject(env, std::move(pair.first));
-                    if (key == INVALID_OBJECT) goto ERROR_HANDLE;
-                    jobject value = luaObjectToJObject(env, std::move(pair.second));
-                    if (value == INVALID_OBJECT) {
-                        env->DeleteLocalRef(key);
-                        goto ERROR_HANDLE;
-                    }
-                    env->CallObjectMethod(map, sMapPut, JObject(env, key).get(),
-                                          JObject(env, value).get());
+                static thread_local Map<LazyTable*,jobject>* parsedTable= nullptr;
+                bool isOwner=false;
+                if(parsedTable== nullptr){
+                    parsedTable=new PTR_TYPE(parsedTable)();
+                    isOwner=true;
                 }
-                ret.l = type->convertTable(env,map);
+                auto&& iter=parsedTable->find(luaObject.lazyTable);
+                if(iter==parsedTable->end()){
+                    JavaType *mapType = HashMapType(env);
+                    ValidLuaObject lenObject;
+                    lenObject.type = T_INTEGER;
+                    auto &&table = luaObject.lazyTable->getTable(env, this)->get();
+                    lenObject.integer = static_cast<lua_Integer>(table.size());
+                    Vector<JavaType *> types{nullptr};
+                    Vector<ValidLuaObject> args;
+                    args.push_back(std::move(lenObject));
+                    JObject map = JObject(env, mapType->newObject(env,types, args));
+                    parsedTable->emplace(luaObject.lazyTable,map.get());
+                    for (auto &&pair:table) {
+                        jobject key = luaObjectToJObject(env, std::move(pair.first));
+                        if (key == INVALID_OBJECT) goto ERROR_HANDLE;
+                        jobject value = luaObjectToJObject(env, std::move(pair.second));
+                        if (value == INVALID_OBJECT) {
+                            env->DeleteLocalRef(key);
+                            goto ERROR_HANDLE;
+                        }
+                        env->CallObjectMethod(map, sMapPut, JObject(env, key).get(),
+                                              JObject(env, value).get());
+                    }
+                    parsedTable->erase(luaObject.lazyTable);
+                    ret.l = type->convertTable(env,map);
+                } else ret.l=type->convertTable(env,iter->second);
+                if(isOwner) {
+                    delete parsedTable;
+                    parsedTable= nullptr;
+                }
             } else if (type->isInterface(env)) {
                 ret.l = luaObject.lazyTable->asInterface(env, this, type);
             }
-
             HOLD_JAVA_EXCEPTION(this, {
                 goto ERROR_HANDLE;
             });
