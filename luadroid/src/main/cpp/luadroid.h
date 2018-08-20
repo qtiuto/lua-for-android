@@ -138,8 +138,7 @@ public:
     jobject proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *interfaces,
                   const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
                   bool shared= false, long nativeInfo=0,jobject superObject= nullptr);
-
-    jvalue luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type);
+    jvalue luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type,jobject real= nullptr);
 
     jobject luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObject);
 

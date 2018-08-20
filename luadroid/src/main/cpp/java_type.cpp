@@ -3,7 +3,6 @@
 #include "utf8.h"
 
 jmethodID JavaType::sGetComponentType = nullptr;
-jmethodID JavaType::sGetParameterTypes = nullptr;
 jmethodID JavaType::sFindMembers = nullptr;
 jmethodID JavaType::sWeightObject = nullptr;
 jmethodID JavaType::sGetSingleInterface = nullptr;
@@ -17,7 +16,8 @@ jobject JavaType::newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<Valid
     jvalue argList[size];
     for (int i = 0; i < size; ++i) {
         ValidLuaObject &object = params[i];
-        argList[i] = context->luaObjectToJValue(env, object, info->params[i]);
+        ParameterizedType &tp = info->params[i];
+        argList[i] = context->luaObjectToJValue(env, object, tp.rawType,tp.realType);
         if ((object.type == T_TABLE || object.type == T_FUNCTION) &&
             argList[i].l == INVALID_OBJECT) {
             cleanArgs(argList, size, params, env);
@@ -98,26 +98,28 @@ JavaType::MethodArray *JavaType::ensureMethod(TJNIEnv* env,const String &s, bool
             contextClass, sFindMembers, type, str.get(), false, isStatic);
     int count = methodInfoArray != nullptr ? env->GetArrayLength(methodInfoArray) : 0;
     if (count == 0) {
-        invalidFields.emplace(s, isStatic);
+        invalidMethods.emplace(s, isStatic);
         return nullptr;
     }
 
-    bool notInit = s != "<init>";
-    MethodArray methodArray((uint32_t) (count >> notInit));
-    for (int i = 0; i < count; i += 1 + notInit) {
-        MethodInfo &info = methodArray[i >> notInit];
+    MethodArray methodArray((uint32_t) (count /5));
+    for (int i = 0; i < count; i += 5) {
+        MethodInfo &info = methodArray[i/5];
         JObject method = env->GetObjectArrayElement(methodInfoArray, i);
         info.id = env->FromReflectedMethod(method);
-        info.returnType = notInit ? context->ensureType(
-                env, (JClass) env->GetObjectArrayElement(methodInfoArray, i + 1))
-                                  : context->voidClass;
-        JObjectArray params = (JObjectArray) env->CallStaticObjectMethod(
-                contextClass, sGetParameterTypes, method.get());
+        info.returnType.rawType =  context->ensureType(
+                env, (JClass) env->GetObjectArrayElement(methodInfoArray, i + 1));
+        auto realRetType = env->GetObjectArrayElement(methodInfoArray, i + 2);
+        info.returnType.realType= realRetType== nullptr? nullptr: env->NewGlobalRef (realRetType);                          
+        JObjectArray params =env->GetObjectArrayElement(methodInfoArray, i + 3);
+        JObjectArray genericParams =env->GetObjectArrayElement(methodInfoArray, i + 4);
         int paramLen = env->GetArrayLength(params);
-        Array<JavaType *> paramArray((uint32_t) paramLen);
+        Array<ParameterizedType> paramArray((uint32_t) paramLen);
         for (int j = 0; j < paramLen; ++j) {
-            paramArray[j] = context->ensureType(
+            paramArray[j].rawType = context->ensureType(
                     env, (JClass) env->GetObjectArrayElement(params, j));
+            auto obj = env->GetObjectArrayElement(genericParams, j);
+            paramArray[j].realType = obj== nullptr? nullptr: env->NewGlobalRef(obj);
         }
         info.params = std::move(paramArray);
     }
@@ -142,13 +144,15 @@ JavaType::FieldArray *JavaType::ensureField(TJNIEnv* env,const String &s, bool i
         invalidFields.emplace(s, isStatic);
         return nullptr;
     }
-    FieldArray fieldArray((uint32_t) (count >> 1));
-    for (int i = 0; i < count; i += 2) {
-        FieldInfo &info = fieldArray[i >> 1];
+    FieldArray fieldArray((uint32_t) (count /3));
+    for (int i = 0; i < count; i += 3) {
+        FieldInfo &info = fieldArray[i /3];
         JObject field = env->GetObjectArrayElement(fieldInfos, i);
         info.id = env->FromReflectedField(field);
-        info.type = context->ensureType(
+        info.type.rawType= context->ensureType(
                 env, (JClass) env->GetObjectArrayElement(fieldInfos, i + 1));
+        auto realType = env->GetObjectArrayElement(fieldInfos, i + 2);
+        info.type.realType= realType== nullptr? nullptr:env->NewGlobalRef (realType);
     }
     return &map.emplace(s, std::move(fieldArray)).first->second;
 }
@@ -171,7 +175,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
         if (arguments == nullptr) {
             for (int i = paramsLen - 1; i >= 0; --i) {
                 JavaType *expected = types[i];
-                if (expected != nullptr && info.params[i] != expected)
+                if (expected != nullptr && info.params[i].rawType != expected)
                     goto bail;
             }
             goto over;
@@ -179,7 +183,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
         memcpy(cacheScores, scores, paramsLen * sizeof(scores[0]));
         for (int i = paramsLen - 1; i >= 0; --i) {
             const ValidLuaObject &luaObject = arguments->at((unsigned long) i);
-            JavaType *toCheck = info.params[i];
+            JavaType *toCheck = info.params[i].rawType;
             JavaType *provided = types[i];
             switch (luaObject.type) {
                 case T_NIL:
@@ -470,7 +474,7 @@ const JavaType::FieldInfo *JavaType::findField(TJNIEnv* env,const String &name, 
         else return nullptr;
     }
     for (const FieldInfo &info:*array) {
-        if (info.type == type) return &info;
+        if (info.type.rawType == type) return &info;
     }
     return nullptr;
 }

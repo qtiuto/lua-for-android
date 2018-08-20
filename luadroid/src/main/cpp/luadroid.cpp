@@ -1472,15 +1472,15 @@ int callMethod(lua_State *L) {
     jvalue args[argCount];
     for (int i = argCount - 1; i >= 0; --i) {
         ValidLuaObject &object = objects.at((unsigned long) i);
-        args[i] = context->luaObjectToJValue(env, object,
-                                             info->params[i]);
+        JavaType::ParameterizedType &tp = info->params[i];
+        args[i] = context->luaObjectToJValue(env, object, tp.rawType,tp.realType);
         if ((object.type == T_TABLE || object.type == T_FUNCTION) && args[i].l == INVALID_OBJECT) {
             cleanArgs(args, argCount, objects, env);
             goto __ErrorHandle;
         }
     }
     int retCount = 1;
-    auto returnType=info->returnType;
+    auto returnType=info->returnType.rawType;
     if (returnType->isVoid()) {
         if (isStatic) env->CallStaticVoidMethodA(type->getType(), info->id, args);
         else
@@ -1571,7 +1571,7 @@ int getFieldOrMethod(lua_State *L) {
     bool isMethod = type->ensureMethod(env,name, isStatic) != nullptr;
     if (fieldCount == 1 && !isMethod) {
         auto info = type->findField(env,std::move(name), isStatic, nullptr);
-        JavaType *fieldType = info->type;
+        JavaType *fieldType = info->type.rawType;
 #define GetField(jtype, jname, TYPE)\
         if(fieldType==context->jtype##Class){\
             lua_push##TYPE(L,isStatic?env->GetStatic##jname##Field(type->getType()\
@@ -1665,7 +1665,7 @@ int getField(lua_State *L) {
     AutoJNIEnv env;
     auto info = type->findField(env,FakeString(name), isStatic,
                                 flag->isDuplicatedField ? nullptr : *fieldTypeRef);
-    JavaType *fieldType = info->type;
+    JavaType *fieldType = info->type.rawType;
     PushField();
     return 1;
 }
@@ -1690,7 +1690,7 @@ int setField(lua_State *L) {
     AutoJNIEnv env;
     auto info = type->findField(env,FakeString(name), isStatic,
                                 flag->isDuplicatedField ? nullptr : *fieldTypeRef);
-    JavaType *fieldType = info->type;
+    JavaType *fieldType = info->type.rawType;
     ValidLuaObject luaObject;
     if (!parseLuaObject(env, L, context, 3, luaObject)) {
         luaL_error(L, "Invalid value passed to java as a field with type:%s", luaL_typename(L, 3));
@@ -1718,7 +1718,7 @@ int setField(lua_State *L) {
         RawSetField(Char,s[0]);\
         free(s);\
     }else {\
-        jvalue v= context->luaObjectToJValue(env,luaObject,fieldType);\
+        jvalue v= context->luaObjectToJValue(env,luaObject,fieldType,info->type.realType);\
         RawSetField(Object,v.l);\
         if(luaObject.type==T_FUNCTION||luaObject.type==T_STRING) env->DeleteLocalRef(v.l);\
     }
@@ -1778,7 +1778,7 @@ int setFieldOrArray(lua_State *L) {
     if (fieldCount <= 0) TopErrorHandle("No such field");
     if (fieldCount > 1) TopErrorHandle("The name %s repsents not only one field", name.data());
     auto info = type->findField(env,name, isStatic, nullptr);
-    JavaType *fieldType = info->type;
+    JavaType *fieldType = info->type.rawType;
     ValidLuaObject luaObject;
     if (!parseLuaObject(env, L, context, 3, luaObject)) {
         TopErrorHandle("Invalid value passed to java as a field with type:%s",
@@ -2513,8 +2513,10 @@ void pushArrayElement(TJNIEnv *env, lua_State *L, ScriptContext *context, const 
         env->GetCharArrayRegion((jcharArray) obj->object, (jsize) index, 1, &buf);
         PushChar(buf);
     } else {
-        pushJavaObject(env, L, context,
-                       env->GetObjectArrayElement((jobjectArray) obj->object, (jsize) index));
+        auto ele = env->GetObjectArrayElement((jobjectArray) obj->object, (jsize) index);
+        if(ele== nullptr)
+            lua_pushnil(L);
+        pushJavaObject(env, L, context, ele);
     }
 
 

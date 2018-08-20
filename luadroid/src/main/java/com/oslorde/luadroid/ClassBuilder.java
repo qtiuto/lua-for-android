@@ -286,14 +286,21 @@ public class ClassBuilder {
         Map<?, Object> paramTypes = mapGet("paramTypes", 5, methodInfo);
         Map<?, Map<Object, Object>> annotations = mapGet("annotations", 6, methodInfo);
         Map<?, Map<?, Map<Object, Object>>> paramAnnotations = mapGet("paramAnnotations", 7, methodInfo);
+        ArrayList<List<Map<Object,Object>>> paraAnnoList=null;
+        if(paramAnnotations!=null){
+            paraAnnoList=new ArrayList<>();
+            for (Map<?, Map<Object, Object>> annolist:paramAnnotations.values()){
+                paraAnnoList.add(new ArrayList<>(annolist.values()));
+            }
+        }
+
         Integer flag = mapGet("flag", 2, methodInfo);
         if(flag==null)flag=Modifier.PUBLIC|(function==null?Modifier.ABSTRACT:0);
         return addMethod(mapGet("name", 1, methodInfo), flag,
                 mapGet("returnType", 3, methodInfo)
                 , paramTypes == null ? null : paramTypes.values().toArray(),
-                function,
-                annotations == null ? null : new ArrayList<>(annotations.values())
-                , paramAnnotations == null ? null : new ArrayList<>(paramAnnotations.values()));
+                function, annotations == null ? null : new ArrayList<>(annotations.values())
+                , paraAnnoList);
     }
     /**
      * add public method with implementation
@@ -379,7 +386,7 @@ public class ClassBuilder {
      */
     public ClassBuilder addMethod(String name, int flag, Object returnType,
                           Object[] paramTypes, LuaFunction func, List<Map<Object, Object>> annotations,
-                          List<Map<?, Map<Object, Object>>> paramAnnotations) {
+                          List<List< Map<Object, Object>>> paramAnnotations) {
         if (Modifier.isStatic(flag))
             throw new IllegalArgumentException("Static method is not supported");
         TypeId[] argTypes = getTypeIds(paramTypes);
@@ -398,15 +405,15 @@ public class ClassBuilder {
         if (paramAnnotations != null&&paramAnnotations.size()>0) {
             List[] ids = new List[argTypes.length];
             for (int i = paramAnnotations.size() - 1; i >= 0; --i) {
-                Map<?, Map<Object, Object>> annotationsList = paramAnnotations.get(i);
+                List<Map<Object, Object>> annotationsList = paramAnnotations.get(i);
                 if (annotationsList == null) continue;
-                ids[i] = getAnnotationIds(new ArrayList<>(annotationsList.values()), ElementType.PARAMETER);
+                ids[i] = getAnnotationIds(annotationsList, ElementType.PARAMETER);
             }
             AnnotationId.addToParameters(maker, id, Arrays.asList(ids));
         }
         if (code != null) {
             int pos = funcRefs.size();
-            funcRefs.add(ScriptContext.getFunc(func, argTypes));
+            funcRefs.add(ScriptContext.getFunc(func, argTypes,typeReturn));
             generateCode(code,pos,typeReturn,argTypes);
         }
         return this;

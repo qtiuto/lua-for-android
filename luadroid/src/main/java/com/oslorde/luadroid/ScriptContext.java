@@ -2,6 +2,7 @@ package com.oslorde.luadroid;
 
 
 import android.os.Build;
+import android.util.Pair;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
@@ -18,10 +19,15 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
 import java.util.AbstractCollection;
 import java.util.AbstractList;
 import java.util.AbstractMap;
@@ -174,16 +180,16 @@ public class ScriptContext implements GCTracker {
     private static Object[] findMembers(Class cl, String name, boolean isField, boolean isStatic) {
         if (isField) {
             ArrayList<Object> retList = new ArrayList<>();
-            Map<Class, Field> fieldMap = new HashMap<>();
-            checkAndAddFields(name, isStatic, retList, fieldMap, cl.getFields());
+            Set<Class> fieldSet = new HashSet<>();
+            checkAndAddFields(name, isStatic, retList, fieldSet, cl.getFields());
             do {
-                checkAndAddFields(name, isStatic, retList, fieldMap, cl.getDeclaredFields());
+                checkAndAddFields(name, isStatic, retList, fieldSet, cl.getDeclaredFields());
                 cl = cl.getSuperclass();
             } while (cl != null);
             return retList.toArray();
         }
         if (name.equals("<init>")&&!isStatic) {
-            return cl.getDeclaredConstructors();
+            return convertConstructors(cl.getDeclaredConstructors());
         }
         ArrayList<Object> retList = new ArrayList<>();
         Set<MethodSetEntry> methodSet = new HashSet<>();
@@ -200,6 +206,25 @@ public class ScriptContext implements GCTracker {
 
         return retList.isEmpty() ? null : retList.toArray();
     }
+    private static Object[] convertConstructors(Constructor[] constructors) {
+        Object[] ret=new Object[constructors.length*5];
+        int i=0;
+        for (Constructor m : constructors) {
+            ret[i++]=m;
+            ret[i++]=void.class;
+            ret[i++]=null;
+            Class[] parameterTypes = m.getParameterTypes();
+            ret[i++]= parameterTypes;
+            Type[] genericParameterTypes = m.getGenericParameterTypes();
+            for (int j=genericParameterTypes.length-1;j>=0;--j){
+                if(genericParameterTypes[j]==parameterTypes[j])
+                    genericParameterTypes[j]=null;
+            }
+            ret[i++]= genericParameterTypes;
+        }
+        return ret;
+    }
+
 
     private static void checkAndAddMethods(
             String name, boolean isStatic, ArrayList<Object> retList,
@@ -210,22 +235,36 @@ public class ScriptContext implements GCTracker {
             if (!name.equals(m.getName())) continue;
             if (methodSet.add(new MethodSetEntry(m))) {
                 retList.add(m);
-                retList.add(m.getReturnType());
+                Class<?> returnType = m.getReturnType();
+                retList.add(returnType);
+                Type genericReturnType = m.getGenericReturnType();
+                retList.add(genericReturnType==returnType?null:returnType);
+                Class<?>[] parameterTypes = m.getParameterTypes();
+                retList.add(parameterTypes);
+                Type[] genericParameterTypes = m.getGenericParameterTypes();
+                for (int i=genericParameterTypes.length-1;i>=0;--i){
+                    if(genericParameterTypes[i]==parameterTypes[i])
+                        genericParameterTypes[i]=null;
+                }
+                retList.add(genericParameterTypes);
             }
         }
     }
 
     private static void checkAndAddFields(
             String name, boolean isStatic, ArrayList<Object> retList,
-            Map<Class, Field> fieldMap, Field[] fields) {
+            Set<Class> fieldSet, Field[] fields) {
         for (Field f : fields) {
             if (isStatic != Modifier.isStatic(f.getModifiers()))
                 continue;
             if (!name.equals(f.getName())) continue;
-            if (!fieldMap.containsKey(f.getType())) {
+            Class<?> type = f.getType();
+            if (!fieldSet.contains(type)) {
                 retList.add(f);
-                retList.add(f.getType());
-                fieldMap.put(f.getType(), f);
+                retList.add(type);
+                Type genericType = f.getGenericType();
+                retList.add(genericType==type?null:genericType);
+                fieldSet.add(type);
             }
         }
     }
@@ -344,14 +383,14 @@ public class ScriptContext implements GCTracker {
     }
 
     /**
-     *
+     *Take care if a converter exists
      * @param type type to convert
      * @param converter table converter
      * @param <T> type to convert
      * @param <F> sub type of T
      */
-    public <T, F extends T> void putTableConverter(Class<T> type, TableConverter<F> converter) {
-        lazyConverts().put(type, converter);
+    public <T, F extends T> TableConverter putTableConverter(Class<T> type, TableConverter<F> converter) {
+        return lazyConverts().put(type, converter);
     }
 
 
@@ -472,6 +511,117 @@ public class ScriptContext implements GCTracker {
         TableConverter<?> converter = sConverters.get(target);
         if (converter != null)
             return converter.convert(table);
+        return null;
+    }
+    private static Class resolveType(Type type){
+        if(type instanceof Class)
+            return (Class) type;
+        else if(type instanceof ParameterizedType)
+            return (Class) ((ParameterizedType) type).getRawType();
+        else if(type instanceof WildcardType)
+            return  resolveType(((WildcardType) type).getUpperBounds()[0]);
+        else if(type instanceof TypeVariable)
+            return resolveType(((TypeVariable) type).getBounds()[0]);
+        else  if(type instanceof GenericArrayType){
+            Type component=((GenericArrayType) type).getGenericComponentType();
+            Class c=resolveType(component);
+            return Array.newInstance(c,0).getClass();
+        }
+       throw new RuntimeException("Unexpected type:"+type);
+    }
+    private Type checkTableType(Type type){
+        return isTableType(resolveType(type))?type:null;
+    }
+    private Type resolveKeyTableType(Type type){
+        if(type instanceof ParameterizedType){
+            Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
+            if(actualTypeArguments.length>1)
+                return actualTypeArguments[0];
+            return null;
+        }
+        else if(type instanceof WildcardType)
+            return  resolveKeyTableType(((WildcardType) type).getUpperBounds()[0]);
+        else if(type instanceof TypeVariable)
+            return resolveKeyTableType(((TypeVariable) type).getBounds()[0]);
+        else return null;
+    }
+    private Type resolveValueTableType(Type type){
+        if(type instanceof ParameterizedType){
+            Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
+            if(actualTypeArguments.length>1)
+                return actualTypeArguments[1];
+            return actualTypeArguments[0];
+        }else if(type instanceof Class)
+            return ((Class) type).getComponentType();
+        else  if(type instanceof GenericArrayType)
+            return ((GenericArrayType) type).getGenericComponentType();
+        else if(type instanceof WildcardType)
+            return  resolveValueTableType(((WildcardType) type).getUpperBounds()[0]);
+        else if(type instanceof TypeVariable)
+            return resolveValueTableType(((TypeVariable) type).getBounds()[0]);
+        else return null;
+    }
+    private Object fixValue(Object from,Class raw,Type real) throws Throwable{
+        return fixValue(from,raw,real,isTableType(raw));
+    }
+    private Object fixValue(Object from,Class raw,Type real,boolean shouldFixTable) throws Throwable{
+        if(from==null) return null;
+        if((raw==Integer.class||raw==Integer.TYPE)&&from.getClass()==Long.class)
+            return ((Long) from).intValue();
+        if((raw==Short.class||raw==Short.TYPE)&&from.getClass()==Long.class)
+            return ((Long) from).shortValue();
+        if((raw==Byte.class||raw==Byte.TYPE)&&from.getClass()==Long.class)
+            return ((Long) from).byteValue();
+        if((raw==Float.class||raw==Float.TYPE)&&from.getClass()==Double.class)
+            return ((Double) from).floatValue();
+        if(raw==Character.class&&from.getClass()==String.class)
+            return ((String) from).charAt(0);
+        if(from instanceof Map&&shouldFixTable)
+            return convertTable((Map<Object, Object>) from
+                    , raw, real);
+        if(!raw.isInstance(from))
+            throw new LuaException("Incompatible Object passed:expected:"+real+",got:"+from);
+        return from;
+    }
+
+    private Object convertTable(Map<Object, Object> table,Class raw, Type target) throws Throwable {
+        TableConverter<?> converter = sConverters.get(raw);
+        if (converter != null){
+            if(target!=null){
+                Type valueType= resolveValueTableType(target);
+                if(valueType==null) valueType=converter.expectedValueTableType();
+                Type keyType= resolveKeyTableType(target);
+                if(keyType==null) keyType=converter.expectedKeyTableType();
+                if(valueType!=null){
+                    Class rawType = resolveType(valueType);
+                    boolean shouldFixTable=isTableType(rawType);
+                    for (Map.Entry<Object, Object> entry :
+                            table.entrySet()) {
+                        Object old = entry.getValue();
+                        Object value = fixValue(old,rawType,valueType,shouldFixTable);
+                        if(value!=old)
+                            entry.setValue(value);
+                    }
+                }
+                if(keyType!=null){
+                    List<Pair<Object, Object>> toChanged=new ArrayList<>();
+                    Class rawType = resolveType(keyType);
+                    boolean shouldFixTable=isTableType(rawType);
+                    for (Map.Entry<Object, Object> entry :
+                            table.entrySet()) {
+                        Object key = entry.getKey();
+                        Object newKey=fixValue(key,rawType,keyType,shouldFixTable);
+                        if(newKey!=key){
+                            toChanged.add(new Pair<>(key,newKey));
+                        }
+                    }
+                    for (Pair<Object, Object> pair : toChanged) {
+                        table.put(pair.second,table.remove(pair.first));
+                    }
+                }
+            }
+            return converter.convert(table);
+        }
         return null;
     }
 
@@ -723,11 +873,13 @@ public class ScriptContext implements GCTracker {
         long luaFuncInfo;
         int[] paramsTypes;
         Class<?> returnType;
+        Type genericReturnType;
 
-        MethodInfo(long luaFuncInfo, int[] paramsTypes, Class<?> returnType) {
+        MethodInfo(long luaFuncInfo, int[] paramsTypes, Class<?> returnType,Type genericReturnType) {
             this.luaFuncInfo = luaFuncInfo;
             this.paramsTypes = paramsTypes;
             this.returnType = returnType;
+            this.genericReturnType=genericReturnType;
         }
 
         @Override
@@ -831,7 +983,8 @@ public class ScriptContext implements GCTracker {
         InvokeHandler(Map<MethodSetEntry, Long> methodMap, long nativePtr, boolean isInterface) {
             for (Map.Entry<MethodSetEntry, Long> entry : methodMap.entrySet()) {
                 MethodSetEntry key = entry.getKey();
-                this.methodMap.put(key, new MethodInfo(entry.getValue(), generateParamTypes(key.paramTypes), key.returnType));
+                this.methodMap.put(key, new MethodInfo(entry.getValue(), generateParamTypes(key.paramTypes)
+                        , key.returnType,key.m.getGenericReturnType()));
             }
             this.isInterface = isInterface;
 
@@ -846,7 +999,8 @@ public class ScriptContext implements GCTracker {
                 throw new IllegalStateException("Unchangeable handler");
             MethodInfo old=methodMap.remove(entry);
             MethodSetEntry key=new MethodSetEntry(m);
-            MethodInfo info=new MethodInfo(old.luaFuncInfo,generateParamTypes(key.paramTypes),key.returnType);
+            MethodInfo info=new MethodInfo(old.luaFuncInfo,generateParamTypes(key.paramTypes)
+                    ,key.returnType,key.m.getGenericReturnType());
             old.luaFuncInfo=0;
             methodMap.put(key,info);
         }
@@ -865,20 +1019,9 @@ public class ScriptContext implements GCTracker {
             }
             long funcRef = info.luaFuncInfo;
             int[] paramsTypes = info.paramsTypes;
-            Class<?> returnType = info.returnType;
             Object ret = invokeLuaFunction(nativePtr, isInterface, funcRef, proxy, paramsTypes,
                     args);
-            if (returnType == int.class)
-                return ((Long) ret).intValue();
-            else if (returnType == char.class)
-                return ret == null ? null : ret.toString().charAt(0);
-            else if (returnType == short.class)
-                return ((Long) ret).shortValue();
-            else if (returnType == byte.class)
-                return ((Long) ret).byteValue();
-            else if (returnType == float.class)
-                return ((Double) ret).floatValue();
-            return ret;//void case
+            return fixValue(ret,info.returnType,info.genericReturnType);
         }
         private ScriptContext context(){
             return ScriptContext.this;
@@ -892,10 +1035,10 @@ public class ScriptContext implements GCTracker {
         }
 
     }
-    static Func getFunc(LuaFunction function,TypeId[] argTypes){
+    static Func getFunc(LuaFunction function,TypeId[] argTypes,TypeId returnType){
         InvokeHandler handler= (InvokeHandler) Proxy.getInvocationHandler(function);
         MethodInfo info=handler.methodMap.values().iterator().next();
-        Func func=handler.context().new Func(info.luaFuncInfo,argTypes);
+        Func func=handler.context().new Func(info.luaFuncInfo,argTypes,returnType);
         info.luaFuncInfo=0;
         return func;
     }
@@ -919,16 +1062,45 @@ public class ScriptContext implements GCTracker {
     public class Func{
         long funcRef;
         int[] argTypes;
-        private Func(long funcRef,TypeId[] argTypes){
+        TypeId returnType;
+        Class returnClass;
+        private Func(long funcRef,TypeId[] argTypes,TypeId returnType){
             this.funcRef=funcRef;
+            this.returnType=returnType;
             this.argTypes=new int[argTypes.length];
             for (int i = 0; i < argTypes.length; i++) {
                 this.argTypes[i]=getTypeLuaType(argTypes[i]);
             }
         }
 
-        public Object call(Object thiz,Object... args){
-            return invokeLuaFunction(nativePtr,false,funcRef,thiz,argTypes,args);
+        public Object call(Object thiz,Object... args) throws Throwable{
+            if(returnClass==null){
+                String name=returnType.getName();
+                switch (name){
+                    case "I":returnClass=int.class;
+                    break;
+                    case "J":returnClass=long.class;
+                        break;
+                    case "B":returnClass=byte.class;
+                        break;
+                    case "Z":returnClass=boolean.class;
+                        break;
+                    case "S":returnClass=short.class;
+                        break;
+                    case "F":returnClass=float.class;
+                        break;
+                    case "D":returnClass=double.class;
+                        break;
+                    case "V":returnClass=void.class;
+                        break;
+                    default:{
+                        name=(name.charAt(0)=='['?name:
+                                name.substring(1,name.length()-1)).replace('/','.');
+                        returnClass=thiz.getClass().getClassLoader().loadClass(name);
+                    }
+                }
+            }
+            return fixValue(invokeLuaFunction(nativePtr,false,funcRef,thiz,argTypes,args),returnClass,returnClass);
         }
 
         @Override

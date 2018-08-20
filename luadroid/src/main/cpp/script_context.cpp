@@ -10,6 +10,7 @@ __thread Import *ScriptContext::import = nullptr;
 jmethodID ScriptContext::sMapPut = nullptr;
 jmethodID ScriptContext::sWriteBytes;
 static jmethodID sProxy;
+TJNIEnv* _GCEnv;
 jmethodID charValue;
 jmethodID booleanValue;
 jmethodID longValue;
@@ -164,11 +165,9 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
                                                          "(Ljava/lang/Class;Ljava/lang/Class;)I");
         JavaType::sGetSingleInterface = env->GetStaticMethodID(cl, "getSingleInterface"
                 , "(Ljava/lang/Class;)Ljava/lang/reflect/Method;");
-        JavaType::sGetParameterTypes = env->GetStaticMethodID(cl, "getParameterTypes"
-                , "(Ljava/lang/Object;)[Ljava/lang/Class;");
         JavaType::sIsTableType = env->GetMethodID(cl, "isTableType", "(Ljava/lang/Class;)Z");
         JavaType::sTableConvert = env->GetMethodID(cl, "convertTable", "(Ljava/util/Map;"
-                "Ljava/lang/Class;)Ljava/lang/Object;");
+                "Ljava/lang/Class;Ljava/lang/reflect/Type;)Ljava/lang/Object;");
     }
     if (charValue == nullptr) {
         JClass cChar = env->FindClass("java/lang/Character");
@@ -283,7 +282,7 @@ void ScriptContext::setPendingException(TJNIEnv *env, const String &msg) {
     env->SetObjectField(pendingJavaError, id, jmsg.get());
 }
 
-jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type) {
+jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type,jobject real) {
     jvalue ret;
     if (type->isChar()) {
         if(luaObject.type==T_OBJECT){
@@ -356,8 +355,8 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
                                               JObject(env, value).get());
                     }
                     parsedTable->erase(luaObject.lazyTable);
-                    ret.l = type->convertTable(env,map);
-                } else ret.l=type->convertTable(env,iter->second);
+                    ret.l = type->convertTable(env,map,real);
+                } else ret.l=type->convertTable(env,iter->second,real);
                 if(isOwner) {
                     delete parsedTable;
                     parsedTable= nullptr;
@@ -378,22 +377,24 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
         } else {
             luaObject.shouldRelease=true;
             if (type->isBoxedBool()) {
-                ret.l = env->NewObject(type->getType(), type->
-                        getConstructorForBoxType(env), luaObject.isTrue);
+                ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                        getBoxMethodForBoxType(env), luaObject.isTrue).invalidate();
             } else if (type == DoubleClass) {
-                ret.l = env->NewObject(type->getType(), type->getConstructorForBoxType(env),
-                                       luaObject.type == T_INTEGER ? (double) luaObject.integer : luaObject.number);
+                ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
+                                       luaObject.type == T_INTEGER ? (double) luaObject.integer
+                                                                   : luaObject.number).invalidate();
             } else if (type == DoubleClass) {
-                ret.l = env->NewObject(type->getType(), type->getConstructorForBoxType(env),
-                                       luaObject.type == T_INTEGER ? (float) luaObject.integer : (float) luaObject.number);
+                ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
+                                       luaObject.type == T_INTEGER ? (float) luaObject.integer :
+                                       (float) luaObject.number).invalidate();
             }else if (type->isBoxedChar()) {
                 if (luaObject.type == T_STRING)
                     strcpy8to16(&luaObject.character, luaObject.string, NULL);
-                ret.l = env->NewObject(type->getType(), type->
-                        getConstructorForBoxType(env), luaObject.character);
+                ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                        getBoxMethodForBoxType(env), luaObject.character).invalidate();
             } else  if (type->_isBox) {
-                ret.l = env->NewObject(type->getType(), type->
-                        getConstructorForBoxType(env), luaObject.integer);
+                ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                        getBoxMethodForBoxType(env), luaObject.integer).invalidate();
             } else {
                 luaObject.shouldRelease = false;
                 ret.l = INVALID_OBJECT;
@@ -408,13 +409,14 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
 
 
 ScriptContext::~ScriptContext() {
-    for (auto &&pair :typeMap) {//ide support for libstdc++  bug fix
+    AutoJNIEnv env;
+    _GCEnv=env;
+    for (auto &&pair :typeMap) {
         delete pair.second;
     }
     ScopeLock sentry(lock);
     for (auto &&pair :stateMap)
         lua_close(pair.second);
-    AutoJNIEnv env;
     for (auto &&object:addedMap) {
         env->DeleteGlobalRef(object.second.second);
     }
@@ -458,7 +460,7 @@ jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *i
 
 JavaType *ScriptContext::HashMapType(TJNIEnv *env) {
     if (HashMapClass == nullptr) {
-        HashMapClass = ensureType(env, "HashMap");
+        HashMapClass = ensureType(env, "LinkedHashMap");
         sMapPut = env->GetMethodID(HashMapClass->getType(), "put", "(Ljava/lang/Object;"
                 "Ljava/lang/Object;)Ljava/lang/Object;");
     }
@@ -477,19 +479,19 @@ jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObje
         case T_NIL:
             return nullptr;
         case T_INTEGER: {
-            return env->NewObject(LongClass->getType(), LongClass->
-                    getConstructorForBoxType(env), luaObject.integer);
+            return env->CallStaticObjectMethod(LongClass->getType(), LongClass->
+                    getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
         case T_BOOLEAN: {
-            return env->NewObject(BooleanClass->getType(), BooleanClass->
-                    getConstructorForBoxType(env), luaObject.integer);
+            return env->CallStaticObjectMethod(BooleanClass->getType(), BooleanClass->
+                    getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
         case T_FLOAT: {
-            return env->NewObject(DoubleClass->getType(), DoubleClass->
-                    getConstructorForBoxType(env), luaObject.integer);
+            return env->CallStaticObjectMethod(DoubleClass->getType(), DoubleClass->
+                    getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
         case T_OBJECT: {
-            jvalue v = luaObjectToJValue(env, luaObject, FunctionType(env));
+            jvalue v = luaObjectToJValue(env, luaObject, HashMapType(env));
             v.l = env->NewLocalRef(v.l);
             return v.l;
         }
@@ -500,8 +502,8 @@ jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObje
             return v.l;
         }
         case T_CHAR:{
-            return env->NewObject(CharacterClass->getType(), CharacterClass->
-                    getConstructorForBoxType(env), luaObject.integer);
+            return env->CallStaticObjectMethod(CharacterClass->getType(), CharacterClass->
+                    getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
     }
     return nullptr;

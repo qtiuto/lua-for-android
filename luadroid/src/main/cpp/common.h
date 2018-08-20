@@ -20,7 +20,7 @@
 #define __thread thread_local
 #endif
 extern JavaVM *vm;
-extern __thread TJNIEnv* _env;
+extern TJNIEnv* _GCEnv;
 extern jclass stringType;
 extern jclass classType;
 extern jclass throwableType;

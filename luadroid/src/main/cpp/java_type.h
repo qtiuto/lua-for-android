@@ -19,14 +19,27 @@ class ScriptContext;
 
 class JavaType {
 public:
+    struct ParameterizedType{
+        JavaType* rawType;
+        jobject realType= nullptr;
+        ParameterizedType(){}
+        ParameterizedType(const ParameterizedType&)= delete;
+        ParameterizedType(ParameterizedType&& o):rawType(o.rawType),realType(o.realType){
+            o.realType= nullptr;
+        }
+        ~ParameterizedType(){
+            if(realType)
+                _GCEnv->DeleteGlobalRef(realType);
+        }
+    };
     struct FieldInfo {
         jfieldID id;
-        JavaType *type;
+        ParameterizedType type;
     };
     struct MethodInfo {
         jmethodID id;
-        JavaType *returnType;
-        Array<JavaType *> params;
+        ParameterizedType returnType;
+        Array<ParameterizedType> params;
     };
 private:
     enum INT_TYPE {
@@ -47,7 +60,6 @@ private:
     static jmethodID sFindMembers;
     static jmethodID sWeightObject;
     static jmethodID sGetSingleInterface;
-    static jmethodID sGetParameterTypes;
     static jmethodID sIsInterface;
     static jmethodID sIsTableType;
     static jmethodID sTableConvert;
@@ -100,8 +112,8 @@ public:
         return env->CallBooleanMethod(context->javaRef, sIsTableType, type);
     }
 
-    jobject convertTable(TJNIEnv* env,jobject map) {
-        return env->asJNIEnv()->CallObjectMethod(context->javaRef, sTableConvert, map, type);
+    jobject convertTable(TJNIEnv* env,jobject map,jobject realType) {
+        return env->asJNIEnv()->CallObjectMethod(context->javaRef, sTableConvert, map, type,realType);
     }
 
     bool isArray(TJNIEnv* env) {
@@ -163,11 +175,11 @@ public:
         return boxed != context->ShortClass;
     }
 
-    jmethodID getConstructorForBoxType(TJNIEnv* env){
+    jmethodID getBoxMethodForBoxType(TJNIEnv *env){
         if(!_isBox) return nullptr;
-        auto&& array=ensureMethod(env,FakeString("<init>"),false);
+        auto&& array=ensureMethod(env,FakeString("valueOf"), true);
         for (const MethodInfo& info:*array){
-            if(info.params[0]->isPrimitive())
+            if(info.params[0].rawType->isPrimitive())
                 return info.id;
         }
         return nullptr;
@@ -229,7 +241,7 @@ public:
 
     ~JavaType() {
         //run in gc thread
-        AutoJNIEnv()->DeleteGlobalRef(type);
+        _GCEnv->DeleteGlobalRef(type);
     }
 };
 
