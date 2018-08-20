@@ -344,8 +344,7 @@ public class ScriptContext implements GCTracker {
         sConverters.put(HashMap.class, mapConverter);
         sConverters.put(Map.class, mapConverter);
         sConverters.put(AbstractMap.class, mapConverter);
-        TableConverter<LinkedHashMap<?, ?>> mapConverter2 = LinkedHashMap::new;
-        sConverters.put(LinkedHashMap.class, mapConverter2);
+        sConverters.put(LinkedHashMap.class, mapConverter);
         sConverters.put(JSONObject.class, JSONObject::new);
 
         TableConverter<ConcurrentHashMap<?, ?>> mapConverter3 = ConcurrentHashMap::new;
