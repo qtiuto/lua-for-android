@@ -46,6 +46,13 @@
       Notice:in module java the name is "type",the global function is
       changed to upper case to avoid confiction with the internal
       function type,with return the type of a lua object.
+      Note:To get a primitive type,pass it's name,e.g to get 'int',
+      pass int, rather than jni identifier 'I'.For array type,
+      you must pass in full name,rather than shortName.The full name 
+      you pass in is the name from Class#getName,and the short Name is
+      from getSimpleName.Inner class must pass in qulified name like
+      'View$OnClickListener' instead of 'View.OnClickListener' or 
+      'OnClickListener'
       
      instanceof:
       to check whether the given object is an instance of the give type.
@@ -231,9 +238,9 @@
 
     Automatic Conversion:
     
-     For field set and method call,lua object will be converted.
-     automatically according to the parameter.Type check have the same
-     rule in method deduction.
+     For field set and method call or proxy return,lua object will be converted
+     automatically according to the type.Type check have the same rule in 
+     method deduction.If type check failed,an exception may be thrown
      
      For primitive types,like a static_cast<type>(value).
      
@@ -247,13 +254,15 @@
      
      For table ,if the table convertible,it's converted by the table converter
      else it's like call proxy with super set to the type and methods set to 
-     the table.
+     the table.Additionally,generic type check and conversion will be performed
+     automatically,That's to say,Type such as List<Integer>,List<Short>
+     or List<List<String>> will be supported.
      
-      User date is treated as integer.
+     User date is treated as integer.
       
-      Note: All primitive type accept their boxed type and all boxed type
-      accept their primitive type.Autobox and auto-unbox will be performed
-      if necessary
+     Note: All primitive type accept their boxed type and all boxed type
+     accept their primitive type.Autobox and auto-unbox will be performed
+     if necessary
           
     Module name in lua:
      

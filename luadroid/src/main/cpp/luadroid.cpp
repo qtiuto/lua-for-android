@@ -1101,6 +1101,7 @@ int javaImport(lua_State *L) {
     if (!luaL_isstring(L, -1)) luaL_error(L, "Should pass a string for import");
     String s(lua_tostring(L, -1));
     Import *import = context->getImport();
+    if(s[0]=='[') TopErrorHandle("Don't import array Type");
     if (strcmp(&s[s.length() - 2], ".*") == 0) {
         s = s.substr(0, s.length() - 1);
         const auto &end = import->packages.end();

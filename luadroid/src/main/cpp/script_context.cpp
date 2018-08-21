@@ -218,6 +218,42 @@ JavaType *ScriptContext::getVoidClass(TJNIEnv *env) {
     return ensureType(env, (JClass) env->GetStaticObjectField(Void, mid));
 
 }
+JavaType* ensureShortArrayType(ScriptContext* context,TJNIEnv *env, const char *typeName){
+    size_t nameLen=strchr(typeName,'[')-typeName;
+    String trueType(typeName,nameLen);
+    if(trueType=="int") trueType="I";
+    else if(trueType=="byte") trueType="B";
+    else if(trueType=="char") trueType="C";
+    else if(trueType=="float") trueType="F";
+    else if(trueType=="boolean") trueType="Z";
+    else if(trueType=="long") trueType="J";
+    else if(trueType=="double") trueType="D";
+    else if(trueType=="short") trueType="S";
+    else{
+        const Import *import =context-> getImport();
+        for (auto &&pack:import->packages) {
+            String full(pack + trueType);
+            changeClassName(full);
+            env->FindClass(&full[0]);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                continue;
+            }
+            trueType=full;
+        }
+    }
+    int arrDepth=(strlen(typeName)-nameLen)>>1;
+    char legalName[trueType.size()+arrDepth+1];
+    memset(legalName,'[',arrDepth);
+    memcpy(legalName+arrDepth,trueType.data(),trueType.length()+1);
+    JClass type = env->FindClass(legalName);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return nullptr;
+    }
+    JavaType *ret = context->ensureType(env, type);
+    return ret;
+}
 
 JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
 #define MatchPrimitive(type)\
@@ -226,23 +262,26 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
     }})
 
     MatchPrimitive(byte);
-    MatchPrimitive(short);
     MatchPrimitive(int);
-    MatchPrimitive(long);
+    MatchPrimitive(void);
     MatchPrimitive(boolean);
+    MatchPrimitive(long);
+    MatchPrimitive(double);
     MatchPrimitive(char);
     MatchPrimitive(float);
-    MatchPrimitive(double);
-    MatchPrimitive(void);
+    MatchPrimitive(short);
 
 
     JClass type;
-    if (strchr(typeName, '.') == nullptr) {
+    if (strchr(typeName, '.') == nullptr&&typeName[0]!='[') {
         if (strchr(typeName, '/') != nullptr) return nullptr;
         const Import *import = getImport();
-        const auto &iter = import->stubbed.find(FakeString(typeName));
+        auto&& iter = import->stubbed.find(FakeString(typeName));
         if (iter != import->stubbed.end()) return iter->second;
-        for (auto &pack:import->packages) {
+        if(typeName[strlen(typeName)]==']'){
+            return ensureShortArrayType(this,env,typeName);
+        }
+        for (auto &&pack:import->packages) {
             String full(pack + typeName);
             changeClassName(full);
             type = env->FindClass(&full[0]);

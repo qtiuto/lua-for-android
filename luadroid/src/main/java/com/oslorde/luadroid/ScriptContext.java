@@ -1126,6 +1126,8 @@ public class ScriptContext implements GCTracker {
                         break;
                     case "Z":returnClass=boolean.class;
                         break;
+                    case "C":returnClass=char.class;
+                        break;
                     case "S":returnClass=short.class;
                         break;
                     case "F":returnClass=float.class;
