@@ -564,22 +564,64 @@ public class ScriptContext implements GCTracker {
         return fixValue(from,raw,real,isTableType(raw));
     }
     private Object fixValue(Object from,Class raw,Type real,boolean shouldFixTable) throws Throwable{
-        if(from==null) return null;
-        if((raw==Integer.class||raw==Integer.TYPE)&&from.getClass()==Long.class)
+        if(from==null||raw==void.class) return null;
+        if((raw==Integer.class||raw==Integer.TYPE)&&from instanceof Long)
             return ((Long) from).intValue();
-        if((raw==Short.class||raw==Short.TYPE)&&from.getClass()==Long.class)
+        if((raw==Short.class||raw==Short.TYPE)&&from instanceof Long)
             return ((Long) from).shortValue();
-        if((raw==Byte.class||raw==Byte.TYPE)&&from.getClass()==Long.class)
+        if((raw==Byte.class||raw==Byte.TYPE)&&from instanceof Long)
             return ((Long) from).byteValue();
-        if((raw==Float.class||raw==Float.TYPE)&&from.getClass()==Double.class)
+        if((raw==Float.class||raw==Float.TYPE)&&from instanceof Double)
             return ((Double) from).floatValue();
-        if(raw==Character.class&&from.getClass()==String.class)
+        if(raw==Character.class&&from instanceof String)
             return ((String) from).charAt(0);
         if(from instanceof Map&&shouldFixTable)
             return convertTable((Map<Object, Object>) from
                     , raw, real);
         if(!raw.isInstance(from))
             throw new LuaException("Incompatible Object passed:expected:"+real+",got:"+from);
+        return from;
+    }
+    //string table is a little bit slow in android but faster on desktop
+    private Object fixValue2(Object from,Class raw,Type real,boolean shouldFixTable) throws Throwable{
+        if(from==null) return null;
+        switch (raw.getName()) {
+            case "int":
+            case "java.lang.Integer":
+                if(from instanceof Long)
+                    return ((Long) from).intValue();
+                break;
+            case "short":
+            case "java.lang.Short":
+                if(from instanceof Long)
+                    return ((Long) from).shortValue();
+                break;
+            case "byte":
+            case "java.lang.Byte":
+                if(from instanceof Long)
+                    return ((Long) from).byteValue();
+                break;
+
+            case "float":
+            case "java.lang.Float":
+                if(from instanceof Double)
+                    return ((Double) from).floatValue();
+                break;
+            case "char":
+            case "java.lang.Character":
+                if(from instanceof String)
+                    return ((String) from).charAt(0);
+                break;
+            case "void":
+                return null;
+            default:
+                if(from instanceof Map&&shouldFixTable)
+                    return convertTable((Map<Object, Object>) from
+                            , raw, real);
+                if(!raw.isInstance(from))
+                    throw new LuaException("Incompatible Object passed:expected:"+real+",got:"+from);
+                break;
+        }
         return from;
     }
 
@@ -904,7 +946,7 @@ public class ScriptContext implements GCTracker {
 
         @Override
         public int hashCode() {
-            return name.hashCode() + returnType.hashCode() + Arrays.hashCode(paramTypes);
+            return name.hashCode() ^ returnType.hashCode() ^ Arrays.hashCode(paramTypes);
         }
 
         @Override
