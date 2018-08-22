@@ -103,9 +103,6 @@ class ScriptContext {
 
     JavaType *HashMapType(TJNIEnv *env);
 
-public:
-    Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
-    jobject const javaRef;
     JavaType *const byteClass;
     JavaType *const shortClass;
     JavaType *const intClass;
@@ -123,7 +120,9 @@ public:
     JavaType *const FloatClass;
     JavaType *const DoubleClass;
     JavaType *const voidClass;
-    JavaType *const StringClass;
+public:
+    Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
+    jobject const javaRef;
     JavaType *const ObjectClass;
 
 

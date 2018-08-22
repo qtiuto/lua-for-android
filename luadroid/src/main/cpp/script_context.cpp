@@ -90,8 +90,8 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
 bool changeClassName(String &className) noexcept;
 #define BOX_INIT(Type) Type##Class(ensureType(env,env->FindClass("java/lang/"#Type)))
 ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, bool localFunction) :
-        importAll(importAll), localFunction(localFunction),
-        javaRef((init(env, javaObject), env->NewWeakGlobalRef(javaObject))),
+        importAll((init(env, javaObject),importAll)), localFunction(localFunction),
+        javaRef( env->NewWeakGlobalRef(javaObject)),
         byteClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[B")))),
         shortClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[S")))),
         intClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[I")))),
@@ -100,10 +100,11 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
         charClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[C")))),
         floatClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[F")))),
         doubleClass(ensureType(env, JavaType::getComponentType(env, env->FindClass("[D")))),
-        voidClass(getVoidClass(env)),StringClass(ensureType(env,stringType)),
-        ObjectClass(ensureType(env,env->GetObjectClass(stringType))),
+        voidClass(getVoidClass(env)),ObjectClass(ensureType(env,env->GetSuperclass(stringType))),
         BOX_INIT(Byte),BOX_INIT(Character), BOX_INIT(Boolean),BOX_INIT(Integer),BOX_INIT(Long),
         BOX_INIT(Short),BOX_INIT(Float), BOX_INIT(Double){
+    JavaType* StringClass=ensureType(env,stringType);
+    StringClass->_isString=true;
     byteClass->_isInteger = true;
     byteClass->primitive = true;
     shortClass->_isInteger = true;
@@ -116,10 +117,7 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
     doubleClass->primitive = true;
     floatClass->_isFloat = true;
     doubleClass->_isFloat = true;
-    charClass->_isChar= true;
     voidClass->primitive = true;
-    voidClass->_isVoid=true;
-    StringClass->_isString=true;
     ByteClass->_isBox=true;
     ShortClass->_isBox=true;
     IntegerClass->_isBox=true;
@@ -134,6 +132,23 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
     LongClass->_isInteger=true;
     FloatClass->_isFloat = true;
     DoubleClass->_isFloat = true;
+    byteClass->typeID=JavaType::BYTE;
+    shortClass->typeID=JavaType::SHORT;
+    intClass->typeID=JavaType::INT;
+    longClass->typeID=JavaType::LONG;
+    floatClass->typeID=JavaType::FLOAT;
+    doubleClass->typeID=JavaType::DOUBLE;
+    charClass->typeID=JavaType::CHAR;
+    booleanClass->typeID=JavaType::BOOLEAN;
+    voidClass->typeID=JavaType::VOID;
+    ByteClass->typeID=JavaType::BOX_BYTE;
+    ShortClass->typeID=JavaType::BOX_SHORT;
+    IntegerClass->typeID=JavaType::BOX_INT;
+    LongClass->typeID=JavaType::BOX_LONG;
+    FloatClass->typeID=JavaType::BOX_FLOAT;
+    DoubleClass->typeID=JavaType::BOX_DOUBLE;
+    CharacterClass->typeID=JavaType::BOX_CHAR;
+    BooleanClass->typeID=JavaType::BOX_BOOLEAN;
 }
 
 void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
@@ -239,19 +254,22 @@ JavaType* ensureShortArrayType(ScriptContext* context,TJNIEnv *env, const char *
                 env->ExceptionClear();
                 continue;
             }
-            trueType=full;
+            trueType='L'+full+';';
+            break;
         }
     }
-    int arrDepth=(strlen(typeName)-nameLen)>>1;
-    char legalName[trueType.size()+arrDepth+1];
+    size_t arrDepth=(strlen(typeName)-nameLen)>>1;
+    char* legalName=new char[trueType.size()+arrDepth+1];
     memset(legalName,'[',arrDepth);
     memcpy(legalName+arrDepth,trueType.data(),trueType.length()+1);
     JClass type = env->FindClass(legalName);
+    delete [] legalName;
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         return nullptr;
     }
     JavaType *ret = context->ensureType(env, type);
+    context->getImport()->stubbed.emplace(typeName,ret);
     return ret;
 }
 
@@ -278,7 +296,7 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
         const Import *import = getImport();
         auto&& iter = import->stubbed.find(FakeString(typeName));
         if (iter != import->stubbed.end()) return iter->second;
-        if(typeName[strlen(typeName)]==']'){
+        if(typeName[strlen(typeName)-1]==']'){
             return ensureShortArrayType(this,env,typeName);
         }
         for (auto &&pack:import->packages) {
@@ -329,7 +347,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
         } else if(luaObject.type==T_CHAR)
             ret.c=luaObject.character;
         else strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
-    } else if (type == booleanClass) {
+    } else if (type->isBool()) {
         if(luaObject.type==T_OBJECT){
             ret.z=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
         } else ret.z = luaObject.isTrue;
@@ -337,11 +355,11 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
         if(luaObject.type==T_OBJECT){
             ret.j=env->CallLongMethod(luaObject.objectRef->object,longValue);
         } else ret.j = luaObject.integer;
-    } else if (type == floatClass) {
+    } else if (type->typeID == JavaType::FLOAT) {
         if(luaObject.type==T_OBJECT){
             ret.f= float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
         } else ret.f = (float) luaObject.number;
-    } else if (type == doubleClass) {
+    } else if (type->typeID == JavaType::DOUBLE) {
         if(luaObject.type==T_OBJECT){
             ret.d= env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
         } else ret.d = luaObject.number;
@@ -418,11 +436,11 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
             if (type->isBoxedBool()) {
                 ret.l = env->CallStaticObjectMethod(type->getType(), type->
                         getBoxMethodForBoxType(env), luaObject.isTrue).invalidate();
-            } else if (type == DoubleClass) {
+            } else if (type->typeID == JavaType::BOX_DOUBLE) {
                 ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
                                        luaObject.type == T_INTEGER ? (double) luaObject.integer
                                                                    : luaObject.number).invalidate();
-            } else if (type == DoubleClass) {
+            } else if (type->typeID == JavaType::BOX_FLOAT) {
                 ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
                                        luaObject.type == T_INTEGER ? (float) luaObject.integer :
                                        (float) luaObject.number).invalidate();
@@ -443,57 +461,6 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
     return ret;
     ERROR_HANDLE:
     ret.l = INVALID_OBJECT;
-    return ret;
-}
-
-
-ScriptContext::~ScriptContext() {
-    AutoJNIEnv env;
-    _GCEnv=env;
-    for (auto &&pair :typeMap) {
-        delete pair.second;
-    }
-    ScopeLock sentry(lock);
-    for (auto &&pair :stateMap)
-        lua_close(pair.second);
-    for (auto &&object:addedMap) {
-        env->DeleteGlobalRef(object.second.second);
-    }
-    env->DeleteWeakGlobalRef(javaRef);
-}
-
-jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *interfaces,
-                             const Vector<JObject> &principal,
-                             Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared,
-                             long nativeInfo,jobject superObject) {
-    jsize interfaceCount;
-    JObjectArray interfaceArray;
-    if (interfaces != nullptr && (interfaceCount = (jsize) interfaces->size())) {
-        interfaceArray = env->NewObjectArray(interfaceCount, classType, nullptr);
-        for (jsize i = interfaceCount - 1; i >= 0; --i) {
-            env->SetObjectArrayElement(interfaceArray, i,
-                                       interfaces->at((unsigned long) i)->getType());
-        }
-    }
-    jsize principalCount = (jsize) principal.size();
-    JObjectArray principalArray =principalCount==0? JObjectArray():
-                                 env->NewObjectArray(principalCount, env->GetObjectClass(principal[0]), nullptr);
-    for (jsize i = principalCount - 1; i >= 0; --i) {
-        env->SetObjectArrayElement(principalArray, i, principal[i]);
-    }
-    jsize proxyCount = (jsize) proxy.size();
-    jlong buf[proxyCount];
-    for (jsize i = proxyCount - 1; i >= 0; --i) {
-        buf[i] = (jlong) proxy[i].get();
-    }
-    JType<jlongArray> proxyArray = env->NewLongArray(proxyCount);
-    env->SetLongArrayRegion(proxyArray, 0, proxyCount, buf);
-    jobject ret = env->asJNIEnv()->CallObjectMethod(
-            javaRef, sProxy, (jlong) this, main->getType(), interfaceArray.get(),
-            principalArray.get(), proxyArray.get(), shared, nativeInfo,superObject);
-    HOLD_JAVA_EXCEPTION(this, {
-        return INVALID_OBJECT;
-    });
     return ret;
 }
 
@@ -547,6 +514,57 @@ jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObje
     }
     return nullptr;
 }
+
+ScriptContext::~ScriptContext() {
+    AutoJNIEnv env;
+    _GCEnv=env;
+    for (auto &&pair :typeMap) {
+        delete pair.second;
+    }
+    ScopeLock sentry(lock);
+    for (auto &&pair :stateMap)
+        lua_close(pair.second);
+    for (auto &&object:addedMap) {
+        env->DeleteGlobalRef(object.second.second);
+    }
+    env->DeleteWeakGlobalRef(javaRef);
+}
+
+jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *interfaces,
+                             const Vector<JObject> &principal,
+                             Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared,
+                             long nativeInfo,jobject superObject) {
+    jsize interfaceCount;
+    JObjectArray interfaceArray;
+    if (interfaces != nullptr && (interfaceCount = (jsize) interfaces->size())) {
+        interfaceArray = env->NewObjectArray(interfaceCount, classType, nullptr);
+        for (jsize i = interfaceCount - 1; i >= 0; --i) {
+            env->SetObjectArrayElement(interfaceArray, i,
+                                       interfaces->at((unsigned long) i)->getType());
+        }
+    }
+    jsize principalCount = (jsize) principal.size();
+    JObjectArray principalArray =principalCount==0? JObjectArray():
+                                 env->NewObjectArray(principalCount, env->GetObjectClass(principal[0]), nullptr);
+    for (jsize i = principalCount - 1; i >= 0; --i) {
+        env->SetObjectArrayElement(principalArray, i, principal[i]);
+    }
+    jsize proxyCount = (jsize) proxy.size();
+    jlong buf[proxyCount];
+    for (jsize i = proxyCount - 1; i >= 0; --i) {
+        buf[i] = (jlong) proxy[i].get();
+    }
+    JType<jlongArray> proxyArray = env->NewLongArray(proxyCount);
+    env->SetLongArrayRegion(proxyArray, 0, proxyCount, buf);
+    jobject ret = env->asJNIEnv()->CallObjectMethod(
+            javaRef, sProxy, (jlong) this, main->getType(), interfaceArray.get(),
+            principalArray.get(), proxyArray.get(), shared, nativeInfo,superObject);
+    HOLD_JAVA_EXCEPTION(this, {
+        return INVALID_OBJECT;
+    });
+    return ret;
+}
+
 
 void ScriptContext::registerLogger(TJNIEnv *env, jobject out, jobject err) {
     if (outLogger)

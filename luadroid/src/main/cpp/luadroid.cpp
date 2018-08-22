@@ -147,6 +147,7 @@ void registerLogger(TJNIEnv *, jclass, jlong ptr, jobject out, jobject err);
 void nativeClose(JNIEnv *env, jclass thisClass, jlong ptr);
 void nativeClean(JNIEnv *env, jclass thisClass, jlong ptr);
 void releaseFunc(JNIEnv *env, jclass thisClass, jlong ptr);
+jint getClassType(TJNIEnv * env, jclass, jlong ptr,jclass clz);
 void addJavaObject(TJNIEnv *env, jclass thisClass, jlong ptr, jstring _name, jobject obj,
                    jboolean local);
 void addJavaMethod(TJNIEnv *env, jclass thisClass, jlong ptr, jstring jname, jstring method,
@@ -199,10 +200,10 @@ static const JNINativeMethod nativeMethods[] =
          {"constructChild",    "(JLjava/lang/Class;J)"
                                        "Ljava/lang/Object;",       (void *) constructChild},
          {"releaseFunc",       "(J)V",                             (void *) releaseFunc},
+         {"getClassType",      "(JLjava/lang/Class;)I",            (void *) getClassType},
          {"invokeLuaFunction", "(JZJLjava/lang/Object;"
                                        "[I[Ljava/lang/Object;)"
-                                       "Ljava/lang/Object;",
-                                                                   (void *) invokeLuaFunction}};
+                                       "Ljava/lang/Object;", (void *) invokeLuaFunction}};
 
 JavaVM *vm;
 jclass stringType;
@@ -473,7 +474,10 @@ void releaseFunc(JNIEnv *, jclass, jlong ptr) {
         delete info;
     }
 }
-
+jint getClassType(TJNIEnv * env, jclass, jlong ptr,jclass clz) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    return context->ensureType(env,clz)->getTypeID();
+}
 void addJavaObject(TJNIEnv *env, jclass, jlong ptr, jstring _name, jobject obj, jboolean local) {
     ScriptContext *context = (ScriptContext *) ptr;
     JString name(env, _name);
@@ -626,9 +630,9 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
             case 0: {//char
                 JObject character = env->GetObjectArrayElement(args, i);
                 char16_t c = env->CallCharMethod(character, charValue);
-                char *charStr = strndup16to8(&c, 1);
+                char charStr[4]={0} ;
+                strncpy16to8(charStr,&c, 1);
                 lua_pushstring(L, charStr);
-                free((void *) charStr);
                 break;
             }
             case 1: {//boolean
@@ -727,6 +731,8 @@ int javaType(lua_State *L) {
         JavaType *type;
         if (luaL_isstring(L, i)) {
             type = context->ensureType(env, lua_tostring(L, i));
+            if(type== nullptr)
+                goto Error;
         } else {
             JavaObject *objectRef = (JavaObject *) luaL_testudata(L, i, JAVA_OBJECT);
             if (objectRef != nullptr) {
@@ -1071,17 +1077,8 @@ int javaProxy(lua_State *L) {
     return 1;
 
 }
-
-LocalFunctionInfo *saveLocalFunction(lua_State *L, int i) {
-    LocalFunctionInfo *info = new LocalFunctionInfo(L);
-    lua_pushlightuserdata(L, info);
-    lua_pushvalue(L, i);
-    lua_settable(L, LUA_REGISTRYINDEX);
-    return info;
-}
-
-JNIEXPORT jobject constructChild(TJNIEnv *env, jclass, jlong ptr, jclass target,
-                                 jlong nativeInfo) {
+jobject constructChild(TJNIEnv *env, jclass, jlong ptr, jclass target,
+                       jlong nativeInfo) {
     ScriptContext *context = (ScriptContext *) ptr;
     JavaType *type = context->ensureType(env, target);
     void **constructInfo = (void **) nativeInfo;
@@ -1093,6 +1090,13 @@ JNIEXPORT jobject constructChild(TJNIEnv *env, jclass, jlong ptr, jclass target,
     return ret;
 }
 
+LocalFunctionInfo *saveLocalFunction(lua_State *L, int i) {
+    LocalFunctionInfo *info = new LocalFunctionInfo(L);
+    lua_pushlightuserdata(L, info);
+    lua_pushvalue(L, i);
+    lua_settable(L, LUA_REGISTRYINDEX);
+    return info;
+}
 
 int javaImport(lua_State *L) {
     ScriptContext *context = getContext(L);
@@ -1247,25 +1251,6 @@ int javaInstanceOf(lua_State *L) {
     lua_pushboolean(L, AutoJNIEnv()->IsInstanceOf(objectRef->object, typeRef->getType()));
     return 1;
 }
-/*int javaSyncK(lua_State *L
-#if LUA_VERSION_NUM>502
-,int status,lua_KContext ctx
-#endif
-) {
-#if LUA_VERSION_NUM==502
-    int ctx;
-    int status=lua_getctx(L,&ctx);
-#endif
-    JavaObject *objectRef = (JavaObject *) lua_touserdata(L, 1);
-    AutoJNIEnv env;
-    env->MonitorExit(objectRef->object);
-    ScriptContext *context = getContext(L);
-    HOLD_JAVA_EXCEPTION(context, {luaL_error(L, "");});
-    if(status!=LUA_YIELD){
-        lua_error(L);
-    }
-    return 0;
-}*/
 
 int javaSync(lua_State *L) {
     JavaObject *objectRef = (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
@@ -1276,11 +1261,7 @@ int javaSync(lua_State *L) {
     lua_pushcfunction(L,luaPCallHandler);
     lua_pushvalue(L,2);
     int ret;
-//#if LUA_VERSION_NUM<502
     ret = lua_pcall(L, 0, 0, -2);
-/*#else
-    ret=lua_pcallk(L,0,0,-2,0,javaSyncK);
-#endif*/
     env->MonitorExit(objectRef->object);
     HOLD_JAVA_EXCEPTION(context, {luaL_error(L, "");});
     if(ret!=LUA_OK){
@@ -1482,26 +1463,21 @@ int callMethod(lua_State *L) {
     }
     int retCount = 1;
     auto returnType=info->returnType.rawType;
-    if (returnType->isVoid()) {
-        if (isStatic) env->CallStaticVoidMethodA(type->getType(), info->id, args);
-        else
-            env->CallNonvirtualVoidMethodA(objRef->object, objRef->type->getType(), info->id, args);
-        retCount = 0;
-    }
-
 #define PushResult(jtype, jname, NAME)\
-    if(returnType==context->jtype##Class){\
+     case JavaType::jtype:{\
         lua_push##NAME(L,isStatic?env->CallStatic##jname##MethodA(type->getType(),info->id\
         ,args):env->CallNonvirtual##jname##MethodA(objRef->object,objRef->type->getType(),info->id,args));\
-    }
+        break;}
 #define PushFloatResult(jtype, jname) PushResult(jtype,jname,number)
 #define PushIntegerResult(jtype, jname) PushResult(jtype,jname,integer)
-    else PushResult(boolean, Boolean, boolean)
-    else PushIntegerResult(int, Int)
+
+    switch(returnType->getTypeID()){
+        PushResult(BOOLEAN, Boolean, boolean)
+        PushIntegerResult(INT, Int)
 #if LUA_VERSION_NUM >= 503
-    else PushIntegerResult(long, Long)
+        PushIntegerResult(LONG, Long)
 #else
-        else if(returnType==context->longClass){
+        case JavaType::LONG:{
            jlong num=isStatic?env->CallStaticLongMethodA(type->getType(),info->id
            ,args):env->CallNonvirtualLongMethodA(objRef->object,objRef->type->getType(),
            info->id,args);
@@ -1510,26 +1486,35 @@ int callMethod(lua_State *L) {
            }else {
                lua_pushnumber(L,num);
            }
+           break;
         }
 #endif
-    else PushFloatResult(double, Double)
-    else PushFloatResult(float, Float)
-    else PushIntegerResult(byte, Byte)
-    else PushIntegerResult(short, Short)
-    else if (returnType->isChar()) {
-        jchar buf;
-        if (isStatic) buf = env->CallStaticCharMethodA(type->getType(), info->id, args);
-        else
-            buf = env->CallNonvirtualCharMethodA(objRef->object, objRef->type->getType(), info->id,
-                                                 args);
-        char *s = strndup16to8((const char16_t *) &buf, 1);
-        lua_pushstring(L, s);
-        free(s);
-    } else {
-        JObject object = isStatic ? env->CallStaticObjectMethodA(type->getType(), info->id, args) :
-                         env->CallNonvirtualObjectMethodA(objRef->object, objRef->type->getType(),
-                                                          info->id, args);
-        if (object == nullptr) lua_pushnil(L); else pushJavaObject(env, L, context, object);
+        PushFloatResult(DOUBLE, Double)
+        PushFloatResult(FLOAT, Float)
+        PushIntegerResult(BYTE, Byte)
+        PushIntegerResult(SHORT, Short)
+        case JavaType::CHAR:{
+            jchar buf;
+            if (isStatic) buf = env->CallStaticCharMethodA(type->getType(), info->id, args);
+            else
+                buf = env->CallNonvirtualCharMethodA(objRef->object, objRef->type->getType(), info->id, args);
+            char s[4]={0} ;
+            strncpy16to8(s,(const char16_t *) &buf, 1);
+            lua_pushstring(L, s);
+            break;
+        }
+        case JavaType::VOID:
+            if (isStatic) env->CallStaticVoidMethodA(type->getType(), info->id, args);
+            else
+                env->CallNonvirtualVoidMethodA(objRef->object, objRef->type->getType(), info->id, args);
+            retCount = 0;
+            break;
+        default:
+            JObject object = isStatic ? env->CallStaticObjectMethodA(type->getType(), info->id, args) :
+                             env->CallNonvirtualObjectMethodA(objRef->object, objRef->type->getType(),
+                                                              info->id, args);
+            if (object == nullptr) lua_pushnil(L); else pushJavaObject(env, L, context, object);
+            break;
     }
     HOLD_JAVA_EXCEPTION(context, {});
     cleanArgs(args, argCount, objects, env);
@@ -1573,46 +1558,50 @@ int getFieldOrMethod(lua_State *L) {
     if (fieldCount == 1 && !isMethod) {
         auto info = type->findField(env,std::move(name), isStatic, nullptr);
         JavaType *fieldType = info->type.rawType;
-#define GetField(jtype, jname, TYPE)\
-        if(fieldType==context->jtype##Class){\
+#define GetField(typeID,jtype, jname, TYPE)\
+        case JavaType::typeID:{\
             lua_push##TYPE(L,isStatic?env->GetStatic##jname##Field(type->getType()\
                     ,info->id):env->Get##jname##Field(obj->object,info->id));\
         }
-#define GetIntegerField(jtype, jname) GetField(jtype,jname,integer)
-#define GetFloatField(jtype, jname) GetField(jtype,jname,number)
+#define GetIntegerField(typeID,jtype, jname) GetField(typeID,jtype,jname,integer)
+#define GetFloatField(typeID,jtype, jname) GetField(typeID,jtype,jname,number)
 
 #if LUA_VERSION_NUM >= 503
-#define GetInteger64Field() GetIntegerField(long,Long)
+#define GetInteger64Field() GetIntegerField(LONG,long,Long)
 #else
 #define GetInteger64Field()\
-    if(fieldType==context->longClass){\
+    case JavaType::LONG:{\
         jlong v=isStatic?env->GetStaticLongField(type->getType()\
                     ,info->id):env->GetLongField(obj->object,info->id);\
         if(int64_t(double(v))!=v)\
             lua_pushnumber(L,v);\
         else Integer64::pushLong(L,v);\
+        break;\
     }
 #endif
 
 #define PushChar(c) ({ \
-        char*s=strndup16to8((const char16_t *) &c, 1);\
+        char s[4]={0};\
+        strncpy16to8(s,(const char16_t *) &c, 1);\
         lua_pushstring(L,s);\
-        free(s);})
-#define PushField()\
-        GetIntegerField(int,Int)\
-        else GetIntegerField(byte,Byte)\
-        else GetInteger64Field()\
-        else GetIntegerField(short,Short)\
-        else GetFloatField(float,Float)\
-        else GetFloatField(double,Double)\
-        else GetField(boolean,Boolean,boolean)\
-        else if(fieldType->isChar()){\
+        })
+#define PushField()
+        switch(fieldType->getTypeID()){\
+            GetIntegerField(INT,int,Int)\
+            GetIntegerField(BYTE,byte,Byte)\
+            GetInteger64Field()\
+            GetIntegerField(SHORT,short,Short)\
+            GetFloatField(FLOAT,float,Float)\
+            GetFloatField(DOUBLE,double,Double)\
+            GetField(BOOLEAN,boolean,Boolean,boolean)\
+            case JavaType::CHAR:{\
             jchar c=isStatic?env->GetStaticCharField(type->getType(),info->id):env->GetCharField(obj->object,info->id);\
             PushChar(c);\
-        } else{\
+            }\
+            default:{\
             JObject object=isStatic?env->GetStaticObjectField(type->getType(),info->id):env->GetObjectField(obj->object,info->id);\
             if(object==nullptr) lua_pushnil(L);else pushJavaObject(env,L,context,object);\
-        }
+            }}
         PushField();
     } else {
         if (!isMethod && fieldCount == 0) {
@@ -1628,8 +1617,6 @@ int getFieldOrMethod(lua_State *L) {
         pushMember(L, isStatic, fieldCount, isMethod);
     }
     return 1;
-
-
 }
 
 int getObjectLength(lua_State *L) {
@@ -1700,36 +1687,37 @@ int setField(lua_State *L) {
 #define RawSetField(jname, NAME)({\
         if(isStatic) env->SetStatic##jname##Field(type->getType(),info->id,NAME);\
         else env->Set##jname##Field(objRef->object,info->id,NAME);})
-#define SetField(jtype, jname, NAME)\
-    if(fieldType==context->jtype##Class){\
+#define SetField(typeID,jtype, jname, NAME)\
+    case JavaType::typeID:{\
         RawSetField(jname,(luaObject.NAME));\
     }
-#define SetIntegerField(jtype, jname) SetField(jtype,jname,integer)
-#define SetFloatField(jtype, jname) SetField(jtype,jname,number)
-#define SET_FIELD()\
-    SetIntegerField(int,Int)\
-    else SetField(boolean,Boolean,isTrue)\
-    else SetIntegerField(long,Long)\
-    else SetFloatField(float,Float)\
-    else SetFloatField(double,Double)\
-    else SetIntegerField(byte,Byte)\
-    else SetIntegerField(short,Short)\
-    else if(fieldType->isChar()){\
-        char16_t * s=strdup8to16(luaObject.string, nullptr);\
-        RawSetField(Char,s[0]);\
-        free(s);\
-    }else {\
-        jvalue v= context->luaObjectToJValue(env,luaObject,fieldType,info->type.realType);\
-        RawSetField(Object,v.l);\
-        if(luaObject.type==T_FUNCTION||luaObject.type==T_STRING) env->DeleteLocalRef(v.l);\
-    }
+#define SetIntegerField(typeID,jtype, jname) SetField(typeID,jtype,jname,integer)
+#define SetFloatField(typeID,jtype, jname) SetField(typeID,jtype,jname,number)
+#define SET_FIELD()
+    switch(fieldType->getTypeID()){\
+        SetIntegerField(INT,int,Int)\
+        SetField(BOOLEAN,boolean,Boolean,isTrue)\
+        SetIntegerField(LONG,long,Long)\
+        SetFloatField(FLOAT,float,Float)\
+        SetFloatField(DOUBLE,double,Double)\
+        SetIntegerField(BYTE,byte,Byte)\
+        SetIntegerField(SHORT,short,Short)\
+        case JavaType::CHAR:{\
+            char16_t  s;\
+            strcpy8to16(&s,luaObject.string, nullptr);\
+            RawSetField(Char,s);\
+        }\
+        default:{\
+            jvalue v= context->luaObjectToJValue(env,luaObject,fieldType,info->type.realType);\
+            RawSetField(Object,v.l);\
+            if(luaObject.type==T_FUNCTION||luaObject.type==T_STRING) env->DeleteLocalRef(v.l);\
+        }}
     SET_FIELD()
     return 0;
 }
 
 int setFieldOrArray(lua_State *L) {
     ScriptContext *context = getContext(L);
-    SetErrorJMP();
     JavaType **typeRef = (JavaType **) luaL_testudata(L, 1, JAVA_TYPE);
     bool isStatic = typeRef != nullptr;
     JavaObject *objRef = isStatic ? nullptr : (JavaObject *) luaL_checkudata(L, 1, JAVA_OBJECT);
@@ -1747,26 +1735,30 @@ int setFieldOrArray(lua_State *L) {
             ValidLuaObject luaObject;
             parseLuaObject(env, L, context, 3, luaObject);
             checkLuaType(env, L, type, luaObject);
-#define RAW_SET_ARR(jtype, jname, Ref) env->Set##jname##ArrayRegion((j##jtype##Array) objRef->object, (jsize) index, 1,Ref)
-#define SET_ARR(jtype, jname, NAME)  if(type==context->intClass){ j##jtype* ref=(j##jtype*) &luaObject.NAME;RAW_SET_ARR(jtype,jname,ref);}
-#define SET_INTEGER_ARR(jtype, jname) SET_ARR(jtype,jname,integer)
-#define SET_FLOAT_ARR(jtype, jname) SET_ARR(jtype,jname,number)
 
-            SET_INTEGER_ARR(byte, Byte)
-            else SET_INTEGER_ARR(int, Int)
-            else SET_ARR(boolean, Boolean, isTrue)
-            else if (type->isChar()) {
-                jchar *s = (jchar *) strdup8to16(luaObject.string, nullptr);
-                RAW_SET_ARR(char, Char, s);
-            } else SET_FLOAT_ARR(float, Float)
-            else SET_FLOAT_ARR(double, Double)
-            else SET_INTEGER_ARR(long, Long)
-            else SET_INTEGER_ARR(short, Short)
-            else {
-                jobject v = context->luaObjectToJValue(env, luaObject, type).l;
-                if (v == INVALID_OBJECT) goto __ErrorHandle;
-                env->SetObjectArrayElement((jobjectArray) objRef->object, (jsize) index, v);
-                cleanArg(env, v, luaObject.shouldRelease);
+#define RAW_SET_ARR(jtype, jname, Ref) env->Set##jname##ArrayRegion((j##jtype##Array) objRef->object, (jsize) index, 1,Ref)
+#define SET_ARR(typeID,jtype, jname, NAME) \
+            case JavaType::typeID:{ j##jtype* ref=(j##jtype*) &luaObject.NAME;RAW_SET_ARR(jtype,jname,ref);break;}
+#define SET_INTEGER_ARR(typeID,jtype, jname) SET_ARR(typeID,jtype,jname,integer)
+#define SET_FLOAT_ARR(typeID,jtype, jname) SET_ARR(typeID,jtype,jname,number)
+            switch (type->getTypeID()){
+                SET_INTEGER_ARR(BYTE,byte, Byte)
+                SET_INTEGER_ARR(SHORT,short, Short)
+                SET_INTEGER_ARR(INT,int, Int)
+                SET_INTEGER_ARR(LONG,long, Long)
+                SET_FLOAT_ARR(FLOAT,float, Float)
+                SET_FLOAT_ARR(DOUBLE,double, Double)
+                SET_ARR(BOOLEAN,boolean, Boolean, isTrue)
+                case JavaType::CHAR:{
+                    char16_t s[strlen8to16(luaObject.string)];
+                    strcpy8to16(s,luaObject.string, nullptr);
+                    RAW_SET_ARR(char, Char, (jchar*)s);}
+                default: {
+                    jobject v = context->luaObjectToJValue(env, luaObject, type).l;
+                    if (v == INVALID_OBJECT) lua_error(L);
+                    env->SetObjectArrayElement((jobjectArray) objRef->object, (jsize) index, v);
+                    cleanArg(env, v, luaObject.shouldRelease);
+                }
             }
             return 0;
         }
@@ -1776,13 +1768,13 @@ int setFieldOrArray(lua_State *L) {
                    luaL_tolstring(L, 2, NULL));
     const FakeString name(lua_tostring(L, 2));
     int fieldCount = type->getFieldCount(env,name, isStatic);
-    if (fieldCount <= 0) TopErrorHandle("No such field");
-    if (fieldCount > 1) TopErrorHandle("The name %s repsents not only one field", name.data());
+    if (fieldCount <= 0) luaL_error(L,"No such field");
+    if (fieldCount > 1) luaL_error(L,"The name %s repsents not only one field", name.data());
     auto info = type->findField(env,name, isStatic, nullptr);
     JavaType *fieldType = info->type.rawType;
     ValidLuaObject luaObject;
     if (!parseLuaObject(env, L, context, 3, luaObject)) {
-        TopErrorHandle("Invalid value passed to java as a field with type:%s",
+        luaL_error(L,"Invalid value passed to java as a field with type:%s",
                        luaL_tolstring(L, 3, NULL));
     }
     checkLuaType(env, L, fieldType, luaObject);
@@ -2495,32 +2487,35 @@ void pushArrayElement(TJNIEnv *env, lua_State *L, ScriptContext *context, const 
     if (!isnum) luaL_error(L, "Invalid index for an array");
     if (index < 0 || index > INT32_MAX)luaL_error(L, "Index out of range:%d", index);
         //recycle the jclass;
-#define ArrayGet(jtype, jname, TYPE)\
-            if(componentType==context->jtype##Class){\
+    switch (componentType->getTypeID()){
+
+#define ArrayGet(typeID,jtype, jname, TYPE)\
+            case JavaType::typeID:{\
                 j##jtype buf;\
                 env->Get##jname##ArrayRegion((j##jtype##Array) obj->object, (jsize) index, 1, &buf);\
                 lua_push##TYPE(L,buf);\
             }
-#define IntArrayGet(jtype, jname) ArrayGet(jtype,jname,integer)
-#define FloatArrayGet(jtype, jname) ArrayGet(jtype,jname,number)
-    IntArrayGet(int, Int) else IntArrayGet(byte, Byte) else IntArrayGet(long,
-                                                                        Long) else IntArrayGet(
-            short, Short)
-    else FloatArrayGet(float, Float) else FloatArrayGet(double, Double) else ArrayGet(boolean,
-                                                                                      Boolean,
-                                                                                      boolean)
-    else if (componentType == context->charClass) {
-        jchar buf;
-        env->GetCharArrayRegion((jcharArray) obj->object, (jsize) index, 1, &buf);
-        PushChar(buf);
-    } else {
-        auto ele = env->GetObjectArrayElement((jobjectArray) obj->object, (jsize) index);
-        if(ele== nullptr)
-            lua_pushnil(L);
-        pushJavaObject(env, L, context, ele);
+#define IntArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,integer)
+#define FloatArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,number)
+        IntArrayGet(BYTE,byte, Byte)
+        IntArrayGet(SHORT,short, Short)
+        IntArrayGet(INT,int, Int)
+        IntArrayGet(LONG,long, Long)
+        FloatArrayGet(FLOAT,float, Float)
+        FloatArrayGet(DOUBLE,double, Double)
+        ArrayGet(BOOLEAN,boolean, Boolean, boolean)
+        case JavaType::CHAR: {
+            jchar buf;
+            env->GetCharArrayRegion((jcharArray) obj->object, (jsize) index, 1, &buf);
+            PushChar(buf);
+        }
+        default: {
+            auto ele = env->GetObjectArrayElement((jobjectArray) obj->object, (jsize) index);
+            if(ele== nullptr)
+                lua_pushnil(L);
+            else pushJavaObject(env, L, context, ele);
+        }
     }
-
-
 }
 
 void pushRawMethod(lua_State *L, bool isStatic) {

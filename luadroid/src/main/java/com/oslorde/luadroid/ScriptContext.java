@@ -36,7 +36,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,8 +60,25 @@ public class ScriptContext implements GCTracker {
     private static final int JAVA_VOID = 4;
     private static final int JAVA_OBJECT = 5;
 
-    static {
+    private static final int CLASS_BYTE=0;
+    private static final int CLASS_SHORT=1;
+    private static final int CLASS_INT=2;
+    private static final int CLASS_LONG=3;
+    private static final int CLASS_FLOAT=4;
+    private static final int CLASS_DOUBLE=5;
+    private static final int CLASS_CHAR=6;
+    private static final int CLASS_BOOLEAN=7;
+    private static final int CLASS_VOID=8;
+    private static final int CLASS_B_BYTE=9;
+    private static final int CLASS_B_SHORT=10;
+    private static final int CLASS_B_INT=11;
+    private static final int CLASS_B_LONG=12;
+    private static final int CLASS_B_FLOAT=13;
+    private static final int CLASS_B_DOUBLE=14;
+    private static final int CLASS_B_CHAR=15;
+    private static final int CLASS_B_BOOLEAN=16;
 
+    static {
     }
 
     private HashMap<Class, TableConverter> sConverters;
@@ -109,6 +125,8 @@ public class ScriptContext implements GCTracker {
     private static native Object constructChild(long ptr, Class proxyClass, long nativeInfo);
 
     private native static void releaseFunc(long ptr);
+
+    private static native int getClassType(long ptr,Class c);
 
     /**
      * change a lua function to a functional interface instance
@@ -312,7 +330,7 @@ public class ScriptContext implements GCTracker {
     /*
      * * to check whether all the abstract methods of this class has been included;
      */
-    private static void checkAllAbstractMethod(Class cl, Set<MethodSetEntry> methodSet) {
+    private static void checkAllAbstractMethod(Class cl, Map<MethodSetEntry,MethodSetEntry> methodSet,Map<Method,Long> methodList) {
         if (cl == Object.class) return;
         List<Method> methods = new ArrayList<>(Arrays.asList(cl.getMethods()));
         Class thizClass = cl;
@@ -322,9 +340,18 @@ public class ScriptContext implements GCTracker {
         } while (thizClass != Object.class && thizClass != null);
 
         for (Method method : methods)
-            if (Modifier.isAbstract(method.getModifiers()))
-                if (!methodSet.contains(new MethodSetEntry(method)))
+            if (Modifier.isAbstract(method.getModifiers())){
+                MethodSetEntry key = new MethodSetEntry(method);
+                MethodSetEntry old=methodSet.get(key);
+                if (old==null)
                     throw new LuaException("The class:" + cl.getName() + " has unimplemented method:" + method);
+                if(!old.m.equals(method)&& method.getDeclaringClass().isAssignableFrom(old.m.getDeclaringClass())){
+                    //only on true to avoid same method in irrelevant methods
+                    methodList.put(method,methodList.remove(old.m));
+                    methodSet.put(key,key);
+                }
+            }
+
 
     }
 
@@ -560,10 +587,10 @@ public class ScriptContext implements GCTracker {
             return resolveValueTableType(((TypeVariable) type).getBounds()[0]);
         else return null;
     }
-    private Object fixValue(Object from,Class raw,Type real) throws Throwable{
-        return fixValue(from,raw,real,isTableType(raw));
+    private Object fixValue(Object from,int type,Class raw,Type real) throws Throwable{
+        return fixValue(from,type,raw,real,isTableType(raw));
     }
-    private Object fixValue(Object from,Class raw,Type real,boolean shouldFixTable) throws Throwable{
+    private Object fixValue2(Object from,Class raw,Type real,boolean shouldFixTable) throws Throwable{
         if(from==null||raw==void.class) return null;
         if((raw==Integer.class||raw==Integer.TYPE)&&from instanceof Long)
             return ((Long) from).intValue();
@@ -582,37 +609,36 @@ public class ScriptContext implements GCTracker {
             throw new LuaException("Incompatible Object passed:expected:"+real+",got:"+from);
         return from;
     }
-    //string table is a little bit slow in android but faster on desktop
-    private Object fixValue2(Object from,Class raw,Type real,boolean shouldFixTable) throws Throwable{
+    private Object fixValue(Object from,int classType,Class raw,Type real,boolean shouldFixTable) throws Throwable{
         if(from==null) return null;
-        switch (raw.getName()) {
-            case "int":
-            case "java.lang.Integer":
+        switch (classType) {
+            case CLASS_INT:
+            case CLASS_B_INT:
                 if(from instanceof Long)
                     return ((Long) from).intValue();
                 break;
-            case "short":
-            case "java.lang.Short":
+            case CLASS_SHORT:
+            case CLASS_B_SHORT:
                 if(from instanceof Long)
                     return ((Long) from).shortValue();
                 break;
-            case "byte":
-            case "java.lang.Byte":
+            case CLASS_BYTE:
+            case CLASS_B_BYTE:
                 if(from instanceof Long)
                     return ((Long) from).byteValue();
                 break;
 
-            case "float":
-            case "java.lang.Float":
+            case CLASS_FLOAT:
+            case CLASS_B_FLOAT:
                 if(from instanceof Double)
                     return ((Double) from).floatValue();
                 break;
-            case "char":
-            case "java.lang.Character":
+            case CLASS_CHAR:
+            case CLASS_B_CHAR:
                 if(from instanceof String)
                     return ((String) from).charAt(0);
                 break;
-            case "void":
+            case CLASS_VOID:
                 return null;
             default:
                 if(from instanceof Map&&shouldFixTable)
@@ -639,7 +665,7 @@ public class ScriptContext implements GCTracker {
                     for (Map.Entry<Object, Object> entry :
                             table.entrySet()) {
                         Object old = entry.getValue();
-                        Object value = fixValue(old,rawType,valueType,shouldFixTable);
+                        Object value = fixValue2(old,rawType,valueType,shouldFixTable);
                         if(value!=old)
                             entry.setValue(value);
                     }
@@ -651,7 +677,7 @@ public class ScriptContext implements GCTracker {
                     for (Map.Entry<Object, Object> entry :
                             table.entrySet()) {
                         Object key = entry.getKey();
-                        Object newKey=fixValue(key,rawType,keyType,shouldFixTable);
+                        Object newKey=fixValue2(key,rawType,keyType,shouldFixTable);
                         if(newKey!=key){
                             toChanged.add(new Pair<>(key,newKey));
                         }
@@ -670,35 +696,34 @@ public class ScriptContext implements GCTracker {
                          Class<?>[] leftInterfaces, Method[] methods,
                          long[] values, boolean shared, long nativeInfo,Object superObject) throws Exception {
         if (main == null) throw new IllegalArgumentException("No proxy class");
-        if (values == null) throw new IllegalArgumentException("No lua functions");
+        if (values == null||methods==null) throw new IllegalArgumentException("No need to proxy");
         if (leftInterfaces != null) {
             for (Class cl : leftInterfaces) {
                 if (!cl.isInterface())
                     throw new IllegalArgumentException("Only one class can be extent");
             }
         }
-        if(methods==null) methods=new Method[0];
-        Map<MethodSetEntry, Long> methodMap = new HashMap<>(values.length);
+        Map<MethodSetEntry,MethodSetEntry> methodSet = new HashMap<>(values.length);
+        Map<Method,Long> methodList=new HashMap<>(values.length);
         if (methods.length != values.length) {
             throw new IllegalArgumentException("Java method count doesn't equal lua method count");
         }
         for (int i = 0, len = methods.length; i < len; ++i) {
             Method m = methods[i];
             if (m == null) throw new IllegalArgumentException("Method can't be null");
-            methodMap.put(new MethodSetEntry(m), values[i]);
-        }
-        if (methodMap.size() == 1) {
-            Map.Entry<MethodSetEntry, Long> entry = methodMap.entrySet().iterator().next();
-            methodMap = Collections.singletonMap(entry.getKey(), entry.getValue());
+            if(methodList.containsKey(m))  throw new IllegalArgumentException("Duplicate method passed in");
+            MethodSetEntry entry = new MethodSetEntry(m);
+            methodSet.put(entry,entry);
+            methodList.put(m, values[i]);
         }
         final boolean isInterface = main.isInterface();
-        checkAllAbstractMethod(main, methodMap.keySet());
+        checkAllAbstractMethod(main, methodSet,methodList);
         if (leftInterfaces != null) {
             for (Class cl : leftInterfaces) {
-                checkAllAbstractMethod(cl, methodMap.keySet());
+                checkAllAbstractMethod(cl, methodSet,methodList);
             }
         }
-        InvokeHandler handler = new InvokeHandler(methodMap, nativePtr, isInterface);
+        InvokeHandler handler = new InvokeHandler(methodList, nativePtr, isInterface);
         try {
             if (main.isInterface()) {
                 Class[] interfaces = new Class[leftInterfaces == null ? 1 : leftInterfaces.length + 1];
@@ -710,7 +735,7 @@ public class ScriptContext implements GCTracker {
                 ProxyBuilder<?> builder = ProxyBuilder.forClass(main);
                 if (leftInterfaces != null) builder.implementing(leftInterfaces);
                 if (shared) builder.withSharedClassLoader();
-                Class proxyClass = builder.onlyMethods(methods).buildProxyClass();
+                Class proxyClass = builder.onlyMethods(methodList.keySet().toArray(new Method[0])).buildProxyClass();
                 Object ret =superObject==null?constructChild(nativePtr, proxyClass, nativeInfo)
                         :ClassBuilder.cloneFromSuper(proxyClass,superObject);
                 ProxyBuilder.setInvocationHandler(ret, handler);
@@ -860,7 +885,7 @@ public class ScriptContext implements GCTracker {
      *
      * @param luaName lua global name
      * @param methodName method name in the class
-     * @param instOrType object for method or the declaring class
+     * @param instOrType o bject for method or the declaring class
      * @param local false:the method to be added to all lua State
      *              true:the method to be added to only current state.
      * @return this
@@ -915,12 +940,14 @@ public class ScriptContext implements GCTracker {
         int[] paramsTypes;
         Class<?> returnType;
         Type genericReturnType;
+        int returnClassType;
 
-        MethodInfo(long luaFuncInfo, int[] paramsTypes, Class<?> returnType,Type genericReturnType) {
+        MethodInfo(long luaFuncInfo, int[] paramsTypes, Class<?> returnType,Type genericReturnType,int returnClassType) {
             this.luaFuncInfo = luaFuncInfo;
             this.paramsTypes = paramsTypes;
             this.returnType = returnType;
             this.genericReturnType=genericReturnType;
+            this.returnClassType=returnClassType;
         }
 
         @Override
@@ -1018,14 +1045,14 @@ public class ScriptContext implements GCTracker {
     }
 
     class InvokeHandler implements InvocationHandler {
-        private Map<MethodSetEntry, MethodInfo> methodMap = new HashMap<>();
+        private Map<Method, MethodInfo> methodMap = new HashMap<>();
         private boolean isInterface;
 
-        InvokeHandler(Map<MethodSetEntry, Long> methodMap, long nativePtr, boolean isInterface) {
-            for (Map.Entry<MethodSetEntry, Long> entry : methodMap.entrySet()) {
-                MethodSetEntry key = entry.getKey();
-                this.methodMap.put(key, new MethodInfo(entry.getValue(), generateParamTypes(key.paramTypes)
-                        , key.returnType,key.m.getGenericReturnType()));
+        InvokeHandler(Map<Method, Long> methodMap, long nativePtr, boolean isInterface) {
+            for (Map.Entry<Method, Long> entry : methodMap.entrySet()) {
+                Method key = entry.getKey();
+                this.methodMap.put(key, new MethodInfo(entry.getValue(), generateParamTypes(key.getParameterTypes())
+                        , key.getReturnType(),key.getGenericReturnType(),getClassType(nativePtr,key.getReturnType())));
             }
             this.isInterface = isInterface;
 
@@ -1035,20 +1062,19 @@ public class ScriptContext implements GCTracker {
             Method m=getSingleInterface(c);
             if(m==null)
                 throw new IllegalArgumentException("Not a single interfaces");
-            MethodSetEntry entry= methodMap.keySet().iterator().next();
-            if(methodMap.size()!=1||entry.m.getDeclaringClass()!=LuaFunction.class)
+            Method entry= methodMap.keySet().iterator().next();
+            if(methodMap.size()!=1||entry.getDeclaringClass()!=LuaFunction.class)
                 throw new IllegalStateException("Unchangeable handler");
             MethodInfo old=methodMap.remove(entry);
-            MethodSetEntry key=new MethodSetEntry(m);
-            MethodInfo info=new MethodInfo(old.luaFuncInfo,generateParamTypes(key.paramTypes)
-                    ,key.returnType,key.m.getGenericReturnType());
+            MethodInfo info=new MethodInfo(old.luaFuncInfo,generateParamTypes(m.getParameterTypes())
+                    ,m.getReturnType(),m.getGenericReturnType(),getClassType(nativePtr,m.getReturnType()));
             old.luaFuncInfo=0;
-            methodMap.put(key,info);
+            methodMap.put(m,info);
         }
 
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            MethodInfo info = methodMap.get(new MethodSetEntry(method));//avoid interfaces with the same name;
+            MethodInfo info = methodMap.get(method);//avoid interfaces with the same name;
             if (info == null) {
                 if (method.equals(ObjectMethods.sEquals))
                     return proxy == args[0];
@@ -1062,7 +1088,7 @@ public class ScriptContext implements GCTracker {
             int[] paramsTypes = info.paramsTypes;
             Object ret = invokeLuaFunction(nativePtr, isInterface, funcRef, proxy, paramsTypes,
                     args);
-            return fixValue(ret,info.returnType,info.genericReturnType);
+            return fixValue(ret,info.returnClassType,info.returnType,info.genericReturnType);
         }
         private ScriptContext context(){
             return ScriptContext.this;
@@ -1105,6 +1131,7 @@ public class ScriptContext implements GCTracker {
         int[] argTypes;
         TypeId returnType;
         Class returnClass;
+        int classType;
         private Func(long funcRef,TypeId[] argTypes,TypeId returnType){
             this.funcRef=funcRef;
             this.returnType=returnType;
@@ -1116,34 +1143,45 @@ public class ScriptContext implements GCTracker {
 
         public Object call(Object thiz,Object... args) throws Throwable{
             if(returnClass==null){
-                String name=returnType.getName();
-                switch (name){
-                    case "I":returnClass=int.class;
-                    break;
-                    case "J":returnClass=long.class;
+                String name = returnType.getName();
+                switch (name.charAt(0)) {
+                    case 'I':
+                        returnClass = int.class;
                         break;
-                    case "B":returnClass=byte.class;
+                    case 'J':
+                        returnClass = long.class;
                         break;
-                    case "Z":returnClass=boolean.class;
+                    case 'B':
+                        returnClass = byte.class;
                         break;
-                    case "C":returnClass=char.class;
+                    case 'Z':
+                        returnClass = boolean.class;
                         break;
-                    case "S":returnClass=short.class;
+                    case 'C':
+                        returnClass = char.class;
                         break;
-                    case "F":returnClass=float.class;
+                    case 'S':
+                        returnClass = short.class;
                         break;
-                    case "D":returnClass=double.class;
+                    case 'F':
+                        returnClass = float.class;
                         break;
-                    case "V":returnClass=void.class;
+                    case 'D':
+                        returnClass = double.class;
                         break;
-                    default:{
-                        name=(name.charAt(0)=='['?name:
-                                name.substring(1,name.length()-1)).replace('/','.');
-                        returnClass=thiz.getClass().getClassLoader().loadClass(name);
+                    case 'V':
+                        returnClass = void.class;
+                        break;
+                    default: {
+                        break;
                     }
                 }
+                name = (name.charAt(0) == '[' ? name :
+                        name.substring(1, name.length() - 1)).replace('/', '.');
+                returnClass = thiz.getClass().getClassLoader().loadClass(name);
+                classType=getClassType(nativePtr,returnClass);
             }
-            return fixValue(invokeLuaFunction(nativePtr,false,funcRef,thiz,argTypes,args),returnClass,returnClass);
+            return fixValue(invokeLuaFunction(nativePtr,false,funcRef,thiz,argTypes,args),classType,returnClass,returnClass);
         }
 
         @Override

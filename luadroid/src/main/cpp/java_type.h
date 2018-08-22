@@ -41,6 +41,26 @@ public:
         ParameterizedType returnType;
         Array<ParameterizedType> params;
     };
+    enum TYPE_ID{
+        BYTE,
+        SHORT,
+        INT,
+        LONG,
+        FLOAT,
+        DOUBLE,
+        CHAR,
+        BOOLEAN,
+        VOID,
+        BOX_BYTE,
+        BOX_SHORT,
+        BOX_INT,
+        BOX_LONG,
+        BOX_FLOAT,
+        BOX_DOUBLE,
+        BOX_CHAR,
+        BOX_BOOLEAN,
+        OBJECT
+    };
 private:
     enum INT_TYPE {
         J_BYTE,
@@ -64,17 +84,16 @@ private:
     static jmethodID sIsTableType;
     static jmethodID sTableConvert;
     jclass type;
+    ScriptContext *context;
 
     bool primitive = false;
     bool _isInteger = false;
-    bool _isChar = false;
     bool _isFloat = false;
-    bool _isVoid = false;
     bool _isBox = false;
     bool _isString = false;
     bool _isStringAssignable = false;
+    TYPE_ID typeID=OBJECT;
 
-    ScriptContext *context;
     MethodMap staticMethods;
     MethodMap objectMethods;
     FieldMap staticFields;
@@ -83,6 +102,7 @@ private:
     InvalidMap invalidMethods;
     jmethodID singleInterface = invalid<jmethodID>();
     JavaType *componentType = invalid<JavaType *>();
+    jmethodID boxMethod= nullptr;
 
     JavaType(JNIEnv *env, jclass type, ScriptContext *context) : context(context) {
         this->type = (jclass) env->NewGlobalRef(type);
@@ -94,7 +114,6 @@ private:
     }
 
     uint weightObject(TJNIEnv* env,JavaType *target, JavaType *from);
-
 public:
     jobject newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<ValidLuaObject> &params);
 
@@ -140,47 +159,49 @@ public:
     }
 
     bool isChar() {
-        return _isChar;
+        return typeID==CHAR;
     }
     bool isBoxedChar() {
-        return this==context->CharacterClass;
+        return typeID==BOX_CHAR;
     }
     bool isBool() {
-        return this==context->booleanClass;
+        return typeID==BOOLEAN;
     }
     bool isBoxedBool() {
-        return this==context->BooleanClass;
+        return typeID==BOX_BOOLEAN;
     }
 
     bool canAcceptBoxedNumber(JavaType* boxed){
         if(!_isBox||isBoxedChar()||isBoxedBool()) return false;
-        if(this==context->doubleClass)
+        if(typeID==DOUBLE)
             return true;
-        if(boxed==context->DoubleClass)
+        if(boxed->typeID==BOX_DOUBLE)
             return false;
-        if(this==context->floatClass)
+        if(typeID==FLOAT)
             return true;
-        if(boxed==context->FloatClass)
+        if(boxed->typeID==BOX_FLOAT)
             return false;
-        if(this==context->longClass)
+        if(typeID==LONG)
             return true;
-        if(boxed==context->LongClass)
+        if(boxed->typeID==BOX_LONG)
             return false;
-        if(this==context->intClass)
+        if(typeID==INT)
             return true;
-        if(boxed==context->IntegerClass)
+        if(boxed->typeID==BOX_INT)
             return false;
-        if(this==context->shortClass)
+        if(typeID==SHORT)
             return true;
-        return boxed != context->ShortClass;
+        return boxed->typeID != BOX_SHORT;
     }
 
     jmethodID getBoxMethodForBoxType(TJNIEnv *env){
         if(!_isBox) return nullptr;
+        if(boxMethod)
+            return boxMethod;
         auto&& array=ensureMethod(env,FakeString("valueOf"), true);
         for (const MethodInfo& info:*array){
             if(info.params[0].rawType->isPrimitive())
-                return info.id;
+                return (boxMethod=info.id,boxMethod);
         }
         return nullptr;
     }
@@ -193,7 +214,7 @@ public:
     }
 
     bool isVoid() {
-        return _isVoid;
+        return typeID==VOID;
     }
 
     bool isStringAssignable() {
@@ -203,6 +224,7 @@ public:
     bool isString() {
         return _isString;
     }
+    inline TYPE_ID  getTypeID(){ return typeID;}
 
 #define FLOAT_MAX ((1<<24))
 #define FLOAT_MIN (-(1<<24))

@@ -33,8 +33,8 @@ jobject JavaType::newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<Valid
 jarray JavaType::newArray(TJNIEnv* env,jint size, Vector<ValidLuaObject> &params) {
     uint32_t len = (uint32_t) params.size();
 
-#define ArrayHandle(jtype, jName, NAME) \
-        if(this==context->jtype##Class){\
+#define ArrayHandle(typeID,jtype, jName, NAME) \
+         case JavaType::typeID:{\
             j##jtype arr[len];\
             for (uint32_t i = 0; i < len; ++i) {\
                 arr[i]=(j##jtype)params[i].NAME;\
@@ -43,30 +43,32 @@ jarray JavaType::newArray(TJNIEnv* env,jint size, Vector<ValidLuaObject> &params
             env->Set##jName##ArrayRegion(ret,0,len,arr);\
             return ret;\
         }
-#define IntegerArrayHandle(jtype, jName) ArrayHandle(jtype,jName,integer)
-#define DoubleArrayHandle(jtype, jName) ArrayHandle(jtype,jName,number)
-
-    IntegerArrayHandle(int, Int)
-    else IntegerArrayHandle(byte, Byte)
-    else IntegerArrayHandle(long, Long)
-    else DoubleArrayHandle(double, Double)
-    else DoubleArrayHandle(float, Float)
-    else IntegerArrayHandle(short, Short)
-    else ArrayHandle(boolean, Boolean, isTrue)
+#define IntegerArrayHandle(typeId,jtype, jName) ArrayHandle(typeId,jtype,jName,integer)
+#define DoubleArrayHandle(typeId,jtype, jName) ArrayHandle(typeId,jtype,jName,number)
+switch (typeID){
+     IntegerArrayHandle(INT,int, Int)
+     IntegerArrayHandle(BYTE,byte, Byte)
+     IntegerArrayHandle(LONG,long, Long)
+     DoubleArrayHandle(DOUBLE,double, Double)
+     DoubleArrayHandle(FLOAT,float, Float)
+     IntegerArrayHandle(SHORT,short, Short)
+     ArrayHandle(BOOLEAN,boolean, Boolean, isTrue)
 #undef ArrayHandle
 #undef IntegerArrayHandle
 #undef DoubleArrayHandle
-    else if (isChar()) {
+    case CHAR: {
         String st;
         for (uint32_t i = 0; i < len; ++i) {
             st = st + params[i].string;
         }
-        char16_t *buf = strdup8to16(st.c_str(), nullptr);
+        len= static_cast<uint32_t>(strlen8to16(st.data()));
+        if(len>size) return nullptr;
         jcharArray ret = env->NewCharArray(size).invalidate();
-        env->SetCharArrayRegion(ret, 0, len, (const jchar *) buf);
-        free(buf);
+        char16_t *buf=(char16_t*)env->GetPrimitiveArrayCritical(ret,NULL);
+        strcpy8to16(buf,st.data(),NULL);
         return ret;
-    } else {
+    }
+    default:{
         jobjectArray ret = env->NewObjectArray(size, type, nullptr).invalidate();
         for (uint32_t i = 0; i < len; ++i) {
             ValidLuaObject &luaObject = params[i];
@@ -81,6 +83,8 @@ jarray JavaType::newArray(TJNIEnv* env,jint size, Vector<ValidLuaObject> &params
         }
         return ret;
     }
+}
+
     return nullptr;//unreachable statement;
 
 }
@@ -233,86 +237,96 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                 }
                 case T_OBJECT: {
                     Handle_OBJ:
-                    JavaType *from = provided ? provided : luaObject.objectRef->type;
+                    JavaType *real = provided ? provided : luaObject.objectRef->type;
                     if (toCheck->isPrimitive()){
-                        if(scores[i]>5||!from->_isBox)
+                        if(scores[i]>5||(!real->_isBox))
                             goto bail;
-                        if(from==context->BooleanClass){
-                            if(toCheck!=context->booleanClass) goto bail;
-                        } else if(from==context->CharacterClass){
-                            if(toCheck->isChar()) goto bail;
-                        } else if(from==context->DoubleClass){
-                            if(toCheck!=context->doubleClass) goto bail;
-                        }else if(from==context->LongClass){
-                            if(toCheck==context->longClass)
-                                cacheScores[i]=2;
-                            else if(scores[i]>1)
-                                goto bail;
-                            else if(toCheck==context->floatClass)
-                                cacheScores[i]=1;
-                            else if(scores[i]>0||toCheck!=context->doubleClass)
-                                goto bail;
-                        }else if(from==context->IntegerClass){
-                            if(toCheck==context->intClass)
-                                cacheScores[i]=3;
-                            else if(scores[i]>2)
-                                goto bail;
-                            else if(toCheck==context->longClass)
-                                cacheScores[i]=2;
-                            else if(scores[i]>1)
-                                goto bail;
-                            else if(toCheck==context->floatClass)
-                                cacheScores[i]=1;
-                            else if(scores[i]>0||toCheck!=context->doubleClass)
-                                goto bail;
-                        }else if(from==context->FloatClass){
-                            if(toCheck==context->floatClass)
-                                cacheScores[i]=1;
-                            else if(scores[i]>0||toCheck!=context->doubleClass)
-                                goto bail;
-                        }else if(from==context->ShortClass){
-                            if(toCheck==context->shortClass)
-                                cacheScores[i]=4;
-                            else if(scores[i]>3)
-                                goto bail;
-                            else if(toCheck==context->intClass)
-                                cacheScores[i]=2;
-                            else if(scores[i]>2)
-                                goto bail;
-                            else if(toCheck==context->longClass)
-                                cacheScores[i]=2;
-                            else if(scores[i]>1)
-                                goto bail;
-                            else if(toCheck==context->floatClass)
-                                cacheScores[i]=1;
-                            else if(scores[i]>0||toCheck!=context->doubleClass)
-                                goto bail;
-                        }else if(from==context->ByteClass){
-                            if(toCheck==context->byteClass)
-                                cacheScores[i]=5;
-                            else if(scores[i]>4)
-                                goto bail;
-                            else if(toCheck==context->shortClass)
-                                cacheScores[i]=4;
-                            else if(scores[i]>3)
-                                goto bail;
-                            else if(toCheck==context->intClass)
-                                cacheScores[i]=3;
-                            else if(scores[i]>2)
-                                goto bail;
-                            else if(toCheck==context->longClass)
-                                cacheScores[i]=2;
-                            else if(scores[i]>1)
-                                goto bail;
-                            else if(toCheck==context->floatClass)
-                                cacheScores[i]=1;
-                            else if(scores[i]>0||toCheck!=context->doubleClass)
-                                goto bail;
+                        uint score=0;
+                        switch (real->typeID){
+                            case BOX_BOOLEAN:
+                                if(!toCheck->isBool()) goto bail;
+                                continue;
+                            case BOX_CHAR:
+                                if(!toCheck->isChar()) goto bail;
+                                continue;
+                            case BOX_BYTE:
+                                switch (toCheck->typeID){
+                                    case BYTE:score=5;
+                                        break;
+                                    case SHORT:score=4;
+                                        break;
+                                    case INT:score=3;
+                                        break;
+                                    case LONG:score=2;
+                                        break;
+                                    case FLOAT:score=1;
+                                        break;
+                                    case DOUBLE:score=0;
+                                        break;
+                                    default:goto bail;
+                                }
+                                break;
+                            case BOX_SHORT:
+                                switch (toCheck->typeID){
+                                    case SHORT:score=4;
+                                        break;
+                                    case INT:score=3;
+                                        break;
+                                    case LONG:score=2;
+                                        break;
+                                    case FLOAT:score=1;
+                                        break;
+                                    case DOUBLE:score=0;
+                                        break;
+                                    default:goto bail;
+                                }
+                                break;
+                            case BOX_INT:
+                                switch (toCheck->typeID){
+                                    case INT:score=3;
+                                        break;
+                                    case LONG:score=2;
+                                        break;
+                                    case FLOAT:score=1;
+                                        break;
+                                    case DOUBLE:score=0;
+                                        break;
+                                    default:goto bail;
+                                }
+                                break;
+                            case BOX_LONG:
+                                switch (toCheck->typeID){
+                                    case LONG:score=2;
+                                        break;
+                                    case FLOAT:score=1;
+                                        break;
+                                    case DOUBLE:score=0;
+                                        break;
+                                    default:goto bail;
+                                }
+                                break;
+                            case BOX_FLOAT:
+                                switch (toCheck->typeID){
+                                    case FLOAT:score=1;
+                                        break;
+                                    case DOUBLE:score=0;
+                                        break;
+                                    default:goto bail;
+                                }
+                                break;
+                            case BOX_DOUBLE:
+                                if(toCheck->typeID!=DOUBLE)
+                                   goto bail;
+                                break;
+                            default:
+                                break;
                         }
+                        if (score < scores[i]) goto bail;
+                        else cacheScores[i] = score;
                         break;
                     }
                     if(provided&&provided->isPrimitive()) goto bail;
-                    uint weight = weightObject(env,toCheck, from);
+                    uint weight = weightObject(env,toCheck, real);
                     if (scores[i] > weight||!weight) goto bail;
                     cacheScores[i] = weight;
                     break;
@@ -331,69 +345,107 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         }  else {
                             intType = J_LONG;
                         }
-                    } else if (provided == context->byteClass) {
-                        intType = J_BYTE;
-                    } else if (provided == context->shortClass) {
-                        intType = J_SHORT;
-                    } else if (provided == context->intClass) {
-                        intType = J_INT;
-                    } else if (provided == context->longClass) {
-                        intType = J_LONG;
+                    } else if (provided->isInteger()) {
+                        intType= static_cast<INT_TYPE>(provided->typeID);//since they have the same order
                     }else if(provided->_isBox){
                         goto Handle_OBJ;
                     }
                     uint score = 0;
                     switch (intType) {
                         case J_BYTE: {
-                            if (toCheck == context->intClass) score = provided?10:13;
-                            else if (toCheck == context->byteClass) score = 12;
-                            else if (toCheck == context->shortClass) score = 11;
-                            else if (toCheck == context->longClass) score = 9;
-                            else if (toCheck == context->floatClass) score = 8;
-                            else if (toCheck == context->doubleClass) score = 7;
-                            else if (toCheck == context->ByteClass) score = 6;
-                            else if (toCheck == context->ShortClass) score = 5;
-                            else if (toCheck == context->IntegerClass) score = 4;
-                            else if (toCheck == context->LongClass) score = 3;
-                            else if (toCheck == context->FloatClass) score = 2;
-                            else if (toCheck == context->DoubleClass) score = 1;
-                            else goto bail;
+                            switch (toCheck->typeID){
+                                case BYTE:score = 12;
+                                    break;
+                                case SHORT:score = 11;
+                                    break;
+                                case INT:score = provided?10:13;
+                                    break;
+                                case LONG:score = 9;
+                                    break;
+                                case FLOAT:score = 8;
+                                    break;
+                                case DOUBLE:score = 7;
+                                    break;
+                                case BOX_BYTE:score = 6;
+                                    break;
+                                case BOX_SHORT:score = 5;
+                                    break;
+                                case BOX_INT:score = 4;
+                                    break;
+                                case BOX_LONG:score = 3;
+                                    break;
+                                case BOX_FLOAT:score = 2;
+                                    break;
+                                case BOX_DOUBLE:score = 1;
+                                    break;
+                                default:  goto bail;
+                            }
                             break;
                         }
                         case J_SHORT: {
-                            if (toCheck == context->intClass) score = provided?8:11;
-                            else if (toCheck == context->shortClass) score = 10;
-                            else if (toCheck == context->longClass) score = 9;
-                            else if (toCheck == context->floatClass) score = 7;
-                            else if (toCheck == context->doubleClass) score = 6;
-                            else if (toCheck == context->ShortClass) score = 5;
-                            else if (toCheck == context->IntegerClass) score = 4;
-                            else if (toCheck == context->LongClass) score = 3;
-                            else if (toCheck == context->FloatClass) score = 2;
-                            else if (toCheck == context->DoubleClass) score = 1;
-                            else goto bail;
+                            switch (toCheck->typeID){
+                                case SHORT:score = 10;
+                                    break;
+                                case INT: score = provided?8:11;
+                                    break;
+                                case LONG:score = 9;
+                                    break;
+                                case FLOAT:score = 7;
+                                    break;
+                                case DOUBLE:score = 6;
+                                    break;
+                                case BOX_SHORT:score = 5;
+                                    break;
+                                case BOX_INT:score = 4;
+                                    break;
+                                case BOX_LONG:score = 3;
+                                    break;
+                                case BOX_FLOAT:score = 2;
+                                    break;
+                                case BOX_DOUBLE:score = 1;
+                                    break;
+                                default:  goto bail;
+                            }
                             break;
                         }
                         case J_INT: {
-                            if (toCheck == context->intClass) score = 8;
-                            else if (toCheck == context->longClass) score = 7;
-                            else if (toCheck == context->floatClass) score = 6;
-                            else if (toCheck == context->doubleClass) score = 5;
-                            else if (toCheck == context->IntegerClass) score = 4;
-                            else if (toCheck == context->LongClass) score = 3;
-                            else if (toCheck == context->FloatClass) score = 2;
-                            else if (toCheck == context->DoubleClass) score = 1;
-                            else goto bail;
+                            switch (toCheck->typeID){
+                                case INT:score = 8;
+                                    break;
+                                case LONG:score = 7;
+                                    break;
+                                case FLOAT:score = 6;
+                                    break;
+                                case DOUBLE:score = 5;
+                                    break;
+                                case BOX_INT:score = 4;
+                                    break;
+                                case BOX_LONG:score = 3;
+                                    break;
+                                case BOX_FLOAT:score = 2;
+                                    break;
+                                case BOX_DOUBLE:score = 1;
+                                    break;
+                                default:  goto bail;
+                            }
                             break;
                         }
                         case J_LONG: {
-                            if (toCheck == context->longClass) score = 6;
-                            else if (toCheck == context->floatClass) score = 5;
-                            else if (toCheck == context->doubleClass) score = 4;
-                            else if (toCheck == context->LongClass) score = 3;
-                            else if (toCheck == context->FloatClass) score = 2;
-                            else if (toCheck == context->DoubleClass) score = 1;
-                            else goto bail;
+                            switch (toCheck->typeID){
+                                case LONG:score = 6;
+                                    break;
+                                case FLOAT:score = 5;
+                                    break;
+                                case DOUBLE: score = 4;
+                                    break;
+                                case BOX_LONG:score = 3;
+                                    break;
+                                case BOX_FLOAT:score = 2;
+                                    break;
+                                case BOX_DOUBLE:score = 1;
+                                    break;
+                                default:  goto bail;
+                            }
                             break;
                         }
                     }
@@ -405,22 +457,27 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                     if (!toCheck->isFloat()) goto bail;
                     if (provided == nullptr) {
                         uint score;
-                        if (toCheck == context->doubleClass) score = 4;
-                        else if (toCheck == context->floatClass) score = 3;
-                        else if (toCheck == context->DoubleClass) score = 2;
-                        else score = 1;
+                        switch (toCheck->typeID){
+                            case DOUBLE:score = 4;
+                                break;
+                            case FLOAT: score = 3;
+                                break;
+                            case BOX_DOUBLE:score = 2;
+                                break;
+                            default:score = 1;
+                        }
                         if (score < scores[i]) goto bail;
                         else cacheScores[i] = score;
                     } else if(!provided->_isBox) {
-                        if (provided == context->doubleClass) {
-                            if (toCheck ==context->doubleClass)
+                        if (provided->typeID == DOUBLE) {
+                            if (toCheck->typeID ==DOUBLE)
                                 cacheScores[i]=1;
-                            else if(scores[i]==1||toCheck !=context->DoubleClass)
+                            else if(scores[i]==1||toCheck->typeID !=BOX_DOUBLE)
                                 goto bail;
                         } else {
                             uint score;
-                            if (toCheck == context->floatClass) score = 3;
-                            else if (toCheck == context->doubleClass) score = 2;
+                            if (toCheck->typeID == FLOAT) score = 3;
+                            else if (toCheck->typeID == DOUBLE) score = 2;
                             else score = 1;
                             if (score < scores[i]) goto bail;
                             else cacheScores[i] = score;
