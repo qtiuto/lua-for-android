@@ -5,8 +5,8 @@
 
 #include <string>
 #include <unordered_map>
-#include <vector>
 #include "myarray.h"
+#include "base_func.h"
 
 class JavaType;
 
@@ -31,16 +31,9 @@ struct Import {
     }
 };
 
-struct CrossThreadLuaObject;
 
-struct BaseFunction {
-    int javaRefCount = 0;
 
-    virtual bool isLocal()=0;
-
-    virtual ~BaseFunction() {};
-};
-
+class CrossThreadLuaObject;
 class FuncInfo : public BaseFunction {
     Import *imported = nullptr;
     Array<CrossThreadLuaObject> upvalues;

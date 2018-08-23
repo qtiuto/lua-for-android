@@ -29,9 +29,8 @@ if(env->ExceptionCheck()){\
 
 #define INVALID_OBJECT reinterpret_cast<jobject >(-1)
 
-template<typename TypeArr>
-inline void cleanArgs(jvalue *args, int argSize, TypeArr &arr, JNIEnv *env) {
-    for (int i = 0; i < argSize; ++i) {
+inline void cleanArgs(jvalue *args, int argSize, Vector<ValidLuaObject> &arr, JNIEnv *env) {
+    for (int i =argSize-1; i !=-1; --i) {
         if (arr[i].shouldRelease) {
             jobject ref = args[i].l;
             if (ref != INVALID_OBJECT)

@@ -21,8 +21,7 @@ public:
         //array=new _Tp[size];
     }
 
-    template<typename _Alloc>
-    Array(std::vector<_Tp, _Alloc> &&list):Array(list.size()) {
+    Array(Vector<_Tp> &&list):Array(list.size()) {
         auto iter = array;
         for (auto iterator = list.begin(); iterator != list.end(); ++iterator) {
             *iter = std::move(*iterator);
@@ -30,8 +29,7 @@ public:
         }
     }
 
-    template<typename _Alloc>
-    Array(const std::vector<_Tp, _Alloc> &list):Array(list.size()) {
+    Array(const Vector<_Tp> &list):Array(list.size()) {
         auto iter = array;
         for (_Tp v:list) {
             *iter = v;
@@ -70,8 +68,7 @@ public:
 
     _Tp &at(size_type index) const {
         if (index < 0 || index >= _size) {
-            String error(formMessage("index=", index, " out of bound=", _size));
-            LOGE("%s", error.c_str());
+            LOGE("index=%u out of bound=%u", (uint32_t)index,(uint32_t)_size);
             abort();
         }
         return array[index];
@@ -83,7 +80,6 @@ public:
 
     Array &operator=(Array<_Tp> &&other) {
         release();
-
         _size = other._size;
         array = other.array;
         other.array = nullptr;

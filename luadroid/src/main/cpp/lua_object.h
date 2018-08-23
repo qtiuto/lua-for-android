@@ -8,10 +8,9 @@
 #include <cstdint>
 #include <jni.h>
 #include <string>
-#include "lua/lua.h"
+#include "lua.h"
 #include "java_object.h"
-#include "func_info.h"
-
+#include "base_func.h"
 enum LUA_TYPE {
     T_NIL,
     T_BOOLEAN,
@@ -52,16 +51,17 @@ struct ValidLuaObject {
     ValidLuaObject():type(T_NIL),shouldRelease(false){}
 
     ValidLuaObject(ValidLuaObject &&object) : type(object.type),shouldRelease(object.shouldRelease), integer(object.integer) {
-        object.integer = 0;
+        object.type = T_NIL;
     }
 
     ValidLuaObject(const ValidLuaObject &) = delete;
 
     ValidLuaObject &operator=(ValidLuaObject &&other) {
-        ValidLuaObject::~ValidLuaObject();
+        if(type!=T_NIL)ValidLuaObject::~ValidLuaObject();
         type = other.type;
+        shouldRelease=other.shouldRelease;
         integer = other.integer;
-        other.integer = 0;
+        other.type = T_NIL;
         return *this;
     }
 
@@ -95,7 +95,7 @@ struct ValidLuaObject {
 
 template<typename Tp>
 class LuaTable {
-    typedef Vector<std::pair<Tp, Tp>> Table;
+    using Table= Vector<std::pair<Tp, Tp>> ;
     Table table;
     bool isDeleting;
 public:
@@ -145,27 +145,14 @@ public:
 };
 
 
-class UserData {
-public:
-    Array<char, size_t> data;
-    LuaTable<CrossThreadLuaObject> *metaTable = nullptr;
 
-    UserData(size_t len) : data(len) {
-
-    }
-
-    ~UserData() {
-        delete metaTable;
-    }
-};
-
-inline ValidLuaObject::~ValidLuaObject() {
+ValidLuaObject::~ValidLuaObject() {
     if (type == T_FUNCTION)
         delete func;
     else if (type == T_TABLE)
         delete lazyTable;
 }
-
+class UserData;
 struct CrossThreadLuaObject {
     int type = T_NIL;
     union {
@@ -181,7 +168,7 @@ struct CrossThreadLuaObject {
         JavaType* javaType;
     };
 
-    CrossThreadLuaObject() {};
+    CrossThreadLuaObject()= default;
 
     CrossThreadLuaObject(const CrossThreadLuaObject &luaObject) = delete;
 
@@ -199,19 +186,34 @@ struct CrossThreadLuaObject {
         return *this;
     }
 
-    ~CrossThreadLuaObject() {
-        /*the funcInfo should be deleted by releaseFunc*/
-        if (type == T_STRING) {
-            delete[] string;
-        } else if (type == T_OBJECT) {
-            AutoJNIEnv()->DeleteGlobalRef(objectRef->object);
-            delete objectRef;
-        } else if (type == T_TABLE) {
-            delete table;
-        } else if (type == T_USER_DATA) {
-            delete userData;
-        }
+    ~CrossThreadLuaObject();
+};
+
+class UserData {
+public:
+    Array<char, size_t> data;
+    LuaTable<CrossThreadLuaObject> *metaTable = nullptr;
+
+    UserData(size_t len) : data(len) {
+
+    }
+
+    ~UserData() {
+        delete metaTable;
     }
 };
 
+inline CrossThreadLuaObject::~CrossThreadLuaObject() {
+    /*the funcInfo should be deleted by releaseFunc*/
+    if (type == T_STRING) {
+        delete[] string;
+    } else if (type == T_OBJECT) {
+        AutoJNIEnv()->DeleteGlobalRef(objectRef->object);
+        delete objectRef;
+    } else if (type == T_TABLE) {
+        delete table;
+    } else if (type == T_USER_DATA) {
+        delete userData;
+    }
+}
 #endif //LUADROID_LUAOBJECT_H

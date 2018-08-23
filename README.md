@@ -10,7 +10,7 @@
     A little Editor is embedded in the code,you can run it to test.
      
     Performance:
-     700000 method call per second on my Oneplus 5 device
+     800000 method call(Math.abs) per second on my Oneplus 5 device
      
     Functions:
      
@@ -39,6 +39,9 @@
       usage: newArray(ComponentType,length,initial args...)
       The length of inital args must be less than or equal to the length
       Alternative: new(ArrayType,,length,initial args...)
+      Note:Never pass a type into the initial args.Type cast won't be 
+      accepted,since only one type is acceptable.Auto converion will
+      be performed if needed.
       
      Type:
       return a type by give className,shortName or class

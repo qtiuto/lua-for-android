@@ -1105,12 +1105,12 @@ int javaImport(lua_State *L) {
     if (!luaL_isstring(L, -1)) luaL_error(L, "Should pass a string for import");
     String s(lua_tostring(L, -1));
     Import *import = context->getImport();
-    if(s[0]=='[') TopErrorHandle("Don't import array Type");
+    if(s[0]=='[') TopErrorHandle("Don't import array type!");
     if (strcmp(&s[s.length() - 2], ".*") == 0) {
         s = s.substr(0, s.length() - 1);
         const auto &end = import->packages.end();
         auto iter = std::find(import->packages.begin(), end, s);
-        if (iter != end) import->packages.push_back(s);
+        if (iter != end) import->packages.push_back(std::move(s));
     } else {
         size_t start = s.rfind('.');
         String name;
@@ -1435,6 +1435,7 @@ int javaRemove(lua_State *L) {
 }
 
 int callMethod(lua_State *L) {
+
     ScriptContext *context = getContext(L);
     MemberFlag *flag = (MemberFlag *) lua_touserdata(L, FLAG_INDEX);
     const char *name = lua_tostring(L, NAME_INDEX);
@@ -1450,13 +1451,13 @@ int callMethod(lua_State *L) {
     if (info == nullptr) {
         TopErrorHandle("No matched found for the method %s;%s",type->name(env).str(), name);
     }
-    int argCount = static_cast<int>(objects.size());
+    int argCount = objects.size();
     jvalue args[argCount];
-    for (int i = argCount - 1; i >= 0; --i) {
-        ValidLuaObject &object = objects.at((unsigned long) i);
+    for (int i = argCount - 1; i != 0; --i) {
+        ValidLuaObject &object = objects[i];
         JavaType::ParameterizedType &tp = info->params[i];
         args[i] = context->luaObjectToJValue(env, object, tp.rawType,tp.realType);
-        if ((object.type == T_TABLE || object.type == T_FUNCTION) && args[i].l == INVALID_OBJECT) {
+        if (!tp.rawType->isPrimitive() && args[i].l == INVALID_OBJECT) {
             cleanArgs(args, argCount, objects, env);
             goto __ErrorHandle;
         }
@@ -1516,11 +1517,8 @@ int callMethod(lua_State *L) {
             if (object == nullptr) lua_pushnil(L); else pushJavaObject(env, L, context, object);
             break;
     }
-    HOLD_JAVA_EXCEPTION(context, {});
+    HOLD_JAVA_EXCEPTION(context, { goto __ErrorHandle;});
     cleanArgs(args, argCount, objects, env);
-    if (context->hasErrorPending()) {
-        goto __ErrorHandle;
-    }
     return retCount;
 }
 
@@ -2449,8 +2447,8 @@ void readArguments(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<Ja
                    Vector<ValidLuaObject> &objects, int start) {
     int top = lua_gettop(L);
     auto expectedSize = top - (start - 1);
-    types.reserve(static_cast<unsigned long>(expectedSize));
-    objects.reserve(static_cast<unsigned long>(expectedSize));
+    types.reserve(expectedSize);
+    objects.reserve(expectedSize);
     for (int i = start; i <= top; ++i) {
         JavaType **typeRef = (JavaType **) luaL_testudata(L, i, JAVA_TYPE);
         bool noType = typeRef == nullptr;
@@ -2467,7 +2465,6 @@ void readArguments(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<Ja
             lua_error(L);
         }
         objects.push_back(std::move(luaObject));
-
     }
 }
 
@@ -2615,4 +2612,5 @@ bool validJavaName(const char *s) noexcept {
     }
     return true;
 }
+
 

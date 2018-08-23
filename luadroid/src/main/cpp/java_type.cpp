@@ -14,7 +14,7 @@ jobject JavaType::newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<Valid
     const MethodInfo *info = findMethod(env,FakeString("<init>"), false, types, &params);
     uint32_t size = (uint32_t) types.size();
     jvalue argList[size];
-    for (int i = 0; i < size; ++i) {
+    for (int i = size-1; i !=-1; --i) {
         ValidLuaObject &object = params[i];
         ParameterizedType &tp = info->params[i];
         argList[i] = context->luaObjectToJValue(env, object, tp.rawType,tp.realType);
@@ -186,7 +186,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
         }
         memcpy(cacheScores, scores, paramsLen * sizeof(scores[0]));
         for (int i = paramsLen - 1; i >= 0; --i) {
-            const ValidLuaObject &luaObject = arguments->at((unsigned long) i);
+            const ValidLuaObject &luaObject = arguments->at(i);
             JavaType *toCheck = info.params[i].rawType;
             JavaType *provided = types[i];
             switch (luaObject.type) {
