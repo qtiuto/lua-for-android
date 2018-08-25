@@ -342,25 +342,25 @@ void ScriptContext::setPendingException(TJNIEnv *env, const String &msg) {
 jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type,jobject real) {
     jvalue ret;
     if (type->isChar()) {
-        if(luaObject.type==T_OBJECT){
+        if(unlikely(luaObject.type==T_OBJECT)){
             ret.c=env->CallCharMethod(luaObject.objectRef->object,charValue);
         } else if(luaObject.type==T_CHAR)
             ret.c=luaObject.character;
         else strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
     } else if (type->isBool()) {
-        if(luaObject.type==T_OBJECT){
+        if(unlikely(luaObject.type==T_OBJECT)){
             ret.z=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
         } else ret.z = luaObject.isTrue;
     } else if (type->isInteger()) {
-        if(luaObject.type==T_OBJECT){
+        if(unlikely(luaObject.type==T_OBJECT)){
             ret.j=env->CallLongMethod(luaObject.objectRef->object,longValue);
         } else ret.j = luaObject.integer;
     } else if (type->typeID == JavaType::FLOAT) {
-        if(luaObject.type==T_OBJECT){
+        if(unlikely(luaObject.type==T_OBJECT)){
             ret.f= float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
         } else ret.f = (float) luaObject.number;
     } else if (type->typeID == JavaType::DOUBLE) {
-        if(luaObject.type==T_OBJECT){
+        if(unlikely(luaObject.type==T_OBJECT)){
             ret.d= env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
         } else ret.d = luaObject.number;
     } else {
@@ -433,28 +433,36 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
             ret.l = luaObject.objectRef->object;
         } else {
             luaObject.shouldRelease=true;
-            if (type->isBoxedBool()) {
-                ret.l = env->CallStaticObjectMethod(type->getType(), type->
-                        getBoxMethodForBoxType(env), luaObject.isTrue).invalidate();
-            } else if (type->typeID == JavaType::BOX_DOUBLE) {
-                ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
-                                       luaObject.type == T_INTEGER ? (double) luaObject.integer
-                                                                   : luaObject.number).invalidate();
-            } else if (type->typeID == JavaType::BOX_FLOAT) {
-                ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
-                                       luaObject.type == T_INTEGER ? (float) luaObject.integer :
-                                       (float) luaObject.number).invalidate();
-            }else if (type->isBoxedChar()) {
-                if (luaObject.type == T_STRING)
-                    strcpy8to16(&luaObject.character, luaObject.string, NULL);
-                ret.l = env->CallStaticObjectMethod(type->getType(), type->
-                        getBoxMethodForBoxType(env), luaObject.character).invalidate();
-            } else  if (type->_isBox) {
-                ret.l = env->CallStaticObjectMethod(type->getType(), type->
-                        getBoxMethodForBoxType(env), luaObject.integer).invalidate();
-            } else {
-                luaObject.shouldRelease = false;
-                ret.l = INVALID_OBJECT;
+            switch (type->typeID){
+                case JavaType::BOX_CHAR:
+                    if (luaObject.type == T_STRING)
+                        strcpy8to16(&luaObject.character, luaObject.string, NULL);
+                    ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                            getBoxMethodForBoxType(env), luaObject.character).invalidate();
+                    break;
+                case JavaType::BOX_BOOLEAN:
+                    ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                            getBoxMethodForBoxType(env), luaObject.isTrue).invalidate();
+                    break;
+                case JavaType::BOX_DOUBLE:
+                    ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env)
+                            , luaObject.type == T_INTEGER ? (double) luaObject.integer:
+                              luaObject.number).invalidate();
+                    break;
+                case JavaType::BOX_FLOAT:
+                    ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
+                                                        luaObject.type == T_INTEGER ? (float) luaObject.integer :
+                                                        (float) luaObject.number).invalidate();
+                    break;
+                default:
+                    if (likely(type->_isBox)) {
+                        ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                                getBoxMethodForBoxType(env), luaObject.integer).invalidate();
+                    } else {
+                        luaObject.shouldRelease = false;
+                        ret.l = INVALID_OBJECT;
+                    }
+                    break;
             }
         }
     }

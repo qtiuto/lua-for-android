@@ -3,6 +3,7 @@ LOCAL_PATH := $(call my-dir)
 #use the below statement if you intend to use luajit
 #LUA_LIB :=luajit
 LUA_LIB :=lua
+$(call import-add-path,$(LOCAL_PATH))
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES  := java_type.cpp luadroid.cpp log_wrapper.cpp script_context.cpp utf8.cpp
@@ -15,5 +16,4 @@ $(info local c includes=$(LOCAL_C_INCLUDES))
 $(info local path=$(LOCAL_PATH))
 include $(BUILD_SHARED_LIBRARY)
 
-$(call import-add-path,$(LOCAL_PATH))
 $(call import-module, $(LUA_LIB))

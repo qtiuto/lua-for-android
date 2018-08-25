@@ -11,6 +11,8 @@
 #include "lua.h"
 #include "java_object.h"
 #include "base_func.h"
+#include "Vector.h"
+
 enum LUA_TYPE {
     T_NIL,
     T_BOOLEAN,
@@ -57,7 +59,7 @@ struct ValidLuaObject {
     ValidLuaObject(const ValidLuaObject &) = delete;
 
     ValidLuaObject &operator=(ValidLuaObject &&other) {
-        if(type!=T_NIL)ValidLuaObject::~ValidLuaObject();
+        if(unlikely(type!=T_NIL))ValidLuaObject::~ValidLuaObject();
         type = other.type;
         shouldRelease=other.shouldRelease;
         integer = other.integer;

@@ -66,6 +66,7 @@ switch (typeID){
         jcharArray ret = env->NewCharArray(size).invalidate();
         char16_t *buf=(char16_t*)env->GetPrimitiveArrayCritical(ret,NULL);
         strcpy8to16(buf,st.data(),NULL);
+        env->ReleasePrimitiveArrayCritical(ret,buf,0);
         return ret;
     }
     default:{
@@ -95,7 +96,7 @@ JavaType::MethodArray *JavaType::ensureMethod(TJNIEnv* env,const String &s, bool
     if (iter != map.end())
         return &iter->second;
     auto &&invalidMember = invalidMethods.find(s);
-    if (invalidMember != invalidMethods.end() && invalidMember->second == isStatic)
+    if (likely(invalidMember != invalidMethods.end()) && invalidMember->second == isStatic)
         return nullptr;
     JString str = env->NewStringUTF(&s[0]);
     JObjectArray methodInfoArray = (JObjectArray) env->CallStaticObjectMethod(
@@ -166,7 +167,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
         Vector<JavaType *> &types,
         Vector<ValidLuaObject> *arguments) {
     auto &&array = ensureMethod(env,name, isStatic);
-    if (!array) return nullptr;
+    if (unlikely(!array)) return nullptr;
     int paramsLen = (int) types.size();
     const MethodInfo *select = nullptr;
     uint scores[paramsLen];
@@ -184,7 +185,6 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
             }
             goto over;
         }
-        memcpy(cacheScores, scores, paramsLen * sizeof(scores[0]));
         for (int i = paramsLen - 1; i >= 0; --i) {
             const ValidLuaObject &luaObject = arguments->at(i);
             JavaType *toCheck = info.params[i].rawType;
@@ -203,6 +203,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         cacheScores[i]=1;
                     else if(scores[i]==1||!toCheck ->isBoxedBool())
                         goto bail;
+                    else cacheScores[i]=0;
                     break;
                 case T_CHAR:{
                     if(provided&&provided->isBoxedChar())
@@ -211,6 +212,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         cacheScores[i]=1;
                     else if(scores[i]==1||!toCheck ->isBoxedChar())
                         goto bail;
+                    else cacheScores[i]=0;
                     break;
                 }
                 case T_STRING: {
@@ -229,7 +231,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         if (toCheck->isString())cacheScores[i] = 1;
                         else if(!toCheck->isStringAssignable()){
                             goto bail;
-                        }
+                        } else cacheScores[i]=0;
                     } else if (provided->isString()||provided->isStringAssignable()) {
                         if (provided != toCheck) goto bail;
                     } else goto bail;
@@ -474,6 +476,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                                 cacheScores[i]=1;
                             else if(scores[i]==1||toCheck->typeID !=BOX_DOUBLE)
                                 goto bail;
+                            else cacheScores[i]=0;
                         } else {
                             uint score;
                             if (toCheck->typeID == FLOAT) score = 3;
@@ -517,6 +520,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
         memcpy(scores, cacheScores, paramsLen * sizeof(scores[0]));
         continue;
         bail:
+        //memcpy(cacheScores, scores, paramsLen * sizeof(scores[0]));
         continue;
     }
     return select;
@@ -524,10 +528,10 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
 
 const JavaType::FieldInfo *JavaType::findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type) {
     auto &&array = ensureField(env,name, isStatic);
-    if (array == nullptr)
+    if (unlikely(array == nullptr))
         return nullptr;
     if (type == nullptr) {
-        if (array->size() == 1) return &(*array)[0];
+        if (likely(array->size() == 1)) return &(*array)[0];
         else return nullptr;
     }
     for (const FieldInfo &info:*array) {

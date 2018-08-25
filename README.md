@@ -10,7 +10,9 @@
     A little Editor is embedded in the code,you can run it to test.
      
     Performance:
-     800000 method call(Math.abs) per second on my Oneplus 5 device
+     Around 1900000 method call(Math.abs) per second on my Oneplus 5 device
+     Note that if you run it in debug mode,CheckJni mode is enabled by the
+     vm,and it will take away more than half of the efficency.
      
     Functions:
      

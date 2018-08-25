@@ -20,7 +20,7 @@
 #define LUADROID_LUADROID_H
 
 #define HOLD_JAVA_EXCEPTION(context, code)({\
-if(env->ExceptionCheck()){\
+if(unlikely(env->ExceptionCheck())){\
     jthrowable t=env->ExceptionOccurred();\
     env->ExceptionClear();\
     context->setPendingException(t);\

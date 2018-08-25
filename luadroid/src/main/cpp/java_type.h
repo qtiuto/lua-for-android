@@ -13,7 +13,6 @@
 #include "jtype.h"
 #include "TJNIEnv.h"
 
-#define JAVA_TYPE "java_type"
 
 class ScriptContext;
 

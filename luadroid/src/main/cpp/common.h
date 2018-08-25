@@ -6,20 +6,11 @@
 #include <jni.h>
 #include <string>
 #include <unordered_map>
-#include <vector>
 #include "lua.hpp"
-#include <android/log.h>
 #include "jtype.h"
 #include "TJNIEnv.h"
-#include "Vector.h"
+#include "macros.h"
 
-#define LOGE(msg, ...) __android_log_print(ANDROID_LOG_ERROR,"Lua",msg,##__VA_ARGS__)
-#define LOGV(msg, ...) __android_log_print(ANDROID_LOG_VERBOSE,"Lua",msg,##__VA_ARGS__)
-#define LOGI(msg, ...) __android_log_print(ANDROID_LOG_INFO,"Lua",msg,##__VA_ARGS__)
-#define LOGW(msg, ...) __android_log_print(ANDROID_LOG_WARN,"Lua",msg,##__VA_ARGS__)
-#if !defined(__GNUC__)
-#define __thread thread_local
-#endif
 extern JavaVM *vm;
 extern TJNIEnv* _GCEnv;
 extern jclass stringType;
@@ -40,12 +31,8 @@ typedef std::string String;
 template<class _Key, typename _Value,
         class _Hash=std::hash <_Key>, class _Equal=std::equal_to <_Key>>
 using Map=std::unordered_map<_Key, _Value, _Hash, _Equal>;
-//template<typename _Tp>
-//using Vector=std::vector<_Tp>;
 
-bool testType(lua_State *L, int objIndex, const char *typeName);
 
-int reportError(lua_State *L);
 
 inline void __doNotCall(std::stringstream &sstream) {};
 

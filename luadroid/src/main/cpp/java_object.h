@@ -8,16 +8,13 @@
 #include "common.h"
 #include "AutoJNIEnv.h"
 
-#define JAVA_OBJECT "java_object"
-#define JAVA_RETHROW "java_rethrow"
-
 class JavaType;
 
 struct JavaObject {
     jobject object;
     JavaType *type;
 
-    static int objectGc(lua_State *L) {
+    static int objectGc(lua_State *L) {//gc function may run in other thread so we set a upvalue
         JavaObject *ref = (JavaObject *) lua_touserdata(L, -1);
         AutoJNIEnv()->DeleteGlobalRef(ref->object);
         return 0;

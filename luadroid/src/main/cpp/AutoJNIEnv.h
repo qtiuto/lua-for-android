@@ -12,7 +12,7 @@ class AutoJNIEnv {
 public:
     AutoJNIEnv() {
         int status = vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_4);
-        if (status != JNI_OK) abort();
+        if (unlikely(status != JNI_OK)) abort();
     }
 
     AutoJNIEnv(const AutoJNIEnv &) = delete;

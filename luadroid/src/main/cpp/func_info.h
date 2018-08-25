@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include "myarray.h"
 #include "base_func.h"
+#include "Vector.h"
 
 class JavaType;
 

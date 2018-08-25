@@ -6,6 +6,7 @@
 #include <cstring>
 #include <vector>
 #include "common.h"
+#include "Vector.h"
 
 template<typename _Tp, typename size_type=uint32_t>
 class Array {
@@ -67,7 +68,7 @@ public:
     }
 
     _Tp &at(size_type index) const {
-        if (index < 0 || index >= _size) {
+        if (unlikely(index < 0 || index >= _size)) {
             LOGE("index=%u out of bound=%u", (uint32_t)index,(uint32_t)_size);
             abort();
         }
