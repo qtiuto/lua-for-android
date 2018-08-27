@@ -1,7 +1,6 @@
 
 #include <malloc.h>
 #include "utf8.h"
-#include "lua/luaconf.h"
 
 
 /**

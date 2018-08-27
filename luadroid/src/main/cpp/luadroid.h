@@ -71,7 +71,6 @@ namespace std {
         }
     };
 
-
 }
 class JavaType;
 
