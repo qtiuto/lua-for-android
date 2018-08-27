@@ -158,23 +158,16 @@
       
        Whether the object is multi-thread supported is determined by
        whether localLunction is set in the constructor of ScriptContext
-     put
-      put an object to the ScriptContext,so you can get it from another
-      thread,all data can be transfered,including metatable.
-      usage:put(name,lua object)--the object is nilable
-      Notice:
-      userdata is transfered by memory copy.If it has a __gc metamethod
-      some data it refers to may be corrupted and put will failed with
-      error .So make sure the data is muli-thread-able
-     get
-      push a previously saved data to current lua state,with the name as
-      a global key.every call to it will push a new value.You can call it
-      from the same thread you put it.
-      usage: get(name)
-      
-     remove
-      remove a previously save data.
-      
+    
+    Cross thread support
+     A userdata named 'cross' is imported to support cross thread communi-
+     cation.It behaves like a table,so you can just put any lua object to 
+     it.Note that userdata is shared by memory copy so if it has a _gc
+     metamethod,error will be raised, since it may induce memory corrupt-
+     ion.Corutine can't be shared also since it has it's own lua state,
+     and a lua state can't be shared cross thread.Take care that all key 
+     will be converted to string.
+     
     Member Access:
      
      Once you have a type from import or Type,you can access its  static 

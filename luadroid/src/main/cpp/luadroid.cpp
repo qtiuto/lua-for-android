@@ -59,8 +59,6 @@ static int javaPut(lua_State *L)noexcept;
 
 static int javaGet(lua_State *L)noexcept;
 
-static int javaRemove(lua_State *L)noexcept;
-
 static int concatString(lua_State *L)noexcept;
 
 static int objectEquals(lua_State *L)noexcept;
@@ -89,8 +87,6 @@ static bool parseLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, in
 static bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, int idx,
                                       CrossThreadLuaObject &luaObject);
 
-static JavaObject *pushJavaObject(TJNIEnv *env, lua_State *L, ScriptContext *context, jobject obj);
-
 static bool pushLuaObject(TJNIEnv *env, lua_State *L, ScriptContext *context,
                           const CrossThreadLuaObject &luaObject);
 
@@ -117,9 +113,7 @@ static void parseTryTable(lua_State *L);
 
 static void recordLuaError(TJNIEnv *env, ScriptContext *context, lua_State *L, int ret);
 
-
 static int getObjectLength(lua_State *L);
-
 
 static LocalFunctionInfo *saveLocalFunction(lua_State *L, int i);
 
@@ -166,9 +160,6 @@ static const luaL_Reg javaInterfaces[] =
          {"charString",
                         javaCharString},
          {"charValue",  javaCharValue},
-         {"put",        javaPut},
-         {"get",        javaGet},
-         {"remove",     javaRemove},
          {"throw",      javaThrow},
          {"try",        javaTry},
          {nullptr,      nullptr}};
@@ -290,33 +281,6 @@ static const char *luaL_tolstring (lua_State *L, int idx, size_t *len) {
 }
 #endif
 
-void
-ScriptContext::pushAddedObject(TJNIEnv *env, lua_State *L, const char *name, const char *methodName,
-                               jobject obj) {
-    if (methodName == nullptr || methodName[0] == 0) {
-        if (obj == nullptr) {
-            lua_pushnil(L);
-        } else {
-            pushJavaObject(env, L, this, obj);
-        }
-        lua_setglobal(L, name);
-    } else if (obj != nullptr) {
-        int top = lua_gettop(L);
-        bool isStatic = false;
-        if (env->IsInstanceOf(obj, classType)) {
-            JavaType *type = ensureType(env, (jclass) obj);
-            *(JavaType **) lua_newuserdata(L, sizeof(JavaType *)) = type;
-            isStatic = true;
-        } else {
-            pushJavaObject(env, L, this, obj);
-        }
-        lua_pushstring(L, methodName);
-        pushMember(this, L, isStatic, 0, true);
-
-        lua_setglobal(L, name);
-        lua_settop(L, top);
-    }
-}
 
 static bool testType(lua_State *L, int objIndex, const RegisterKey *key) {
     if (!lua_getmetatable(L, objIndex)) return false;
@@ -339,6 +303,10 @@ static void* testUData(lua_State* L,int ud,const RegisterKey* key){
     }
     return NULL;  /* value is not a userdata with a metatable */
 }
+static bool isJavaTypeOrObject(lua_State*L,int index){
+    return lua_rawlen(L,index)== sizeof(void *);
+}
+
 static JavaObject* checkJavaObject(lua_State* L,int idx){
     JavaObject* ret= static_cast<JavaObject *>(testUData(L, idx, OBJECT_KEY));
     if(unlikely(ret== nullptr))
@@ -398,19 +366,22 @@ static int luaPanic(lua_State *L) {
         luaL_traceback(L, L, s, 1);
         s = lua_tostring(L, -1);
     } else s = "Unexpected lua error";
-    getContext(L)->setPendingException(AutoJNIEnv(), s);
+    lua_getfield(L,LUA_REGISTRYINDEX,JAVA_CONTEXT);
+    ScriptContext* context= static_cast<ScriptContext *>(lua_touserdata(L, -1));
+    lua_pop(L,1);
+    context->setPendingException(AutoJNIEnv(), s);
     _longjmp(errorJmp, -1);
     return 0;
 }
 
 void ScriptContext::config(lua_State *L) {
     lua_atpanic(L, luaPanic);
+
+    lua_pushlightuserdata(L, this);//for panic and lib init
+    lua_setfield(L, LUA_REGISTRYINDEX, JAVA_CONTEXT);
     int top = lua_gettop(L);
 
-
 #if LUA_VERSION_NUM >= 502
-    lua_pushlightuserdata(L, this);
-    lua_setfield(L, LUA_REGISTRYINDEX, JAVA_CONTEXT);
     luaL_requiref(L, "java", luaGetJava,/*glb*/true);
 #else
     lua_pushlightuserdata(L, this);
@@ -431,6 +402,21 @@ void ScriptContext::config(lua_State *L) {
         lua_pushcclosure(L, javaType,1);
         lua_setglobal(L, "Type");
     }
+    {
+        lua_newuserdata(L,0);
+        lua_createtable(L,0,3);
+        lua_pushstring(L, "Can't change java metatable");
+        lua_setfield(L, -2, "__metatable");
+        lua_pushlightuserdata(L,this);
+        lua_pushcclosure(L, javaPut,1);
+        lua_setfield(L, -2, "__newindex");
+        lua_pushlightuserdata(L,this);
+        lua_pushcclosure(L, javaGet,1);
+        lua_setfield(L, -2, "__index");
+        lua_setmetatable(L,-2);
+        lua_setglobal(L,"cross");
+    }
+
 
 
     if (newMetaTable(L,TYPE_KEY, JAVA_TYPE)) {
@@ -483,293 +469,6 @@ void ScriptContext::config(lua_State *L) {
     lua_settop(L, top);
 }
 
-static void registerNativeMethods(JNIEnv *env) {
-    jclass scriptClass = env->FindClass("com/oslorde/luadroid/ScriptContext");
-    env->RegisterNatives(scriptClass, nativeMethods,
-                         sizeof(nativeMethods) / sizeof(JNINativeMethod));
-    env->DeleteLocalRef(scriptClass);
-}
-
-jint JNI_OnLoad(JavaVM *vm, void *) {
-    ::vm = vm;
-    JNIEnv *env;
-    if (vm->GetEnv((void **) &env, JNI_VERSION_1_4) != JNI_OK) {
-        return -1;
-    }
-    registerNativeMethods(env);
-    return JNI_VERSION_1_4;
-}
-
-
-jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll) {
-    ScriptContext *context = new ScriptContext(env, object, importAll);
-    requireLogger([context, env](const char *data, bool isErr) {
-        context->writeLog(data, isErr);
-    });
-    return reinterpret_cast<long>(context);
-}
-
-void registerLogger(TJNIEnv *env, jclass, jlong ptr, jobject out, jobject err) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    if (context != nullptr) {
-        context->registerLogger(env, out, err);
-    };
-}
-
-void nativeClose(JNIEnv *, jclass, jlong ptr) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    if (context != nullptr) {
-        delete context;
-        dropLogger();
-    }
-}
-
-void nativeClean(JNIEnv *, jclass, jlong ptr) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    if (context != nullptr)context->clean();
-}
-
-void releaseFunc(JNIEnv *, jclass, jlong ptr) {
-    BaseFunction *info = (BaseFunction *) ptr;
-    if (--info->javaRefCount == 0) {
-        delete info;
-    }
-}
-jint getClassType(TJNIEnv * env, jclass, jlong ptr,jclass clz) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    return context->ensureType(env,clz)->getTypeID();
-}
-void addJavaObject(TJNIEnv *env, jclass, jlong ptr, jstring _name, jobject obj, jboolean local) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    JString name(env, _name);
-    context->addJavaObject(name, nullptr, env->NewGlobalRef(obj), local);
-    name.invalidate();
-}
-
-void addJavaMethod(TJNIEnv *env, jclass, jlong ptr, jstring jname, jstring method, jobject jinst,
-                   jboolean local) {
-    if (jinst == nullptr) return;
-    ScriptContext *context = (ScriptContext *) ptr;
-    JString name(env, jname);
-    JString methodName(env, method);
-    context->addJavaObject(name, methodName, env->NewGlobalRef(jinst), local);
-    name.invalidate();
-    methodName.invalidate();
-}
-
-jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    auto L = context->getLua();
-    JString s(env, script);
-    int ret;
-    if (isFile)ret = luaL_loadfile(L, s);
-    else ret = luaL_loadstring(L, s);
-    jlong retVal = 0;
-    if (ret != LUA_OK) {
-        context->setPendingException(env, "Failed to load");
-        recordLuaError(env, context, L, ret);
-        context->throwToJava();
-    } else {
-        FuncInfo *info = saveLuaFunction(env, L, context, -1);
-        info->javaRefCount++;
-        retVal = reinterpret_cast<jlong >(info);
-    }
-    lua_pushcfunction(L, luaFullGC);
-    lua_pcall(L, 0, 0, 0);
-    s.invalidate();
-    return retVal;
-}
-
-jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean isFile,
-                       jobjectArray args) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    if (_setjmp(errorJmp)) {
-        //GCScope::acquire().popAllFrames();
-        if (context->hasErrorPending()) {
-            context->throwToJava();
-        }
-        return nullptr;
-    }
-    Import myIMport;
-    auto import = context->changeImport(&myIMport);
-    auto L = context->getLua();
-    auto top = lua_gettop(L);
-    int ret;
-    int argCount;
-    jobjectArray result = nullptr;
-    lua_pushcfunction(L, luaPCallHandler);
-    int handlerIndex = lua_gettop(L);
-    if (env->IsInstanceOf(script, stringType)) {
-        JString s(env, static_cast<jstring>(script));
-        if (isFile)ret = luaL_loadfile(L, s);
-        else {
-            ret = luaL_loadstring(L, s);
-        }
-        s.invalidate();
-    } else {
-        FuncInfo *info = reinterpret_cast<FuncInfo *>(env->CallLongMethod(script, longValue));
-        ret = luaL_loadbuffer(L, &info->funcData[0], info->funcData.size(), "");
-    }
-    if (unlikely(ret != LUA_OK)) {
-        context->setPendingException(env, "Failed to load");
-        recordLuaError(env, context, L, ret);
-        goto over;
-    }
-    argCount = args != nullptr ? 0 : env->GetArrayLength(args);
-    for (int i = 0; i < argCount; ++i) {
-        JObject object(env->GetObjectArrayElement(args, i));
-        pushJavaObject(env, L, context, object);
-    }
-    //GCScope::acquire().pushFrame();
-    ret = lua_pcall(L, argCount, LUA_MULTRET, handlerIndex);
-    //GCScope::acquire().popFrame();
-    if (unlikely(ret != LUA_OK)) {
-        recordLuaError(env, context, L, ret);
-        goto over;
-    }
-    {
-        int resultSize = lua_gettop(L) - handlerIndex;
-        if (resultSize > 0) {
-            result = env->asJNIEnv()->NewObjectArray(resultSize, context->ObjectClass->getType(),
-                                                     NULL);
-            for (int i = resultSize - 1; i >= 0; --i) {
-                ValidLuaObject object;
-                parseLuaObject(env, L, context, handlerIndex + i + 1, object);
-                jobject value = context->luaObjectToJObject(env, std::move
-                        (object));
-                if (value != INVALID_OBJECT)
-                    env->SetObjectArrayElement(result, i, JObject(env, value).get());
-            }
-        }
-    }
-    over:
-    context->changeImport(import);
-    lua_settop(L, top);
-    lua_pushcfunction(L, luaFullGC);
-    lua_pcall(L, 0, 0, 0);
-
-    if (context->hasErrorPending()) {
-        context->throwToJava();
-    }
-    return result;
-}
-
-jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
-                          jboolean isInterface,
-                          jlong funcRef, jobject proxy, jintArray argTypes, jobjectArray args) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    lua_State *L = context->getLua();
-    if (_setjmp(errorJmp)) {
-        //GCScope::acquire().popAllFrames();
-        if (context->hasErrorPending())
-            context->throwToJava();
-        return 0;
-    }
-    lua_pushcfunction(L, luaPCallHandler);
-    int handlerIndex = lua_gettop(L);
-    Import *old;
-    if (!reinterpret_cast<BaseFunction *>(funcRef)->isLocal()) {
-        FuncInfo *funcInfo = (FuncInfo *) funcRef;
-        old = context->changeImport(funcInfo->getImport());
-        loadLuaFunction(env, L, funcInfo, context);
-    } else {
-        old = context->getImport();
-        LocalFunctionInfo *info = reinterpret_cast<LocalFunctionInfo *>(funcRef);
-        lua_rawgetp(L, LUA_REGISTRYINDEX,info);
-        if (unlikely(lua_isnil(L, -1))) {
-            context->setPendingException(
-                    env, "Local Function must run in the given thread it's extracted from");
-            context->throwToJava();
-            return 0;
-        }
-    }
-    int len = env->GetArrayLength(argTypes);
-    jint *arr = env->GetIntArrayElements(argTypes, nullptr);
-    for (int i = 0; i < len; ++i) {
-        switch (arr[i]) {
-            case 0: {//char
-                JObject character = env->GetObjectArrayElement(args, i);
-                char16_t c = env->CallCharMethod(character, charValue);
-                char charStr[4]={0} ;
-                strncpy16to8(charStr,&c, 1);
-                lua_pushstring(L, charStr);
-                break;
-            }
-            case 1: {//boolean
-                JObject boolean = env->GetObjectArrayElement(args, i);
-                jboolean b = env->CallBooleanMethod(boolean, booleanValue);
-                lua_pushboolean(L, b);
-                break;
-            }
-            case 2: {//integer
-                JObject integer = env->GetObjectArrayElement(args, i);
-                jlong intValue = env->CallLongMethod(integer, longValue);
-                lua_pushinteger(L, intValue);
-                break;
-            }
-            case 3: {//double
-                JObject box = env->GetObjectArrayElement(args, i);
-                jdouble floatValue = env->CallDoubleMethod(box, doubleValue);
-                lua_pushnumber(L, floatValue);
-                break;
-            }
-            default: {//object
-                JObject obj = env->GetObjectArrayElement(args, i);
-                if (obj == nullptr) {
-                    lua_pushnil(L);
-                } else pushJavaObject(env, L, context, obj);
-                break;
-            }
-        }
-    }
-    env->ReleaseIntArrayElements(argTypes, arr, JNI_ABORT);
-
-    pushJavaObject(env, L, context, proxy);
-    if (!isInterface) {
-        pushJavaObject(env, L, context, proxy)->type =
-                context->ensureType(env, env->GetSuperclass(
-                        (JClass) env->GetObjectClass(proxy)));
-    }
-    len += 1 + !isInterface;
-    int err = lua_pcall(L, len, LUA_MULTRET, handlerIndex);
-    jobject ret = nullptr;
-    int retCount;
-    if (err != LUA_OK)recordLuaError(env, context, L, err);
-    else if ((retCount = lua_gettop(L) - handlerIndex) != 0) {
-        bool multiRet =
-                env->IsInstanceOf(proxy, context->FunctionType(env)->getType()) && isInterface;
-        if (multiRet) {
-            JObjectArray result(
-                    env->NewObjectArray(retCount, context->ObjectClass->getType(), NULL));
-            for (int i = handlerIndex + 1, top = lua_gettop(L), j = 0; i <= top; ++i, ++j) {
-                ValidLuaObject object;
-                parseLuaObject(env, L, context, i, object);
-                jobject value = context->luaObjectToJObject(env, std::move(object));
-                if (value != INVALID_OBJECT)
-                    env->SetObjectArrayElement(result, j, JObject(env, value));
-            }
-            ret = result.invalidate();
-        } else {
-            ValidLuaObject object;
-            parseLuaObject(env, L, context, -1, object);
-            ret = context->luaObjectToJObject(env, std::move(object));
-            if (ret == INVALID_OBJECT) ret = nullptr;
-        }
-    }
-    context->changeImport(old);
-    lua_settop(L, handlerIndex - 1);
-    lua_pushcfunction(L, luaFullGC);
-    lua_pcall(L, 0, 0, 0);
-    if (context->hasErrorPending())
-        context->throwToJava();
-    return ret;
-}
-
-int reportError(lua_State *L) {
-    const char *s = lua_tostring(L, lua_upvalueindex(1));
-    luaL_error(L, s);
-    return 0;
-}
 static inline void pushJavaType(lua_State *L,JavaType* type){
     *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = type;
     setMetaTable(L, TYPE_KEY);
@@ -780,10 +479,10 @@ static inline ScriptContext *getContext(lua_State *L) {
     return context;
 }
 
-static JavaObject *pushJavaObject(TJNIEnv *env, lua_State *L, ScriptContext *context, jobject obj) {
+static JavaObject *pushJavaObject(TJNIEnv *env, lua_State *L, ScriptContext *context, jobject obj,JavaType* given= nullptr) {
     JavaObject *objectRef = (JavaObject *) lua_newuserdata(L, sizeof(JavaObject));
     objectRef->object = env->NewGlobalRef(obj);
-    objectRef->type = context->ensureType(env, (JClass) env->GetObjectClass(obj));
+    objectRef->type = given?given:context->ensureType(env, (JClass) env->GetObjectClass(obj));
     setMetaTable(L, OBJECT_KEY);
     return objectRef;
 }
@@ -862,6 +561,543 @@ static bool parseLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, in
             return false;
     }
     return true;
+}
+
+static bool
+checkLuaTypeNoThrow(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject &luaObject) {
+    if (expected == nullptr) return false;
+    if (expected->isInteger()) {
+        if (luaObject.type != T_INTEGER){
+            if(luaObject.type==T_FLOAT){
+                luaObject.type=T_INTEGER;
+                luaObject.integer= int64_t(luaObject.number);
+            } else if(luaObject.type==T_OBJECT){
+                JavaType* type=luaObject.objectRef->type;
+                if(!expected->canAcceptBoxedNumber(type)) goto bail;
+                luaObject.type=T_INTEGER;
+                luaObject.integer=env->CallLongMethod(luaObject.objectRef->object,longValue);
+            } else goto bail;
+        }
+    } else if (expected->isFloat()) {
+        if (luaObject.type != T_FLOAT){
+            if(luaObject.type==T_INTEGER){
+                luaObject.type=T_FLOAT;
+                luaObject.number=luaObject.integer;
+            } else if(luaObject.type==T_OBJECT){
+                JavaType* type=luaObject.objectRef->type;
+                if(!expected->canAcceptBoxedNumber(type)) goto bail;
+                luaObject.type=T_FLOAT;
+                luaObject.number=env->CallDoubleMethod(luaObject.objectRef->object,doubleValue);
+            } else goto bail;
+        }
+    } else if (expected->isChar()) {
+        if (luaObject.type == T_STRING){
+            if (strlen8to16(luaObject.string) != 1) {
+                lua_pushstring(L, "String length for char type must be 1");
+                return true;
+            } else{
+                luaObject.type=T_CHAR;
+                strcpy8to16(&luaObject.character,luaObject.string,NULL);
+            }
+        } else if(luaObject.type==T_INTEGER){
+            if(luaObject.integer<0||luaObject.integer>65535){
+                lua_pushstring(L, "The integer is too large for char value");
+                return true;
+            }else luaObject.type=T_CHAR;
+        } else if(luaObject.type==T_OBJECT&&luaObject.objectRef->type->isBoxedChar()){
+            luaObject.type=T_CHAR;
+            luaObject.character=env->CallCharMethod(luaObject.objectRef->object,charValue);
+            return false;
+        } else goto bail;
+
+    } else if (expected->isBool()) {
+        if (luaObject.type != T_BOOLEAN){
+            if(luaObject.type==T_OBJECT&&luaObject.objectRef->type->isBoxedChar()){
+                luaObject.type=T_BOOLEAN;
+                luaObject.isTrue=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
+                return false;
+            } else goto bail;
+        }
+    } else {
+        if (luaObject.type == T_NIL) return false;
+        if (luaObject.type == T_OBJECT) {
+            if (luaObject.objectRef->type == expected ||
+                env->IsInstanceOf(luaObject.objectRef->object, expected->getType()))
+                return false;
+            else {
+                lua_pushfstring(L, "Incompatible object,expected:%s,received:%s",
+                                expected->name(env).str(), luaObject.objectRef->type->name(env).str());
+                return true;
+            }
+        }
+        if (expected->isStringAssignable() && luaObject.type == T_STRING) return false;
+        if (luaObject.type == T_FUNCTION) {
+            if (expected->isSingleInterface(env))return false;
+            forceRelease(luaObject);
+            lua_pushstring(L, "Can't convert function to a class that is not a single interface");
+            return true;
+        }
+        if (luaObject.type == T_TABLE) {
+            if (expected->isTableType(env) ||
+                (expected->isInterface(env) && luaObject.lazyTable->isInterface()))
+                return false;
+        }
+        if(luaObject.type==T_FLOAT){
+            if(expected->isBoxedFloat()){
+                return false;
+            }
+        } else if(luaObject.type==T_INTEGER){
+            if(expected->isBoxedInteger()||expected->isBoxedFloat())
+                return false;
+        }
+        if(expected->isBoxedChar()&&luaObject.type == T_STRING)
+            return false;
+        if(expected->isBoxedBool()&&luaObject.type == T_BOOLEAN)
+            return false;
+        goto bail;
+    }
+    return false;
+    bail:
+    lua_pushfstring(L, "Expected type is %s,but receive %s",
+                    JString(env->CallObjectMethod(expected->getType(), classGetName)).str(),
+                    luaObject.typeName());
+    return true;
+}
+
+void checkLuaType(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject &luaObject) {
+    if (likely(expected == nullptr)) return;
+    if (checkLuaTypeNoThrow(env, L, expected, luaObject)) {
+        forceRelease(luaObject);
+        lua_error(L);
+    }
+}
+
+void readArguments(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<JavaType *> &types,
+                   Vector<ValidLuaObject> &objects, int start) {
+    int top = lua_gettop(L);
+    auto expectedSize = top - (start - 1);
+    types.reserve(expectedSize);
+    objects.reserve(expectedSize);
+    for (int i = start; i <= top; ++i) {
+        JavaType **typeRef = (JavaType **) testUData(L, i, TYPE_KEY);
+        bool noType = typeRef == nullptr;
+        JavaType *paramType = noType ? nullptr : *typeRef;
+        types.push_back(paramType);
+        if (!noType) i++;
+        ValidLuaObject luaObject;
+        if (!parseLuaObject(env, L, context, i, luaObject)) {
+            forceRelease(types, objects);
+            luaL_error(L, "Arg unexpected for array");
+        }
+        if (checkLuaTypeNoThrow(env, L, paramType, luaObject)) {
+            forceRelease(luaObject, types, objects);
+            lua_error(L);
+        }
+        objects.push_back(std::move(luaObject));
+    }
+}
+
+
+void pushArrayElement(TJNIEnv *env, lua_State *L, ScriptContext *context, const JavaObject *obj,
+                      JavaType *componentType) {
+    int isnum;
+    jlong index = lua_tointegerx(L, 2, &isnum);
+    if (unlikely(!isnum)) luaL_error(L, "Invalid index for an array");
+    if (unlikely(index > INT32_MAX))luaL_error(L, "Index out of range:%d", index);
+    //recycle the jclass;
+    switch (componentType->getTypeID()){
+#define PushChar(c) ({ \
+        char s[4]={0};\
+        strncpy16to8(s,(const char16_t *) &c, 1);\
+        lua_pushstring(L,s);\
+        })
+#define ArrayGet(typeID,jtype, jname, TYPE)\
+            case JavaType::typeID:{\
+                j##jtype buf;\
+                env->Get##jname##ArrayRegion((j##jtype##Array) obj->object, (jsize) index, 1, &buf);\
+                lua_push##TYPE(L,buf);\
+            }
+#define IntArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,integer)
+#define FloatArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,number)
+        IntArrayGet(BYTE,byte, Byte)
+        IntArrayGet(SHORT,short, Short)
+        IntArrayGet(INT,int, Int)
+        IntArrayGet(LONG,long, Long)
+        FloatArrayGet(FLOAT,float, Float)
+        FloatArrayGet(DOUBLE,double, Double)
+        ArrayGet(BOOLEAN,boolean, Boolean, boolean)
+        case JavaType::CHAR: {
+            jchar buf;
+            env->GetCharArrayRegion((jcharArray) obj->object, (jsize) index, 1, &buf);
+            PushChar(buf);
+        }
+        default: {
+            auto ele = env->GetObjectArrayElement((jobjectArray) obj->object, (jsize) index);
+            if(ele== nullptr)
+                lua_pushnil(L);
+            else pushJavaObject(env, L, context, ele);
+        }
+    }
+}
+
+static void pushRawMethod(ScriptContext *context,lua_State *L, bool isStatic) {
+    MemberFlag *member = (MemberFlag *) lua_newuserdata(L, sizeof(MemberFlag));
+    member->isStatic = isStatic;
+    member->isNotOnlyMethod = false;
+    member->isField = false;
+    member->isDuplicatedField = false;
+    member->context=context;
+    lua_pushvalue(L, -3);//obj
+    lua_pushvalue(L, -3);//name
+    lua_pushcclosure(L, callMethod, 3);
+}
+
+void pushMember(ScriptContext *context, lua_State *L, bool isStatic, int fieldCount, bool isMethod) {
+    if (fieldCount == 0 && isMethod) {
+        pushRawMethod(context,L, isStatic);
+        return;
+    }
+    lua_newuserdata(L, 0);//value represent the java member
+    lua_createtable(L, 0, 3);//metatable;
+    int tableIndex = lua_gettop(L);
+    int nameIndex = tableIndex - 2;
+    int tOIndex = tableIndex - 3;//class or the obj
+    MemberFlag *member = (MemberFlag *) lua_newuserdata(L, sizeof(MemberFlag));
+    member->isStatic = isStatic;
+    member->isNotOnlyMethod = true;
+    member->isField = true;
+    member->isDuplicatedField = fieldCount > 1;
+    int flagIndex = lua_gettop(L);
+    if (fieldCount > 0) {
+        lua_pushstring(L, "__index");
+        lua_pushvalue(L, flagIndex);
+        lua_pushvalue(L, tOIndex);
+        lua_pushvalue(L, nameIndex);
+        lua_pushcclosure(L, getField, 3);
+        lua_rawset(L, tableIndex);
+
+        lua_pushstring(L, "__newindex");
+        lua_pushvalue(L, flagIndex);
+        lua_pushvalue(L, tOIndex);
+        lua_pushvalue(L, nameIndex);
+        lua_pushcclosure(L, setField, 3);
+        lua_rawset(L, tableIndex);
+    }
+
+    if (isMethod) {
+        lua_pushstring(L, "__call");
+        lua_pushvalue(L, flagIndex);
+        lua_pushvalue(L, tOIndex);
+        lua_pushvalue(L, nameIndex);
+        lua_pushcclosure(L, callMethod, 3);
+        lua_rawset(L, tableIndex);
+    }
+
+    lua_pop(L, 1);//pop flag
+
+    //to improve performance,comment out below code
+    /*lua_pushstring(L,"__metatable");
+    lua_pushboolean(L,0);
+    lua_rawset(L,tableIndex);*/
+
+    lua_setmetatable(L, -2);
+}
+
+
+void pushMetaTable(TJNIEnv *env, lua_State *L, ScriptContext *context,
+                   LuaTable<CrossThreadLuaObject> *metaTable) {
+    CrossThreadLuaObject key;
+    key.table = metaTable;
+    key.type = T_TABLE;
+    pushLuaObject(env, L, context, key);
+    key.type = T_NIL;
+    lua_setmetatable(L, -2);
+}
+
+bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, int idx,
+                               CrossThreadLuaObject &luaObject) {
+    switch (lua_type(L, idx)) {
+        case LUA_TNIL:
+            luaObject.type = T_NIL;
+            break;
+        case LUA_TBOOLEAN: {
+            luaObject.type = T_BOOLEAN;
+            luaObject.isTrue = (jboolean) lua_toboolean(L, idx);
+            break;
+        }
+        case LUA_TSTRING: {
+            luaObject.type = T_STRING;
+            size_t len;
+            auto src = lua_tolstring(L, idx, &len);
+            char *dest = new char[len];
+            strcpy(dest, src);
+            luaObject.string = dest;
+            break;
+        }
+        case LUA_TFUNCTION: {
+            luaObject.type = T_FUNCTION;
+            luaObject.func = saveLuaFunction(env, L, context, idx);
+            break;
+        }
+        case LUA_TNUMBER: {
+#if LUA_VERSION_NUM >= 503
+            int isInt;
+            lua_Integer intValue = lua_tointegerx(L, idx, &isInt);
+            if (isInt) {
+                luaObject.type = T_INTEGER;
+                luaObject.integer = intValue;
+            } else {
+                luaObject.type = T_FLOAT;
+                luaObject.number = lua_tonumber(L, idx);
+            }
+#else
+            lua_Number number=lua_tonumber(L,idx);
+            int64_t intVal=(int64_t)number;
+            if(number==intVal){
+                luaObject.type=T_INTEGER;
+                luaObject.integer=intVal;
+            } else{
+                luaObject.type=T_FLOAT;
+                luaObject.number=number;
+            }
+#endif
+            break;
+        }
+        case LUA_TLIGHTUSERDATA: {
+            luaObject.type = T_LIGHT_USER_DATA;
+            luaObject.lightData = lua_touserdata(L, idx);
+            break;
+        }
+        case LUA_TUSERDATA:
+            if (testUData(L, idx, OBJECT_KEY)) {
+                luaObject.type = T_OBJECT;
+                JavaObject *orig = (JavaObject *) lua_touserdata(L, idx);
+                luaObject.objectRef = new JavaObject;
+                luaObject.objectRef->type = orig->type;
+                luaObject.objectRef->object = env->NewGlobalRef(orig->object);
+            }else if(testUData(L,idx,TYPE_KEY)){
+                luaObject.type = T_JAVA_TYPE;
+                luaObject.javaType=*(JavaType**) lua_touserdata(L,idx);
+            }
+#if LUA_VERSION_NUM < 503
+                else if(luaL_testudata(L,idx,Integer64::LIB_NAME)){
+                luaObject.type=T_INTEGER;
+                luaObject.integer=((Integer64*)lua_touserdata(L,idx))->m_val;
+            }
+#endif
+
+            else {
+                lua_pushvalue(L, idx);
+                lua_rawget(L, LUA_REGISTRYINDEX);
+                UserData *data = static_cast<UserData *>(lua_touserdata(L, -1));
+                lua_pop(L,1);
+                if (data == nullptr) {
+                    size_t len = lua_rawlen(L, idx);
+                    data = new UserData(len);
+                    lua_pushvalue(L,idx);
+                    lua_pushlightuserdata(L,data);
+                    lua_rawset(L,LUA_REGISTRYINDEX);
+                    int hasMeta = lua_getmetatable(L, idx);
+                    if (hasMeta && lua_istable(L, -1)) {
+                        CrossThreadLuaObject object;
+                        lua_getfield(L,-1,"__gc");
+                        bool ok=!lua_isnil(L,-1);
+                        lua_pop(L,1);
+                        ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
+                        lua_pop(L, 1);
+                        if (ok) {
+                            data->metaTable = object.table;
+                            object.type = T_NIL;
+                            object.table = nullptr;
+                        }
+                        if (!ok) {
+                            delete data;
+                            lua_pushvalue(L,idx);
+                            lua_pushnil(L);
+                            lua_rawset(L,LUA_REGISTRYINDEX);
+                            return false;
+                        }
+                    }
+                    void *orig = lua_touserdata(L, idx);
+                    memcpy(&data->data[0], orig, len);
+                    luaObject.userData = data;
+                    lua_pushvalue(L,idx);
+                    lua_pushnil(L);
+                    lua_rawset(L,LUA_REGISTRYINDEX);
+                } else {
+                    luaObject.userData = data;
+                }
+                luaObject.type = T_USER_DATA;
+            }
+            break;
+        case LUA_TTABLE: {
+            lua_pushvalue(L, idx);
+            lua_rawget(L, LUA_REGISTRYINDEX);
+            LuaTable<CrossThreadLuaObject> *luaTable = (LuaTable<CrossThreadLuaObject> *)(lua_touserdata(L, -1));
+            lua_pop(L,1);
+            if (luaTable == nullptr) {
+                luaTable = new LuaTable<CrossThreadLuaObject>();
+                lua_pushvalue(L,idx);
+                lua_pushlightuserdata(L,luaTable);
+                lua_rawset(L,LUA_REGISTRYINDEX);
+                luaTable->get().reserve(int(lua_rawlen(L, idx)));
+                lua_pushnil(L);
+                while (lua_next(L, idx)) {
+                    CrossThreadLuaObject key;
+                    CrossThreadLuaObject value;
+                    bool ok = parseCrossThreadLuaObject(env, L, context, -2, key) &&
+                              parseCrossThreadLuaObject(env, L, context, -1, value);
+                    lua_pop(L, 1);
+                    if (ok)
+                        luaTable->get().push_back({std::move(key), std::move(value)});
+                    else {
+                        delete luaTable;
+                        lua_pushvalue(L,idx);
+                        lua_pushnil(L);
+                        lua_rawset(L,LUA_REGISTRYINDEX);
+                        return false;
+                    }
+                }
+
+                int hasMeta = lua_getmetatable(L, idx);
+                if (hasMeta && lua_istable(L, -1)) {
+                    CrossThreadLuaObject object;
+                    lua_getfield(L,-1,"__gc");
+                    bool ok=!lua_isnil(L,-1);
+                    lua_pop(L,1);
+                    ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
+                    lua_pop(L, 1);
+                    if (ok) {
+                        luaTable->metaTable = object.table;
+                        object.type = T_NIL;
+                        object.table = nullptr;
+                    } else {
+                        delete luaTable;
+                        lua_pushvalue(L,idx);
+                        lua_pushnil(L);
+                        lua_rawset(L,LUA_REGISTRYINDEX);
+                        return false;
+                    }
+                }
+                luaObject.table = luaTable;
+                lua_pushvalue(L,idx);
+                lua_pushnil(L);
+                lua_rawset(L,LUA_REGISTRYINDEX);
+            } else {
+                luaObject.table = luaTable;
+            }
+            luaObject.type = T_TABLE;
+            break;
+        }
+        default:
+            return false;
+    }
+    return true;
+}
+
+bool pushLuaObject(TJNIEnv *env, lua_State *L, ScriptContext *context,
+                   const CrossThreadLuaObject &luaObject) {
+    switch (luaObject.type) {
+        case T_NIL:
+            return false;
+        case T_BOOLEAN:
+            lua_pushboolean(L, luaObject.isTrue);
+            break;
+        case T_FLOAT:
+            lua_pushnumber(L, luaObject.number);
+            break;
+        case T_INTEGER:
+#if LUA_VERSION_NUM >= 503
+            lua_pushinteger(L, luaObject.integer);
+#else
+        if(int64_t(double(luaObject.integer))!=luaObject.integer){
+            Integer64::pushLong(L,luaObject.integer);
+        } else lua_pushnumber(L,luaObject.integer);
+#endif
+
+            break;
+        case T_STRING:
+            lua_pushstring(L, luaObject.string);
+            break;
+        case T_OBJECT:
+            pushJavaObject(env, L, context, luaObject.objectRef->object);
+            break;
+        case T_FUNCTION:
+            loadLuaFunction(env, L, luaObject.func, context);
+            break;
+        case T_TABLE:
+            lua_rawgetp(L, LUA_REGISTRYINDEX,luaObject.table);
+            if (lua_isnil(L, -1)) {
+                lua_pop(L, -1);
+                lua_createtable(L, 0, luaObject.table->get().size());
+                lua_pushlightuserdata(L, luaObject.table);
+                lua_pushvalue(L, -2);
+                lua_rawset(L, LUA_REGISTRYINDEX);
+                for (const auto &pair:luaObject.table->get()) {
+                    const CrossThreadLuaObject &key = pair.first;
+                    pushLuaObject(env, L, context, key);
+                    const CrossThreadLuaObject &value = pair.second;
+                    pushLuaObject(env, L, context, value);
+                    lua_rawset(L, -3);
+                }
+                if (luaObject.table->metaTable != nullptr) {
+                    pushMetaTable(env, L, context, luaObject.table->metaTable);
+                }
+                lua_pushlightuserdata(L, luaObject.table);
+                lua_pushnil(L);
+                lua_rawset(L, LUA_REGISTRYINDEX);
+            }
+            break;
+        case T_LIGHT_USER_DATA:
+            lua_pushlightuserdata(L, luaObject.lightData);
+            break;
+        case T_USER_DATA: {
+            lua_rawgetp(L, LUA_REGISTRYINDEX,luaObject.userData);
+            if (lua_isnil(L, -1)) {
+                lua_pop(L, -1);
+                size_t len = luaObject.userData->data.size();
+                void *orig = lua_newuserdata(L, len);;
+                memcpy(orig, &luaObject.userData->data[0], len);
+                if (luaObject.userData->metaTable != nullptr) {
+                    lua_pushlightuserdata(L, luaObject.userData);
+                    lua_pushvalue(L, -2);
+                    lua_rawset(L, LUA_REGISTRYINDEX);
+                    pushMetaTable(env, L, context, luaObject.userData->metaTable);
+                    lua_pushlightuserdata(L, luaObject.userData);
+                    lua_pushnil(L);
+                    lua_rawset(L, LUA_REGISTRYINDEX);
+                }
+            }
+            break;
+        }
+        case T_JAVA_TYPE:
+            pushJavaType(L,luaObject.javaType);
+            break;
+        default:
+            return false;
+    }
+    return true;
+}
+
+void recordLuaError(TJNIEnv *env, ScriptContext *context, lua_State *L, int ret) {
+    switch (ret) {
+        case LUA_ERRERR:
+        case LUA_ERRRUN:
+#if LUA_VERSION_NUM > 501
+        case LUA_ERRGCMM:
+#endif
+        case LUA_ERRSYNTAX:
+            context->setPendingException(env, luaL_tolstring(L, -1, nullptr));
+            lua_pop(L, 1);
+            break;
+        case LUA_ERRMEM:
+            context->setPendingException(env, "Lua memory error");
+            break;
+        case -1:
+            context->setPendingException(env, "Unknown error");
+        default:
+            break;
+    }
 }
 
 int javaType(lua_State *L) {
@@ -1001,7 +1237,7 @@ bool
 readProxyMethods(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<JavaType *> &interfaces,
                  JavaType *main, Vector<std::unique_ptr<BaseFunction>> &luaFuncs,
                  Vector<JObject> &agentMethods) {
-    size_t expectedLen = lua_rawlen(L, -1);
+    int expectedLen = int(lua_rawlen(L, -1));
     luaFuncs.reserve(expectedLen);
     agentMethods.reserve(expectedLen);
     lua_pushnil(L);
@@ -1323,7 +1559,7 @@ int javaNew(lua_State *L) {
             forceRelease(types, objects);
             luaL_error(L, "");
         }
-        pushJavaObject(env, L, context, obj.get());
+        pushJavaObject(env, L, context, obj.get(),type);
     }
     return 1;
 }
@@ -1351,7 +1587,7 @@ int newArray(TJNIEnv *env, lua_State *L, int index, ScriptContext *context, Java
         luaL_error(L, "%d elements is too many for an array of size %d", top - index, size);
     }
     Vector<ValidLuaObject> elements;
-    elements.reserve(static_cast<unsigned long>(top - index + 1));
+    elements.reserve(top - index + 1);
     for (; index <= top; ++index) {
         ValidLuaObject object;
         if (!parseLuaObject(env, L, context, index, object)) {
@@ -1533,43 +1769,30 @@ int javaTry(lua_State *L) {
 }
 
 int javaPut(lua_State *L) {
-    lua_settop(L, 2);
     ScriptContext *context = getContext(L);
-    const char *name = luaL_tolstring(L, 1, nullptr);
+    const char *name = luaL_tolstring(L,2, nullptr);
     AutoJNIEnv env;
     CrossThreadLuaObject object;
-    if (parseCrossThreadLuaObject(env, L, context, 2, object)) {
-        const char *s = luaL_tolstring(L, 2, nullptr);
-        luaL_error(L, "Invalid object with name %s to be push:%s", name, s);
+    if (!parseCrossThreadLuaObject(env, L, context, 3, object)) {
+        const char *s = luaL_tolstring(L, 3, nullptr);
+        luaL_error(L, "Invalid object %s with name %s to be pushed to cross thread table", s, name);
     }
-    context->saveLuaObject(object, name);
+    if(object.type==T_NIL){
+        context->deleteLuaObject(name);
+    } else context->saveLuaObject(object, name);
     return 0;
 
 }
 
 int javaGet(lua_State *L) {
-    lua_settop(L, 1);
     ScriptContext *context = getContext(L);
 
-    const char *name = luaL_tolstring(L, 1, nullptr);
+    const char *name = luaL_tolstring(L, 2, nullptr);
     CrossThreadLuaObject *object = context->getLuaObject(name);
-    if (object == nullptr) {
-        luaL_error(L, "No save object found for name:%s", name);
-    }
-    if (!pushLuaObject(AutoJNIEnv(), L, context, *object)) {
+    if (object == nullptr||!pushLuaObject(AutoJNIEnv(), L, context, *object)) {
         lua_pushnil(L);
     }
     return 1;
-
-}
-
-int javaRemove(lua_State *L) {
-    lua_settop(L, 1);
-    ScriptContext *context = getContext(L);
-
-    const char *s = luaL_tolstring(L, 1, nullptr);
-    context->deleteLuaObject(s);
-    return 0;
 
 }
 
@@ -1662,10 +1885,9 @@ int callMethod(lua_State *L) {
 
 int getFieldOrMethod(lua_State *L) {
     ScriptContext *context = getContext(L);
-    JavaType **typeRef = (JavaType **) testUData(L, 1, TYPE_KEY);
-    bool isStatic = typeRef != nullptr;
-    JavaObject *obj = isStatic ? nullptr :  checkJavaObject(L,1);
-    JavaType *type = isStatic ? *typeRef : obj->type;
+    bool isStatic = isJavaTypeOrObject(L,1);
+    JavaObject *obj = isStatic ? nullptr : (JavaObject*) lua_touserdata(L,1);
+    JavaType *type = isStatic ? *(JavaType**) lua_touserdata(L,1) : obj->type;
     AutoJNIEnv env;
     if (!isStatic) {
         auto component = obj->type->getComponentType(env);
@@ -1716,11 +1938,7 @@ int getFieldOrMethod(lua_State *L) {
     }
 #endif
 
-#define PushChar(c) ({ \
-        char s[4]={0};\
-        strncpy16to8(s,(const char16_t *) &c, 1);\
-        lua_pushstring(L,s);\
-        })
+
 #define PushField()
         switch(fieldType->getTypeID()){\
             GetIntegerField(INT,int,Int)\
@@ -1756,12 +1974,12 @@ int getFieldOrMethod(lua_State *L) {
 }
 
 int getObjectLength(lua_State *L) {
-    JavaObject *objRef =  checkJavaObject(L,1);
+    JavaObject *objRef = (JavaObject *)(lua_touserdata(L, 1));
     AutoJNIEnv env;
     if (objRef->type->isArray(env)) lua_pushinteger(L, env->GetArrayLength((jarray) objRef->object));
     else {
         int len = env->CallStaticIntMethod(contextClass, sLength, objRef->object);
-        if (len == -1)
+        if (unlikely(len == -1))
             luaL_error(L, "The object %s has no length property", luaL_tolstring(L, 1, nullptr));
         else lua_pushinteger(L, len);
     }
@@ -1770,7 +1988,6 @@ int getObjectLength(lua_State *L) {
 
 int getField(lua_State *L) {
     MemberFlag *flag = (MemberFlag *) lua_touserdata(L, FLAG_INDEX);
-    ScriptContext* context=flag->context;
 
     const char *name = lua_tostring(L, NAME_INDEX);
     if (unlikely(!flag->isField)) {
@@ -1853,10 +2070,9 @@ int setField(lua_State *L) {
 
 int setFieldOrArray(lua_State *L) {
     ScriptContext *context = getContext(L);
-    JavaType **typeRef = (JavaType **) testUData(L, 1, TYPE_KEY);
-    bool isStatic = typeRef != nullptr;
-    JavaObject *objRef = isStatic ? nullptr :  checkJavaObject(L,1);
-    JavaType *type = isStatic ? *typeRef : objRef->type;
+    bool isStatic = isJavaTypeOrObject(L,1);
+    JavaObject *objRef = isStatic ? nullptr : (JavaObject*) lua_touserdata(L,1);
+    JavaType *type = isStatic ? *(JavaType**) lua_touserdata(L,1) : objRef->type;
     AutoJNIEnv env;
     if (!isStatic) {
         JavaType *component = objRef->type->getComponentType(env);
@@ -1939,7 +2155,7 @@ int concatString(lua_State *L) {
 }
 
 int javaObjectToString(lua_State *L) {
-    JavaObject *ob = checkJavaObject(L,1);
+    JavaObject *ob = (JavaObject*)lua_touserdata(L,1);
     AutoJNIEnv env;
     JString str = env->CallObjectMethod(ob->object, objectToString);
     const char *s = env->GetStringUTFChars(str, nullptr);
@@ -2001,7 +2217,7 @@ FuncInfo *saveLuaFunction(JNIEnv *env, lua_State *L, ScriptContext *context, int
             ret->globalIndex=i;
         else
 #endif
-        parseCrossThreadLuaObject(env, L, context, -1, object);
+            parseCrossThreadLuaObject(env, L, context, -1, object);
         upvalues.push_back(std::move(object));
         lua_pop(L,1);
     }
@@ -2058,281 +2274,6 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
     }
 }
 
-bool pushLuaObject(TJNIEnv *env, lua_State *L, ScriptContext *context,
-                   const CrossThreadLuaObject &luaObject) {
-    switch (luaObject.type) {
-        case T_NIL:
-            return false;
-        case T_BOOLEAN:
-            lua_pushboolean(L, luaObject.isTrue);
-            break;
-        case T_FLOAT:
-            lua_pushnumber(L, luaObject.number);
-            break;
-        case T_INTEGER:
-#if LUA_VERSION_NUM >= 503
-            lua_pushinteger(L, luaObject.integer);
-#else
-        if(int64_t(double(luaObject.integer))!=luaObject.integer){
-            Integer64::pushLong(L,luaObject.integer);
-        } else lua_pushnumber(L,luaObject.integer);
-#endif
-
-            break;
-        case T_STRING:
-            lua_pushstring(L, luaObject.string);
-            break;
-        case T_OBJECT:
-            pushJavaObject(env, L, context, luaObject.objectRef->object);
-            break;
-        case T_FUNCTION:
-            loadLuaFunction(env, L, luaObject.func, context);
-            break;
-        case T_TABLE:
-            lua_rawgetp(L, LUA_REGISTRYINDEX,luaObject.table);
-            if (lua_isnil(L, -1)) {
-                lua_pop(L, -1);
-                lua_createtable(L, 0, static_cast<int>(luaObject.table->get().size()));
-                lua_pushlightuserdata(L, luaObject.table);
-                lua_pushvalue(L, -2);
-                lua_rawset(L, LUA_REGISTRYINDEX);
-                for (const auto &pair:luaObject.table->get()) {
-                    const CrossThreadLuaObject &key = pair.first;
-                    pushLuaObject(env, L, context, key);
-                    const CrossThreadLuaObject &value = pair.second;
-                    pushLuaObject(env, L, context, value);
-                    lua_rawset(L, -3);
-                }
-                if (luaObject.table->metaTable != nullptr) {
-                    pushMetaTable(env, L, context, luaObject.table->metaTable);
-                }
-                lua_pushlightuserdata(L, luaObject.table);
-                lua_pushnil(L);
-                lua_rawset(L, LUA_REGISTRYINDEX);
-            }
-            break;
-        case T_LIGHT_USER_DATA:
-            lua_pushlightuserdata(L, luaObject.lightData);
-            break;
-        case T_USER_DATA: {
-            lua_rawgetp(L, LUA_REGISTRYINDEX,luaObject.userData);
-            if (lua_isnil(L, -1)) {
-                lua_pop(L, -1);
-                size_t len = luaObject.userData->data.size();
-                void *orig = lua_newuserdata(L, len);;
-                memcpy(orig, &luaObject.userData->data[0], len);
-                if (luaObject.userData->metaTable != nullptr) {
-                    lua_pushlightuserdata(L, luaObject.userData);
-                    lua_pushvalue(L, -2);
-                    lua_rawset(L, LUA_REGISTRYINDEX);
-                    pushMetaTable(env, L, context, luaObject.userData->metaTable);
-                    lua_pushlightuserdata(L, luaObject.userData);
-                    lua_pushnil(L);
-                    lua_rawset(L, LUA_REGISTRYINDEX);
-                }
-            }
-            break;
-        }
-        case T_JAVA_TYPE:
-            pushJavaType(L,luaObject.javaType);
-            break;
-        default:
-            return false;
-    }
-    return true;
-}
-
-void pushMetaTable(TJNIEnv *env, lua_State *L, ScriptContext *context,
-                   LuaTable<CrossThreadLuaObject> *metaTable) {
-    CrossThreadLuaObject key;
-    key.table = metaTable;
-    key.type = T_TABLE;
-    pushLuaObject(env, L, context, key);
-    key.type = T_NIL;
-    lua_setmetatable(L, -2);
-}
-
-bool parseCrossThreadLuaObject(JNIEnv *env, lua_State *L, ScriptContext *context, int idx,
-                               CrossThreadLuaObject &luaObject) {
-    switch (lua_type(L, idx)) {
-        case LUA_TNIL:
-            luaObject.type = T_NIL;
-            break;
-        case LUA_TBOOLEAN: {
-            luaObject.type = T_BOOLEAN;
-            luaObject.isTrue = (jboolean) lua_toboolean(L, idx);
-            break;
-        }
-        case LUA_TSTRING: {
-            luaObject.type = T_STRING;
-            size_t len;
-            auto src = lua_tolstring(L, idx, &len);
-            char *dest = new char[len];
-            strcpy(dest, src);
-            luaObject.string = dest;
-            break;
-        }
-        case LUA_TFUNCTION: {
-            luaObject.type = T_FUNCTION;
-            luaObject.func = saveLuaFunction(env, L, context, idx);
-            break;
-        }
-        case LUA_TNUMBER: {
-#if LUA_VERSION_NUM >= 503
-            int isInt;
-            lua_Integer intValue = lua_tointegerx(L, idx, &isInt);
-            if (isInt) {
-                luaObject.type = T_INTEGER;
-                luaObject.integer = intValue;
-            } else {
-                luaObject.type = T_FLOAT;
-                luaObject.number = lua_tonumber(L, idx);
-            }
-#else
-            lua_Number number=lua_tonumber(L,idx);
-            int64_t intVal=(int64_t)number;
-            if(number==intVal){
-                luaObject.type=T_INTEGER;
-                luaObject.integer=intVal;
-            } else{
-                luaObject.type=T_FLOAT;
-                luaObject.number=number;
-            }
-#endif
-            break;
-        }
-        case LUA_TLIGHTUSERDATA: {
-            luaObject.type = T_LIGHT_USER_DATA;
-            luaObject.lightData = lua_touserdata(L, idx);
-            break;
-        }
-        case LUA_TUSERDATA:
-            if (testUData(L, idx, OBJECT_KEY)) {
-                luaObject.type = T_OBJECT;
-                JavaObject *orig = (JavaObject *) lua_touserdata(L, idx);
-                luaObject.objectRef = new JavaObject;
-                luaObject.objectRef->type = orig->type;
-                luaObject.objectRef->object = env->NewGlobalRef(orig->object);
-            }else if(testUData(L,idx,TYPE_KEY)){
-                luaObject.type = T_JAVA_TYPE;
-                luaObject.javaType=*(JavaType**) lua_touserdata(L,idx);
-            }
-#if LUA_VERSION_NUM < 503
-                else if(luaL_testudata(L,idx,Integer64::LIB_NAME)){
-                luaObject.type=T_INTEGER;
-                luaObject.integer=((Integer64*)lua_touserdata(L,idx))->m_val;
-            }
-#endif
-
-            else {
-                lua_pushvalue(L, idx);
-                lua_rawget(L, LUA_REGISTRYINDEX);
-                UserData *data = static_cast<UserData *>(lua_touserdata(L, -1));
-                lua_pop(L,1);
-                if (data == nullptr) {
-                    size_t len = lua_rawlen(L, idx);
-                    data = new UserData(len);
-                    lua_pushvalue(L,idx);
-                    lua_pushlightuserdata(L,data);
-                    lua_rawset(L,LUA_REGISTRYINDEX);
-                    int hasMeta = lua_getmetatable(L, idx);
-                    if (hasMeta && lua_istable(L, -1)) {
-                        CrossThreadLuaObject object;
-                        lua_getfield(L,-1,"__gc");
-                        bool ok=!lua_isnil(L,-1);
-                        lua_pop(L,1);
-                        ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
-                        lua_pop(L, 1);
-                        if (ok) {
-                            data->metaTable = object.table;
-                            object.type = T_NIL;
-                            object.table = nullptr;
-                        }
-                        if (!ok) {
-                            delete data;
-                            lua_pushvalue(L,idx);
-                            lua_pushnil(L);
-                            lua_rawset(L,LUA_REGISTRYINDEX);
-                            return false;
-                        }
-                    }
-                    void *orig = lua_touserdata(L, idx);
-                    memcpy(&data->data[0], orig, len);
-                    luaObject.userData = data;
-                    lua_pushvalue(L,idx);
-                    lua_pushnil(L);
-                    lua_rawset(L,LUA_REGISTRYINDEX);
-                } else {
-                    luaObject.userData = data;
-                }
-                luaObject.type = T_USER_DATA;
-            }
-            break;
-        case LUA_TTABLE: {
-            lua_pushvalue(L, idx);
-            lua_rawget(L, LUA_REGISTRYINDEX);
-            LuaTable<CrossThreadLuaObject> *luaTable = (LuaTable<CrossThreadLuaObject> *)(lua_touserdata(L, -1));
-            lua_pop(L,1);
-            if (luaTable == nullptr) {
-                luaTable = new LuaTable<CrossThreadLuaObject>();
-                lua_pushvalue(L,idx);
-                lua_pushlightuserdata(L,luaTable);
-                lua_rawset(L,LUA_REGISTRYINDEX);
-                luaTable->get().reserve(int(lua_rawlen(L, idx)));
-                lua_pushnil(L);
-                while (lua_next(L, idx)) {
-                    CrossThreadLuaObject key;
-                    CrossThreadLuaObject value;
-                    bool ok = parseCrossThreadLuaObject(env, L, context, -2, key) &&
-                              parseCrossThreadLuaObject(env, L, context, -1, value);
-                    lua_pop(L, 1);
-                    if (ok)
-                        luaTable->get().push_back({std::move(key), std::move(value)});
-                    else {
-                        delete luaTable;
-                        lua_pushvalue(L,idx);
-                        lua_pushnil(L);
-                        lua_rawset(L,LUA_REGISTRYINDEX);
-                        return false;
-                    }
-                }
-
-                int hasMeta = lua_getmetatable(L, idx);
-                if (hasMeta && lua_istable(L, -1)) {
-                    CrossThreadLuaObject object;
-                    lua_getfield(L,-1,"__gc");
-                    bool ok=!lua_isnil(L,-1);
-                    lua_pop(L,1);
-                    ok=ok&&parseCrossThreadLuaObject(env, L, context, -1, object);
-                    lua_pop(L, 1);
-                    if (ok) {
-                        luaTable->metaTable = object.table;
-                        object.type = T_NIL;
-                        object.table = nullptr;
-                    } else {
-                        delete luaTable;
-                        lua_pushvalue(L,idx);
-                        lua_pushnil(L);
-                        lua_rawset(L,LUA_REGISTRYINDEX);
-                        return false;
-                    }
-                }
-                luaObject.table = luaTable;
-                lua_pushvalue(L,idx);
-                lua_pushnil(L);
-                lua_rawset(L,LUA_REGISTRYINDEX);
-            } else {
-                luaObject.table = luaTable;
-            }
-            luaObject.type = T_TABLE;
-            break;
-        }
-        default:
-            return false;
-    }
-    return true;
-}
-
 jobject LazyTable::asInterface(TJNIEnv *env, ScriptContext *context, JavaType *main) {
     Vector<JavaType *> interfaces;
     Vector<std::unique_ptr<BaseFunction>> luaFuncs;
@@ -2351,7 +2292,7 @@ LuaTable<ValidLuaObject> *LazyTable::getTable(TJNIEnv *env, ScriptContext *conte
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
         luaTable = new LuaTable<ValidLuaObject>();
-        size_t len = lua_rawlen(L, index);
+        int len =(int) lua_rawlen(L, index);
         luaTable->get().reserve(len);
         lua_pushvalue(L, index);
         lua_pushlightuserdata(L, luaTable);
@@ -2385,263 +2326,311 @@ LuaTable<ValidLuaObject> *LazyTable::getTable(TJNIEnv *env, ScriptContext *conte
 }
 
 
-static bool
-checkLuaTypeNoThrow(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject &luaObject) {
-    if (expected == nullptr) return false;
-    if (expected->isInteger()) {
-        if (luaObject.type != T_INTEGER){
-            if(luaObject.type==T_FLOAT){
-                luaObject.type=T_INTEGER;
-                luaObject.integer= int64_t(luaObject.number);
-            } else if(luaObject.type==T_OBJECT){
-                JavaType* type=luaObject.objectRef->type;
-                if(!expected->canAcceptBoxedNumber(type)) goto bail;
-                luaObject.type=T_INTEGER;
-                luaObject.integer=env->CallLongMethod(luaObject.objectRef->object,longValue);
-            } else goto bail;
+void ScriptContext::pushAddedObject(TJNIEnv *env, lua_State *L, const char *name, const char *methodName,
+                                    jobject obj) {
+    if (methodName == nullptr || methodName[0] == 0) {
+        if (obj == nullptr) {
+            lua_pushnil(L);
+        } else {
+            pushJavaObject(env, L, this, obj);
         }
-    } else if (expected->isFloat()) {
-        if (luaObject.type != T_FLOAT){
-            if(luaObject.type==T_INTEGER){
-                luaObject.type=T_FLOAT;
-                luaObject.number=luaObject.integer;
-            } else if(luaObject.type==T_OBJECT){
-                JavaType* type=luaObject.objectRef->type;
-                if(!expected->canAcceptBoxedNumber(type)) goto bail;
-                luaObject.type=T_FLOAT;
-                luaObject.number=env->CallDoubleMethod(luaObject.objectRef->object,doubleValue);
-            } else goto bail;
+        lua_setglobal(L, name);
+    } else if (obj != nullptr) {
+        int top = lua_gettop(L);
+        bool isStatic = false;
+        if (env->IsInstanceOf(obj, classType)) {
+            JavaType *type = ensureType(env, (jclass) obj);
+            *(JavaType **) lua_newuserdata(L, sizeof(JavaType *)) = type;
+            isStatic = true;
+        } else {
+            pushJavaObject(env, L, this, obj);
         }
-    } else if (expected->isChar()) {
-        if (luaObject.type == T_STRING){
-            if (strlen8to16(luaObject.string) != 1) {
-                lua_pushstring(L, "String length for char type must be 1");
-                return true;
-            } else{
-                luaObject.type=T_CHAR;
-                strcpy8to16(&luaObject.character,luaObject.string,NULL);
-            }
-        } else if(luaObject.type==T_INTEGER){
-            if(luaObject.integer<0||luaObject.integer>65535){
-                lua_pushstring(L, "The integer is too large for char value");
-                return true;
-            }else luaObject.type=T_CHAR;
-        } else if(luaObject.type==T_OBJECT&&luaObject.objectRef->type->isBoxedChar()){
-            luaObject.type=T_CHAR;
-            luaObject.character=env->CallCharMethod(luaObject.objectRef->object,charValue);
-            return false;
-        } else goto bail;
+        lua_pushstring(L, methodName);
+        pushMember(this, L, isStatic, 0, true);
 
-    } else if (expected->isBool()) {
-        if (luaObject.type != T_BOOLEAN){
-            if(luaObject.type==T_OBJECT&&luaObject.objectRef->type->isBoxedChar()){
-                luaObject.type=T_BOOLEAN;
-                luaObject.isTrue=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
-                return false;
-            } else goto bail;
-        }
+        lua_setglobal(L, name);
+        lua_settop(L, top);
+    }
+}
+
+static void registerNativeMethods(JNIEnv *env) {
+    jclass scriptClass = env->FindClass("com/oslorde/luadroid/ScriptContext");
+    env->RegisterNatives(scriptClass, nativeMethods,
+                         sizeof(nativeMethods) / sizeof(JNINativeMethod));
+    env->DeleteLocalRef(scriptClass);
+}
+
+jint JNI_OnLoad(JavaVM *vm, void *) {
+    ::vm = vm;
+    JNIEnv *env;
+    if (vm->GetEnv((void **) &env, JNI_VERSION_1_4) != JNI_OK) {
+        return -1;
+    }
+    registerNativeMethods(env);
+    return JNI_VERSION_1_4;
+}
+
+jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll) {
+    ScriptContext *context = new ScriptContext(env, object, importAll);
+    requireLogger([context, env](const char *data, bool isErr) {
+        context->writeLog(data, isErr);
+    });
+    return reinterpret_cast<long>(context);
+}
+
+void registerLogger(TJNIEnv *env, jclass, jlong ptr, jobject out, jobject err) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    if (context != nullptr) {
+        context->registerLogger(env, out, err);
+    };
+}
+
+void nativeClose(JNIEnv *, jclass, jlong ptr) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    if (context != nullptr) {
+        delete context;
+        dropLogger();
+    }
+}
+
+void nativeClean(JNIEnv *, jclass, jlong ptr) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    if (context != nullptr)context->clean();
+}
+
+void releaseFunc(JNIEnv *, jclass, jlong ptr) {
+    BaseFunction *info = (BaseFunction *) ptr;
+    if (--info->javaRefCount == 0) {
+        delete info;
+    }
+}
+
+jint getClassType(TJNIEnv * env, jclass, jlong ptr,jclass clz) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    return context->ensureType(env,clz)->getTypeID();
+}
+
+void addJavaObject(TJNIEnv *env, jclass, jlong ptr, jstring _name, jobject obj, jboolean local) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    JString name(env, _name);
+    context->addJavaObject(name, nullptr, env->NewGlobalRef(obj), local);
+    name.invalidate();
+}
+
+void addJavaMethod(TJNIEnv *env, jclass, jlong ptr, jstring jname, jstring method, jobject jinst,
+                   jboolean local) {
+    if (jinst == nullptr) return;
+    ScriptContext *context = (ScriptContext *) ptr;
+    JString name(env, jname);
+    JString methodName(env, method);
+    context->addJavaObject(name, methodName, env->NewGlobalRef(jinst), local);
+    name.invalidate();
+    methodName.invalidate();
+}
+
+jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    auto L = context->getLua();
+    JString s(env, script);
+    int ret;
+    if (isFile)ret = luaL_loadfile(L, s);
+    else ret = luaL_loadstring(L, s);
+    jlong retVal = 0;
+    if (ret != LUA_OK) {
+        context->setPendingException(env, "Failed to load");
+        recordLuaError(env, context, L, ret);
+        context->throwToJava();
     } else {
-        if (luaObject.type == T_NIL) return false;
-        if (luaObject.type == T_OBJECT) {
-            if (luaObject.objectRef->type == expected ||
-                env->IsInstanceOf(luaObject.objectRef->object, expected->getType()))
-                return false;
-            else {
-                lua_pushfstring(L, "Incompatible object,expected:%s,received:%s",
-                                expected->name(env).str(), luaObject.objectRef->type->name(env).str());
-                return true;
+        FuncInfo *info = saveLuaFunction(env, L, context, -1);
+        info->javaRefCount++;
+        retVal = reinterpret_cast<jlong >(info);
+    }
+    lua_pushcfunction(L, luaFullGC);
+    lua_pcall(L, 0, 0, 0);
+    s.invalidate();
+    return retVal;
+}
+
+jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean isFile,
+                       jobjectArray args) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    if (_setjmp(errorJmp)) {
+        if (context->hasErrorPending()) {
+            context->throwToJava();
+        }
+        return nullptr;
+    }
+    Import myIMport;
+    auto import = context->changeImport(&myIMport);
+    auto L = context->getLua();
+    auto top = lua_gettop(L);
+    int ret;
+    int argCount;
+    jobjectArray result = nullptr;
+    lua_pushcfunction(L, luaPCallHandler);
+    int handlerIndex = lua_gettop(L);
+    if (env->IsInstanceOf(script, stringType)) {
+        JString s(env, static_cast<jstring>(script));
+        if (isFile)ret = luaL_loadfile(L, s);
+        else {
+            ret = luaL_loadstring(L, s);
+        }
+        s.invalidate();
+    } else {
+        FuncInfo *info = reinterpret_cast<FuncInfo *>(env->CallLongMethod(script, longValue));
+        ret = luaL_loadbuffer(L, &info->funcData[0], info->funcData.size(), "");
+    }
+    if (unlikely(ret != LUA_OK)) {
+        context->setPendingException(env, "Failed to load");
+        recordLuaError(env, context, L, ret);
+        goto over;
+    }
+    argCount = args != nullptr ? 0 : env->GetArrayLength(args);
+    for (int i = 0; i < argCount; ++i) {
+        JObject object(env->GetObjectArrayElement(args, i));
+        pushJavaObject(env, L, context, object);
+    }
+    ret = lua_pcall(L, argCount, LUA_MULTRET, handlerIndex);
+    if (unlikely(ret != LUA_OK)) {
+        recordLuaError(env, context, L, ret);
+        goto over;
+    }
+    {
+        int resultSize = lua_gettop(L) - handlerIndex;
+        if (resultSize > 0) {
+            result = env->asJNIEnv()->NewObjectArray(resultSize, context->ObjectClass->getType(),
+                                                     NULL);
+            for (int i = resultSize - 1; i >= 0; --i) {
+                ValidLuaObject object;
+                parseLuaObject(env, L, context, handlerIndex + i + 1, object);
+                jobject value = context->luaObjectToJObject(env, std::move
+                        (object));
+                if (value != INVALID_OBJECT)
+                    env->SetObjectArrayElement(result, i, JObject(env, value).get());
             }
         }
-        if (expected->isStringAssignable() && luaObject.type == T_STRING) return false;
-        if (luaObject.type == T_FUNCTION) {
-            if (expected->isSingleInterface(env))return false;
-            forceRelease(luaObject);
-            lua_pushstring(L, "Can't convert function to a class that is not a single interface");
-            return true;
+    }
+    over:
+    context->changeImport(import);
+    lua_settop(L, top);
+    lua_pushcfunction(L, luaFullGC);
+    lua_pcall(L, 0, 0, 0);
+
+    if (context->hasErrorPending()) {
+        context->throwToJava();
+    }
+    return result;
+}
+
+jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
+                          jboolean isInterface,
+                          jlong funcRef, jobject proxy, jintArray argTypes, jobjectArray args) {
+    ScriptContext *context = (ScriptContext *) ptr;
+    lua_State *L = context->getLua();
+    if (_setjmp(errorJmp)) {
+        //GCScope::acquire().popAllFrames();
+        if (context->hasErrorPending())
+            context->throwToJava();
+        return 0;
+    }
+    lua_pushcfunction(L, luaPCallHandler);
+    int handlerIndex = lua_gettop(L);
+    Import *old;
+    if (!reinterpret_cast<BaseFunction *>(funcRef)->isLocal()) {
+        FuncInfo *funcInfo = (FuncInfo *) funcRef;
+        old = context->changeImport(funcInfo->getImport());
+        loadLuaFunction(env, L, funcInfo, context);
+    } else {
+        old = context->getImport();
+        LocalFunctionInfo *info = reinterpret_cast<LocalFunctionInfo *>(funcRef);
+        lua_rawgetp(L, LUA_REGISTRYINDEX,info);
+        if (unlikely(lua_isnil(L, -1))) {
+            context->setPendingException(
+                    env, "Local Function must run in the given thread it's extracted from");
+            context->throwToJava();
+            return 0;
         }
-        if (luaObject.type == T_TABLE) {
-            if (expected->isTableType(env) ||
-                (expected->isInterface(env) && luaObject.lazyTable->isInterface()))
-                return false;
-        }
-        if(luaObject.type==T_FLOAT){
-            if(expected->isBoxedFloat()){
-                return false;
+    }
+    int len = env->GetArrayLength(argTypes);
+    jint *arr = env->GetIntArrayElements(argTypes, nullptr);
+    for (int i = 0; i < len; ++i) {
+        switch (arr[i]) {
+            case 0: {//char
+                JObject character = env->GetObjectArrayElement(args, i);
+                char16_t c = env->CallCharMethod(character, charValue);
+                char charStr[4]={0} ;
+                strncpy16to8(charStr,&c, 1);
+                lua_pushstring(L, charStr);
+                break;
             }
-        } else if(luaObject.type==T_INTEGER){
-            if(expected->isBoxedInteger()||expected->isBoxedFloat())
-                return false;
-        }
-        if(expected->isBoxedChar()&&luaObject.type == T_STRING)
-            return false;
-        if(expected->isBoxedBool()&&luaObject.type == T_BOOLEAN)
-            return false;
-        goto bail;
-    }
-    return false;
-    bail:
-    lua_pushfstring(L, "Expected type is %s,but receive %s",
-                    JString(env->CallObjectMethod(expected->getType(), classGetName)).str(),
-                    luaObject.typeName());
-    return true;
-}
-
-void checkLuaType(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject &luaObject) {
-    if (likely(expected == nullptr)) return;
-    if (checkLuaTypeNoThrow(env, L, expected, luaObject)) {
-        forceRelease(luaObject);
-        lua_error(L);
-    }
-}
-
-void readArguments(TJNIEnv *env, lua_State *L, ScriptContext *context, Vector<JavaType *> &types,
-                   Vector<ValidLuaObject> &objects, int start) {
-    int top = lua_gettop(L);
-    auto expectedSize = top - (start - 1);
-    types.reserve(expectedSize);
-    objects.reserve(expectedSize);
-    for (int i = start; i <= top; ++i) {
-        JavaType **typeRef = (JavaType **) testUData(L, i, TYPE_KEY);
-        bool noType = typeRef == nullptr;
-        JavaType *paramType = noType ? nullptr : *typeRef;
-        types.push_back(paramType);
-        if (!noType) i++;
-        ValidLuaObject luaObject;
-        if (!parseLuaObject(env, L, context, i, luaObject)) {
-            forceRelease(types, objects);
-            luaL_error(L, "Arg unexpected for array");
-        }
-        if (checkLuaTypeNoThrow(env, L, paramType, luaObject)) {
-            forceRelease(luaObject, types, objects);
-            lua_error(L);
-        }
-        objects.push_back(std::move(luaObject));
-    }
-}
-
-
-void pushArrayElement(TJNIEnv *env, lua_State *L, ScriptContext *context, const JavaObject *obj,
-                      JavaType *componentType) {
-    int isnum;
-    jlong index = lua_tointegerx(L, 2, &isnum);
-    if (unlikely(!isnum)) luaL_error(L, "Invalid index for an array");
-    if (unlikely(index > INT32_MAX))luaL_error(L, "Index out of range:%d", index);
-        //recycle the jclass;
-    switch (componentType->getTypeID()){
-
-#define ArrayGet(typeID,jtype, jname, TYPE)\
-            case JavaType::typeID:{\
-                j##jtype buf;\
-                env->Get##jname##ArrayRegion((j##jtype##Array) obj->object, (jsize) index, 1, &buf);\
-                lua_push##TYPE(L,buf);\
+            case 1: {//boolean
+                JObject boolean = env->GetObjectArrayElement(args, i);
+                jboolean b = env->CallBooleanMethod(boolean, booleanValue);
+                lua_pushboolean(L, b);
+                break;
             }
-#define IntArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,integer)
-#define FloatArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,number)
-        IntArrayGet(BYTE,byte, Byte)
-        IntArrayGet(SHORT,short, Short)
-        IntArrayGet(INT,int, Int)
-        IntArrayGet(LONG,long, Long)
-        FloatArrayGet(FLOAT,float, Float)
-        FloatArrayGet(DOUBLE,double, Double)
-        ArrayGet(BOOLEAN,boolean, Boolean, boolean)
-        case JavaType::CHAR: {
-            jchar buf;
-            env->GetCharArrayRegion((jcharArray) obj->object, (jsize) index, 1, &buf);
-            PushChar(buf);
+            case 2: {//integer
+                JObject integer = env->GetObjectArrayElement(args, i);
+                jlong intValue = env->CallLongMethod(integer, longValue);
+                lua_pushinteger(L, intValue);
+                break;
+            }
+            case 3: {//double
+                JObject box = env->GetObjectArrayElement(args, i);
+                jdouble floatValue = env->CallDoubleMethod(box, doubleValue);
+                lua_pushnumber(L, floatValue);
+                break;
+            }
+            default: {//object
+                JObject obj = env->GetObjectArrayElement(args, i);
+                if (obj == nullptr) {
+                    lua_pushnil(L);
+                } else pushJavaObject(env, L, context, obj);
+                break;
+            }
         }
-        default: {
-            auto ele = env->GetObjectArrayElement((jobjectArray) obj->object, (jsize) index);
-            if(ele== nullptr)
-                lua_pushnil(L);
-            else pushJavaObject(env, L, context, ele);
+    }
+    env->ReleaseIntArrayElements(argTypes, arr, JNI_ABORT);
+
+    pushJavaObject(env, L, context, proxy);
+    if (!isInterface) {
+        pushJavaObject(env, L, context, proxy, context->ensureType(
+                env, env->GetSuperclass(env->GetObjectClass(proxy)))) ;
+    }
+    len += 1 + !isInterface;
+    int err = lua_pcall(L, len, LUA_MULTRET, handlerIndex);
+    jobject ret = nullptr;
+    int retCount;
+    if (err != LUA_OK)recordLuaError(env, context, L, err);
+    else if ((retCount = lua_gettop(L) - handlerIndex) != 0) {
+        bool multiRet =
+                env->IsInstanceOf(proxy, context->FunctionType(env)->getType()) && isInterface;
+        if (multiRet) {
+            JObjectArray result(
+                    env->NewObjectArray(retCount, context->ObjectClass->getType(), NULL));
+            for (int i = handlerIndex + 1, top = lua_gettop(L), j = 0; i <= top; ++i, ++j) {
+                ValidLuaObject object;
+                parseLuaObject(env, L, context, i, object);
+                jobject value = context->luaObjectToJObject(env, std::move(object));
+                if (value != INVALID_OBJECT)
+                    env->SetObjectArrayElement(result, j, JObject(env, value));
+            }
+            ret = result.invalidate();
+        } else {
+            ValidLuaObject object;
+            parseLuaObject(env, L, context, -1, object);
+            ret = context->luaObjectToJObject(env, std::move(object));
+            if (ret == INVALID_OBJECT) ret = nullptr;
         }
     }
+    context->changeImport(old);
+    lua_settop(L, handlerIndex - 1);
+    lua_pushcfunction(L, luaFullGC);
+    lua_pcall(L, 0, 0, 0);
+    if (context->hasErrorPending())
+        context->throwToJava();
+    return ret;
 }
-
-static void pushRawMethod(ScriptContext *context,lua_State *L, bool isStatic) {
-    MemberFlag *member = (MemberFlag *) lua_newuserdata(L, sizeof(MemberFlag));
-    member->isStatic = isStatic;
-    member->isNotOnlyMethod = false;
-    member->isField = false;
-    member->isDuplicatedField = false;
-    member->context=context;
-    lua_pushvalue(L, -3);//obj
-    lua_pushvalue(L, -3);//name
-    lua_pushcclosure(L, callMethod, 3);
-}
-
-void pushMember(ScriptContext *context, lua_State *L, bool isStatic, int fieldCount, bool isMethod) {
-    if (fieldCount == 0 && isMethod) {
-        pushRawMethod(context,L, isStatic);
-        return;
-    }
-    lua_newuserdata(L, 0);//value represent the java member
-    lua_createtable(L, 0, 3);//metatable;
-    int tableIndex = lua_gettop(L);
-    int nameIndex = tableIndex - 2;
-    int tOIndex = tableIndex - 3;//class or the obj
-    MemberFlag *member = (MemberFlag *) lua_newuserdata(L, sizeof(MemberFlag));
-    member->isStatic = isStatic;
-    member->isNotOnlyMethod = true;
-    member->isField = true;
-    member->isDuplicatedField = fieldCount > 1;
-    int flagIndex = lua_gettop(L);
-    if (fieldCount > 0) {
-        lua_pushstring(L, "__index");
-        lua_pushvalue(L, flagIndex);
-        lua_pushvalue(L, tOIndex);
-        lua_pushvalue(L, nameIndex);
-        lua_pushcclosure(L, getField, 3);
-        lua_rawset(L, tableIndex);
-
-        lua_pushstring(L, "__newindex");
-        lua_pushvalue(L, flagIndex);
-        lua_pushvalue(L, tOIndex);
-        lua_pushvalue(L, nameIndex);
-        lua_pushcclosure(L, setField, 3);
-        lua_rawset(L, tableIndex);
-    }
-
-    if (isMethod) {
-        lua_pushstring(L, "__call");
-        lua_pushvalue(L, flagIndex);
-        lua_pushvalue(L, tOIndex);
-        lua_pushvalue(L, nameIndex);
-        lua_pushcclosure(L, callMethod, 3);
-        lua_rawset(L, tableIndex);
-    }
-
-    lua_pop(L, 1);//pop flag
-
-    //to improve performance,comment out below code
-    /*lua_pushstring(L,"__metatable");
-    lua_pushboolean(L,0);
-    lua_rawset(L,tableIndex);*/
-
-    lua_setmetatable(L, -2);
-}
-
-void recordLuaError(TJNIEnv *env, ScriptContext *context, lua_State *L, int ret) {
-    switch (ret) {
-        case LUA_ERRERR:
-        case LUA_ERRRUN:
-#if LUA_VERSION_NUM > 501
-        case LUA_ERRGCMM:
-#endif
-        case LUA_ERRSYNTAX:
-            context->setPendingException(env, luaL_tolstring(L, -1, nullptr));
-            lua_pop(L, 1);
-            break;
-        case LUA_ERRMEM:
-            context->setPendingException(env, "Lua memory error");
-            break;
-        case -1:
-            context->setPendingException(env, "Unknown error");
-        default:
-            break;
-    }
-}
-
 
 bool validJavaName(const char *s) noexcept {
     if ((int8_t) *s >= 0 && !isalpha(*s) && *s != '$' && *s != '_') return false;//check for the
