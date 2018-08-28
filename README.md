@@ -159,8 +159,8 @@
        Whether the object is multi-thread supported is determined by
        whether localLunction is set in the constructor of ScriptContext
     
-    Cross thread support
-     A userdata named 'cross' is imported to support cross thread communi-
+    Multi-thread support
+     A userdata named 'cross' is imported to support cross-thread communi-
      cation.It behaves like a table,so you can just put any lua object to 
      it.Note that userdata is shared by memory copy so if it has a _gc
      metamethod,error will be raised, since it may induce memory corrupt-
