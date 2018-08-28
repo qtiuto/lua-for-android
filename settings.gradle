@@ -1,1 +1,1 @@
-include ':luadroid', 'dexmaker'
+include ':app', ':lib', 'dexmaker'
