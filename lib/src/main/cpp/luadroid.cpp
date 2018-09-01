@@ -2528,7 +2528,6 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
     ScriptContext *context = (ScriptContext *) ptr;
     lua_State *L = context->getLua();
     if (_setjmp(errorJmp)) {
-        //GCScope::acquire().popAllFrames();
         if (context->hasErrorPending())
             context->throwToJava();
         return 0;
