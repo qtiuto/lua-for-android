@@ -32,8 +32,6 @@ template<class _Key, typename _Value,
         class _Hash=std::hash <_Key>, class _Equal=std::equal_to <_Key>>
 using Map=std::unordered_map<_Key, _Value, _Hash, _Equal>;
 
-
-
 inline void __doNotCall(std::stringstream &sstream) {};
 
 template<typename T1, typename ...T2>

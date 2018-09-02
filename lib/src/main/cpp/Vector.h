@@ -60,10 +60,10 @@ public:
         array = new _Tp[_capacity];
     }
 
-    Vector(std::initializer_list<_Tp> list) {
+    Vector(std::initializer_list<_Tp>&& list) {
         reserve((size_type)list.size());
         _size =(size_type) list.size();
-        arrayCopy(list.begin(),array,_size);
+        arrayMove(const_cast<_Tp*>(list.begin()),array,_size);
     }
 
     Vector(Vector<_Tp> &&other) : array(other.array), _size(other._size), _capacity(other._capacity) {

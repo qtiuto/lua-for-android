@@ -16,12 +16,9 @@ struct Import {
     Vector<String> packages;
     TypeCache stubbed;
 
-    Import() {
-        packages.push_back("java.lang.");
-        packages.push_back("java.util.");
-        packages.push_back("android.view.");
-        packages.push_back("android.widget.");
-        packages.push_back("android.app.");
+    Import():packages{"java.lang."
+            ,"java.util.","android.view."
+            ,"android.widget.","android.app."} {
     }
 
     Import(Import &&other) : packages(std::move(other.packages)),
