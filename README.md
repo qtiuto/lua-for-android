@@ -17,28 +17,28 @@
     Functions:
      
      import:
-      import a package or a class.
-      usage: import "android.os.*" or import "android.os.Process"
-      if you import a package then you can call Type(shortName) to get
+      Import a package or a class.
+      Usage: import "android.os.*" or import "android.os.Process"
+      f you import a package then you can call Type(shortName) to get
       a type,but no value returned.
       If you import a Type then the returned value is the type and a
-      global value named the short name is set.For example
+      global value named the short name is set.For example，
         local p=import "android.os.Process"
         p.myPid() --or Process.myPid()
       By default,"java.lang.*","java.util.*","android.view.*",
-      "android.widget.*",and "android.app." are imported,but only
+      "android.widget.*",and "android.app.*" are imported,but only
       "java.lang.*" is allowed to be overwritted.
      new:
-      construct a new instance.
-      usage: new(Type,args...)
+      Construct a new instance.
+      Usage: new(Type,args...)
       This is equal to call Type(args...).
       e.g.
         import "java.lang.StringBuilder"
         new(StringBuilder,"haha") or StringBuilder("haha")
         
      newArray:
-      construct an array.
-      usage: newArray(ComponentType,length,initial args...)
+      Construct an array.
+      Usage: newArray(ComponentType,length,initial args...)
       The length of inital args must be less than or equal to the length
       Alternative: new(ArrayType,,length,initial args...)
       Note:Never pass a type into the initial args.Type cast won't be 
@@ -46,8 +46,8 @@
       be performed if needed.
       
      Type:
-      return a type by give className,shortName or class
-      usage:Type("java.lang.Object") or Type("Object") or Type(ObjectClass)
+      Return a type by give className,shortName or class
+      Usage:Type("java.lang.Object") or Type("Object") or Type(ObjectClass)
       Notice:in module java the name is "type",the global function is
       changed to upper case to avoid confiction with the internal
       function type,with return the type of a lua object.
@@ -60,17 +60,17 @@
       'OnClickListener'
       
      instanceof:
-      to check whether the given object is an instance of the give type.
-      usage: instanceof(object,type)
+      To check whether the given object is an instance of the give type.
+      Usage: instanceof(object,type)
       
      sync:
-      equals to sychronized(object)
-      usages:sync(object,function()... end)
+      Equals to sychronized(object)
+      Usage:sync(object,function()... end)
       Note:yield is not supported cause it will break lock scope and have
        object unlocked
       
      object:
-      convert a lua object to java object,here is the mapping
+      Convert a lua object to java object,here is the mapping
       number ->java.lang.Long or java.lang.Double,according to the value
       string ->java.lang.String
       boolean ->java.lang.Boolean
@@ -78,21 +78,21 @@
       table ->java.util.HashMap
       function ->com.oslorde.luadroid.LuaFunction
       java object is unchanged
-      usage:object(lua object)
+      Usage:object(lua object)
       
      charString:
-      convert an integer to an one-character string by its value,e.g.
+      Convert an integer to an one-character string by its value,e.g.
       10 -> '\n'
-      usage:charString(integer)
+      Usage:charString(integer)
       
      charValue:
-      convert one-character string to a an integer  by its value,e.g.
+      Convert one-character string to a an integer  by its value,e.g.
       '\n'-> 10
-      usage:charValue(on-character string)
+      Usage:charValue(on-character string)
       
      try:
-      start java try,both lua error and java exception are caught
-      usage:
+      Starts java try,both lua error and java exception are caught
+      Usage:
        try(body function,[exception type,ecpection handler function]...
            ,["all",all exception handler function],[finally function])
        or try{
@@ -112,15 +112,15 @@
         cause it may have finally function un-called
        
      throw:
-      throw a java exception to the code,it will be caught by the above
+      Throw a java exception to the code,it will be caught by the above
       try function or try catch in your java code.
-      usage: throw(exception object)
+      Usage: throw(exception object)
       Notice: the exception must be java obejct of type or sub-type of
       java.lang.Throwable
       
      proxy:
-      to implement interfaces ,alternatively plus with extending a class
-      usage:proxy([class to extend or object of class to extend],
+      To implement interfaces ,alternatively plus with extending a class
+      Usage:proxy([class to extend or object of class to extend],
       [interfaces to implement]..., [method name,parameter types...,
       handler function]..., [shared classloader],--extend type only
       [initial args for constructor])--extend type only
@@ -142,7 +142,7 @@
        args={...}---alternative
       }
       Notice:
-       if you passed an object to extend,then the proxy object is 
+       If you passed an object to extend,then the proxy object is 
        directly allocated and have all fields from the object to be
        copied into the proxied object without constructor call.
        See ClassBuilder#cloneFromSuper for more informations
@@ -150,10 +150,10 @@
        A value represent the proxy object is appended after args during
        function callback
        
-       For extension usage,a value represent the super is appended
+       For extension usage,a value represents the super is appended
        
        Interface implentation is supported by java.lang.reflect.Proxy
-       but class extension is support by dexmaker, which may consume
+       but class extension is supported by dexmaker, which may consume
        several time to generate and load a dex file.
       
        Whether the object is multi-thread supported is determined by
@@ -175,7 +175,7 @@
      or Type['name'](...).Once you got a java object you can do the simi-
      liar opertation to its Object fields or methods.
      
-     However,if the class have some field and method with the same name,
+     However,if the class has some fields and methods with the same name,
      you can't get or set the field by Type.name or obj.name.Instead,
      you must use (Type or obj).name[any value you like] to use the field.
      Another special case is that the field with the same name but
@@ -184,20 +184,20 @@
      on the field.
      
      Note:
-       Type.class will return the Class object represented by the type
-       '.length' of an array object will return its length,you can use '#' 
-       operator to get the length of an array object also.'#' operator also
-       works for Collection,Map,JsonArray and SparseArray.
-       The lua method tostring works for any java object,and toString method
-       will be invoked.
-       '==' operator for java object will always return true if the two object
-       is the same java object
-       '..' operator will concat a java object with any lua object with tostring
-       to be called,and return a lua string.
+      Type.class will return the Class object represented by the type
+      '.length' of an array object will return its length,you can use '#' 
+      operator to get the length of an array object also.'#' operator also
+      works for Collection,Map,JsonArray and SparseArray.
+      The lua method tostring works for any java object,and toString method
+      will be invoked.
+      '==' operator for java object will always return true if the two object
+      is the same java object
+      '..' operator will concat a java object with any lua object with tostring
+      to be called,and return a lua string.
        
      
     Type Specifaction:
-         You can add a type before the arg in method call,new(),newArray
+     You can add a type before the arg in method call,new(),newArray
      or the args in proxy(),so as to indicate the type you wish the
      argument to be, and then  have the proper method or constructor to
      be called.
@@ -213,7 +213,7 @@
      by double,so long type accept i64 value also.Boxed type will be used
      if no primitive type found.
      
-     For float value,double have more weight than float.
+     For float value,double has more weight than float.
      
      For string,if the type is char and the string length is one,then
      ranks first,string ranks second,followed by any assignble from
@@ -237,7 +237,7 @@
     Automatic Conversion:
     
      For field set and method call or proxy return,lua object will be converted
-     automatically according to the type.Type check have the same rule in 
+     automatically according to the type.Type check ha thse same rule in 
      method deduction.If type check failed,an exception may be thrown
      
      For primitive types,like a static_cast<type>(value).
@@ -247,14 +247,14 @@
      
      For object types,no conversion.
      
-     For function,like call proxy with only one type and one one function
+     For function,like call proxy with only one type and one function
      provided.
      
-     For table ,if the table convertible,it's converted by the table converter
+     For table ,if the table is convertible,it's converted by the table converter
      else it's like call proxy with super set to the type and methods set to 
-     the table.Additionally,generic type check and conversion will be performed
-     automatically,That's to say,Type such as List<Integer>,List<Short>
-     or List<List<String>> will be supported.
+     the table if it's valid to be converted to be proxied.Additionally,generic type
+     check and conversion will be performed automatically,That's to say,Type such as 
+     List<Integer>,List<Short> or List<List<String>> will be supported.
      
      User date is treated as integer.
       
@@ -268,7 +268,7 @@
      all its members exported to the global table if you specified
      importAllFunctions (default true) in the constructor of Script-
      Context.And global value "java" refers to the table.Note that
-     java.type is exported as Type to avoid confiction.
+     java.type is exported as ‘Type’ to avoid confiction.
       
     ScriptContext api:
      
