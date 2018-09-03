@@ -223,12 +223,10 @@ public:
     bool isString() {
         return _isString;
     }
+
     inline TYPE_ID  getTypeID(){ return typeID;}
 
-#define FLOAT_MAX ((1<<24))
-#define FLOAT_MIN (-(1<<24))
-#define DOUBLE_MAX (((long long)1<<54))
-#define DOUBLE_MIN (-((long long)1<<54))
+    inline ScriptContext* getContext(){ return context; }
 
     const MethodInfo *findMethod(TJNIEnv* env,const String &name, bool isStatic, Vector<JavaType *> &types,
                                  Vector<ValidLuaObject> *arguments);

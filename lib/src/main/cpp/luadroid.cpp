@@ -63,6 +63,8 @@ static int concatString(lua_State *L)noexcept;
 
 static int objectEquals(lua_State *L)noexcept;
 
+static int javaTypeToString(lua_State *L) noexcept;
+
 static int javaObjectToString(lua_State *L)noexcept;
 
 static int getFieldOrMethod(lua_State *L)noexcept;
@@ -217,13 +219,14 @@ static inline int64_t lua_tointegerx(lua_State* L,int index,int* isnum){
 }
 #endif
 #if LUA_VERSION_NUM < 502
-static inline void lua_rawgetp(lua_State* L,int index,void* p){
-    lua_pushlightuserdata(L,p);
+static inline int lua_rawgetp(lua_State* L,int index,const void* p){
+    lua_pushlightuserdata(L,(void*)p);
     lua_rawget(L,index);
+    return 0;
 }
-static inline void lua_rawsetp(lua_State* L,int index,void* p){
-    lua_pushlightuserdata(L,p);
-    lua_pushvalue(L,-2)
+static inline void lua_rawsetp(lua_State* L,int index,const void* p){
+    lua_pushlightuserdata(L,(void*)p);
+    lua_pushvalue(L,-2);
     lua_rawset(L,index);
     lua_pop(L,1);
 }
@@ -403,57 +406,47 @@ void ScriptContext::config(lua_State *L) {
         lua_setglobal(L, "Type");
     }
     {
-        lua_newuserdata(L,0);
+        *(ScriptContext**)lua_newuserdata(L, sizeof(void*))=this;
         lua_createtable(L,0,3);
         lua_pushstring(L, "Can't change java metatable");
         lua_setfield(L, -2, "__metatable");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, javaPut,1);
+        lua_pushcfunction(L, javaPut);
         lua_setfield(L, -2, "__newindex");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, javaGet,1);
+        lua_pushcfunction(L, javaGet);
         lua_setfield(L, -2, "__index");
         lua_setmetatable(L,-2);
         lua_setglobal(L,"cross");
     }
 
-
-
     if (newMetaTable(L,TYPE_KEY, JAVA_TYPE)) {
         int index = lua_gettop(L);
         lua_pushstring(L, "Can't change java metatable");
         lua_setfield(L, index, "__metatable");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, setFieldOrArray,1);
+        lua_pushcfunction(L, setFieldOrArray);
         lua_setfield(L, index, "__newindex");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, getFieldOrMethod,1);
+        lua_pushcfunction(L, getFieldOrMethod);
         lua_setfield(L, index, "__index");
         lua_pushlightuserdata(L,this);
         lua_pushcclosure(L, javaNew,1);
         lua_setfield(L, index, "__call");
+        lua_pushcfunction(L, javaTypeToString);
+        lua_setfield(L, index, "__tostring");
     }
     if (newMetaTable(L,OBJECT_KEY, JAVA_OBJECT)) {
         int index = lua_gettop(L);
         lua_pushstring(L, "Can't change java metatable");
         lua_setfield(L, index, "__metatable");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, setFieldOrArray,1);
+        lua_pushcfunction(L, setFieldOrArray);
         lua_setfield(L, index, "__newindex");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, getFieldOrMethod,1);
+        lua_pushcfunction(L, getFieldOrMethod);
         lua_setfield(L, index, "__index");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, objectEquals,1);
+        lua_pushcfunction(L, objectEquals);
         lua_setfield(L, index, "__eq");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, concatString,1);
+        lua_pushcfunction(L, concatString);
         lua_setfield(L, index, "__concat");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, javaObjectToString,1);
+        lua_pushcfunction(L, javaObjectToString);
         lua_setfield(L, index, "__tostring");
-        lua_pushlightuserdata(L,this);
-        lua_pushcclosure(L, getObjectLength,1);
+        lua_pushcfunction(L, getObjectLength);
         lua_setfield(L, index, "__len");
         lua_pushcfunction(L, JavaObject::objectGc);
         lua_setfield(L, index, "__gc");
@@ -1769,7 +1762,7 @@ int javaTry(lua_State *L) {
 }
 
 int javaPut(lua_State *L) {
-    ScriptContext *context = getContext(L);
+    ScriptContext *context =* (ScriptContext**)lua_touserdata(L,1);
     const char *name = luaL_tolstring(L,2, nullptr);
     AutoJNIEnv env;
     CrossThreadLuaObject object;
@@ -1785,7 +1778,7 @@ int javaPut(lua_State *L) {
 }
 
 int javaGet(lua_State *L) {
-    ScriptContext *context = getContext(L);
+    ScriptContext *context =* (ScriptContext**)lua_touserdata(L,1);
 
     const char *name = luaL_tolstring(L, 2, nullptr);
     CrossThreadLuaObject *object = context->getLuaObject(name);
@@ -1884,10 +1877,10 @@ int callMethod(lua_State *L) {
 }
 
 int getFieldOrMethod(lua_State *L) {
-    ScriptContext *context = getContext(L);
     bool isStatic = isJavaTypeOrObject(L,1);
     JavaObject *obj = isStatic ? nullptr : (JavaObject*) lua_touserdata(L,1);
     JavaType *type = isStatic ? *(JavaType**) lua_touserdata(L,1) : obj->type;
+    ScriptContext *context = type->getContext();
     AutoJNIEnv env;
     if (!isStatic) {
         auto component = obj->type->getComponentType(env);
@@ -2069,11 +2062,11 @@ int setField(lua_State *L) {
 }
 
 int setFieldOrArray(lua_State *L) {
-    ScriptContext *context = getContext(L);
     bool isStatic = isJavaTypeOrObject(L,1);
     JavaObject *objRef = isStatic ? nullptr : (JavaObject*) lua_touserdata(L,1);
     JavaType *type = isStatic ? *(JavaType**) lua_touserdata(L,1) : objRef->type;
     AutoJNIEnv env;
+    ScriptContext *context = type->getContext();
     if (!isStatic) {
         JavaType *component = objRef->type->getComponentType(env);
         if (component != nullptr) {
@@ -2154,13 +2147,18 @@ int concatString(lua_State *L) {
     return 1;
 }
 
+int javaTypeToString(lua_State *L) {
+    JavaType *type = *(JavaType**)lua_touserdata(L,1);
+    AutoJNIEnv env;
+    lua_pushfstring(L,"Java Type:%s", type->name(env).str());
+    return 1;
+}
+
 int javaObjectToString(lua_State *L) {
     JavaObject *ob = (JavaObject*)lua_touserdata(L,1);
     AutoJNIEnv env;
     JString str = env->CallObjectMethod(ob->object, objectToString);
-    const char *s = env->GetStringUTFChars(str, nullptr);
-    lua_pushstring(L, s);
-    env->ReleaseStringUTFChars(str, s);
+    lua_pushstring(L, str);
     return 1;
 }
 
