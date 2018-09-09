@@ -73,14 +73,94 @@ namespace std {
 
 }
 class JavaType;
+class ScriptContext;
+struct ThreadContext{
+    TJNIEnv* env;
+    ScriptContext* scriptContext;
+private:
+    Import* import;
+    jthrowable pendingJavaError;
+public:
 
+    void setPendingException( const String &msg);
+
+    void setPendingException(const char *msg) {
+        FakeString m(msg);
+        const String &k = m;
+        setPendingException(k);
+    }
+
+    void setPendingException(jthrowable throwable) {
+        AutoJNIEnv env;
+        if (throwable == nullptr) pendingJavaError = nullptr;
+        else {
+            if (pendingJavaError != nullptr) {
+                if (env->IsSameObject(throwable, pendingJavaError)) return;
+                env->DeleteLocalRef(pendingJavaError);
+            }
+            pendingJavaError = (jthrowable) env->NewLocalRef(throwable);
+        }
+    }
+
+    void throwToJava() {
+        AutoJNIEnv env;
+        jthrowable p = (jthrowable) pendingJavaError;
+        pendingJavaError = nullptr;
+        env->Throw(p);
+        env->DeleteLocalRef(p);
+    }
+    ScriptContext *changeScriptContext(ScriptContext *newScriptContext) {
+        ScriptContext *old = scriptContext;
+        scriptContext = newScriptContext;
+        return old;
+    }
+
+
+    Import *changeImport(Import *newImport) {
+        Import *old = import;
+        import = newImport;
+        return old;
+    }
+
+    Import *getImport() {
+        return import;
+    }
+
+    bool hasErrorPending() {
+        return pendingJavaError != nullptr;
+    }
+
+    jthrowable getPendingJavaError() {
+        return pendingJavaError;
+    }
+
+    JavaType *ensureType(const char *typeName);
+    jobject proxy(JavaType *main, Vector<JavaType *> *interfaces,
+                  const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
+                  bool shared= false, long nativeInfo=0,jobject superObject= nullptr);
+    jvalue luaObjectToJValue( ValidLuaObject &luaObject, JavaType *type,jobject real= nullptr);
+
+    jobject luaObjectToJObject( ValidLuaObject &&luaObject);
+
+    JavaType *HashMapType();
+
+    JavaType *FunctionType();
+
+    bool isLocalFunction();
+
+};
+
+
+inline int tkill(int tid, int sig){
+    return tgkill(getpid(),tid,sig);
+}
 class ScriptContext {
     static jmethodID sMapPut;
-    static __thread jthrowable pendingJavaError;
-    static __thread Import *import;
+    static thread_local ThreadContext threadContext;
     static jmethodID sWriteBytes;
+    friend class ThreadContext;
     typedef Map<jclass, JavaType *> TypeMap;
-    typedef Map<pthread_t, lua_State *> StateMap;
+    typedef Map<int, lua_State *> StateMap;
     typedef Map<String, CrossThreadLuaObject> CrossThreadMap;
     typedef Map<String, std::pair<String, jobject>> AddedMap;
     const bool importAll;
@@ -98,9 +178,6 @@ class ScriptContext {
     jweak errLogger = nullptr;
 
     JavaType *getVoidClass(TJNIEnv *env);
-
-    JavaType *HashMapType(TJNIEnv *env);
-
     JavaType *const byteClass;
     JavaType *const shortClass;
     JavaType *const intClass;
@@ -123,23 +200,11 @@ public:
     jobject const javaRef;
     JavaType *const ObjectClass;
 
+    JavaType *ensureType(TJNIEnv *env, jclass type);
 
     ScriptContext(TJNIEnv *env, jobject con, bool importAll = true, bool localFunction = false);
 
     lua_State *getLua();
-
-    JavaType *ensureType(TJNIEnv *env, jclass type);
-
-    JavaType *ensureType(TJNIEnv *env, const char *typeName);
-
-    jobject proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *interfaces,
-                  const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
-                  bool shared= false, long nativeInfo=0,jobject superObject= nullptr);
-    jvalue luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type,jobject real= nullptr);
-
-    jobject luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObject);
-
-    JavaType *FunctionType(TJNIEnv *env);
 
     void saveLuaObject(CrossThreadLuaObject &object, const char *name) {
         ScopeLock sentry(mapLock);
@@ -149,7 +214,7 @@ public:
     void clean() {
         ScopeLock sentry(lock);
         for (auto&& pair = stateMap.begin(); pair != stateMap.end();) {
-            int status = pthread_kill(pair->first, 0);
+            int status = tkill(pair->first, 0);
             if (status == 0) {
                 ++pair;
                 continue;
@@ -171,54 +236,9 @@ public:
         ScopeLock sentry(mapLock);
         crossThreadMap.erase(String(name));
     }
-
-    void setPendingException(TJNIEnv *env, const String &msg);
-
-    void setPendingException(TJNIEnv *env, const char *msg) {
-        FakeString m(msg);
-        const String &k = m;
-        setPendingException(env, k);
+    ThreadContext* getThreadContext(){
+        return &threadContext;
     }
-
-    void setPendingException(jthrowable throwable) {
-        AutoJNIEnv env;
-        if (throwable == nullptr) pendingJavaError = nullptr;
-        else {
-            if (pendingJavaError != nullptr) {
-                if (env->IsSameObject(throwable, pendingJavaError)) return;
-                env->DeleteLocalRef(pendingJavaError);
-            }
-            pendingJavaError = (jthrowable) env->NewLocalRef(throwable);
-        }
-    }
-
-    void throwToJava() {
-        AutoJNIEnv env;
-        jthrowable p = (jthrowable) pendingJavaError;
-        pendingJavaError = nullptr;
-        env->Throw(p);
-        env->DeleteLocalRef(p);
-    }
-
-    Import *changeImport(Import *newImport) {
-        Import *old = import;
-        import = newImport;
-        return old;
-    }
-
-    Import *getImport() {
-        return import;
-    }
-
-    bool hasErrorPending() {
-        return pendingJavaError != nullptr;
-    }
-
-    jthrowable getPendingJavaError() {
-        return pendingJavaError;
-    }
-
-    bool isLocalFunction() const { return localFunction; }
 
 
     void addJavaObject(const char *name, const char *methodName, jobject object,

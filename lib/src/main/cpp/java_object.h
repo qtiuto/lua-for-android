@@ -14,7 +14,7 @@ struct JavaObject {
     jobject object;
     JavaType *type;
 
-    static int objectGc(lua_State *L) {//gc function may run in other thread so we set a upvalue
+    static int objectGc(lua_State *L) {
         JavaObject *ref = (JavaObject *) lua_touserdata(L, -1);
         AutoJNIEnv()->DeleteGlobalRef(ref->object);
         return 0;

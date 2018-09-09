@@ -14,6 +14,6 @@ struct MemberFlag {
         bool isNotOnlyMethod;
     };
     bool isDuplicatedField;
-    ScriptContext* context;
+    ThreadContext* context;
 };
 #endif //LUADROID_JAVA_METHOD_H

@@ -10,14 +10,15 @@ jmethodID JavaType::sIsTableType = nullptr;
 jmethodID JavaType::sTableConvert = nullptr;
 jmethodID JavaType::sIsInterface = nullptr;
 
-jobject JavaType::newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<ValidLuaObject> &params) {
-    const MethodInfo *info = findMethod(env,FakeString("<init>"), false, types, &params);
+jobject JavaType::newObject(ThreadContext *context, Vector<JavaType *> &types, Vector<ValidLuaObject> &params) {
+    TJNIEnv *env = context->env;
+    const MethodInfo *info = findMethod(env, FakeString("<init>"), false, types, &params);
     uint32_t size = (uint32_t) types.size();
     jvalue argList[size];
     for (int i = size-1; i !=-1; --i) {
         ValidLuaObject &object = params[i];
         ParameterizedType &tp = info->params[i];
-        argList[i] = context->luaObjectToJValue(env, object, tp.rawType,tp.realType);
+        argList[i] = context->luaObjectToJValue( object, tp.rawType,tp.realType);
         if ((object.type == T_TABLE || object.type == T_FUNCTION) &&
             argList[i].l == INVALID_OBJECT) {
             cleanArgs(argList, size, params, env);
@@ -30,9 +31,9 @@ jobject JavaType::newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<Valid
     return ret;
 }
 
-jarray JavaType::newArray(TJNIEnv* env,jint size, Vector<ValidLuaObject> &params) {
+jarray JavaType::newArray(ThreadContext *context,jint size, Vector<ValidLuaObject> &params) {
     uint32_t len = (uint32_t) params.size();
-
+    auto  env=context->env;
 #define ArrayHandle(typeID,jtype, jName, NAME) \
          case JavaType::typeID:{\
             j##jtype arr[len];\
@@ -76,7 +77,7 @@ switch (typeID){
             if (luaObject.type == T_NIL) {
                 env->SetObjectArrayElement(ret, i, NULL);
             } else {
-                jobject value = context->luaObjectToJValue(env, luaObject, this).l;
+                jobject value = context->luaObjectToJValue(luaObject, this).l;
                 if (value == INVALID_OBJECT) return nullptr;
                 env->SetObjectArrayElement(ret, i, value);
                 cleanArg(env, value, luaObject.shouldRelease);
@@ -554,7 +555,7 @@ uint JavaType::weightObject(TJNIEnv* env,JavaType *target, JavaType *from) {
 }
 
 JObject JavaType::getSingleInterface(TJNIEnv* env) {
-    if (singleInterface == nullptr) {
+    if (singleInterface == invalid<jmethodID>()) {
         JObject ret = env->CallStaticObjectMethod(contextClass, sGetSingleInterface, type);
         if (ret != nullptr) singleInterface = env->FromReflectedMethod(ret);
         return ret;

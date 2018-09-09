@@ -5,8 +5,7 @@
 #include "utf8.h"
 #include <grp.h>
 
-__thread jthrowable ScriptContext::pendingJavaError = nullptr;
-__thread Import *ScriptContext::import = nullptr;
+thread_local ThreadContext ScriptContext::threadContext ;
 jmethodID ScriptContext::sMapPut = nullptr;
 jmethodID ScriptContext::sWriteBytes;
 static jmethodID sProxy;
@@ -59,7 +58,7 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
     sAddInfo.methodName = methodName;
     sAddInfo.object = object;
     lock.lock();
-    pthread_t self = pthread_self();
+    int self = gettid();
     if (currentOnly && (stateMap.find(self) != stateMap.end())) {
         pthread_mutex_unlock(&sAddInfo.mutex);
         handleAdd(ADD_SIG, nullptr, nullptr);
@@ -171,7 +170,7 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
     if (sProxy == nullptr) {
         JClass cl = env->GetObjectClass(javaObject);
         contextClass = (jclass) env->NewGlobalRef(cl);
-        sProxy = env->GetMethodID(cl, "proxy", "(JLjava/lang/Class;[Ljava/lang/Class;"
+        sProxy = env->GetMethodID(cl, "proxy", "(Ljava/lang/Class;[Ljava/lang/Class;"
                 "[Ljava/lang/reflect/Method;[JZJLjava/lang/Object;)Ljava/lang/Object;");
         sLength = env->GetStaticMethodID(cl, "length", "(Ljava/lang/Object;)I");
         JavaType::sFindMembers = env->GetStaticMethodID(cl, "findMembers"
@@ -204,7 +203,7 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
 
 lua_State *ScriptContext::getLua() {
     ScopeLock sentry(lock);
-    pthread_t tid = pthread_self();
+    int tid = gettid();
     const auto &iter = stateMap.find(tid);
     lua_State *state;
     if (iter == stateMap.end()) {
@@ -233,7 +232,8 @@ JavaType *ScriptContext::getVoidClass(TJNIEnv *env) {
     return ensureType(env, (JClass) env->GetStaticObjectField(Void, mid));
 
 }
-JavaType* ensureShortArrayType(ScriptContext* context,TJNIEnv *env, const char *typeName){
+JavaType* ensureShortArrayType(ThreadContext* info,const char *typeName){
+    TJNIEnv* env=info->env;
     size_t nameLen=strchr(typeName,'[')-typeName;
     String trueType(typeName,nameLen);
     if(trueType=="int") trueType="I";
@@ -245,7 +245,7 @@ JavaType* ensureShortArrayType(ScriptContext* context,TJNIEnv *env, const char *
     else if(trueType=="double") trueType="D";
     else if(trueType=="short") trueType="S";
     else{
-        const Import *import =context-> getImport();
+        const Import *import =info-> getImport();
         for (auto &&pack:import->packages) {
             String full(pack + trueType);
             changeClassName(full);
@@ -268,15 +268,15 @@ JavaType* ensureShortArrayType(ScriptContext* context,TJNIEnv *env, const char *
         env->ExceptionClear();
         return nullptr;
     }
-    JavaType *ret = context->ensureType(env, type);
-    context->getImport()->stubbed.emplace(typeName,ret);
+    JavaType *ret = info->scriptContext->ensureType(env, type);
+    info->getImport()->stubbed.emplace(typeName,ret);
     return ret;
 }
 
-JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
+JavaType *ThreadContext::ensureType(const char *typeName) {
 #define MatchPrimitive(type)\
     ({if(strcmp(typeName,#type)==0){\
-        return type##Class;\
+        return scriptContext->type##Class;\
     }})
 
     MatchPrimitive(byte);
@@ -297,7 +297,7 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
         auto&& iter = import->stubbed.find(FakeString(typeName));
         if (iter != import->stubbed.end()) return iter->second;
         if(typeName[strlen(typeName)-1]==']'){
-            return ensureShortArrayType(this,env,typeName);
+            return ensureShortArrayType(this,typeName);
         }
         for (auto &&pack:import->packages) {
             String full(pack + typeName);
@@ -307,7 +307,7 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
                 env->ExceptionClear();
                 continue;
             }
-            return ensureType(env, type);
+            return scriptContext->ensureType(env, type);
         }
     }
     String qul = typeName;
@@ -317,13 +317,12 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, const char *typeName) {
         env->ExceptionClear();
         return nullptr;
     }
-    JavaType *ret = ensureType(env, type);
+    JavaType *ret = scriptContext->ensureType(env, type);
     return ret;
 
 }
 
-void ScriptContext::setPendingException(TJNIEnv *env, const String &msg) {
-
+void ThreadContext::setPendingException(const String &msg) {
     if (pendingJavaError == nullptr) {
         static jclass luaExceptionType = (jclass) env->NewGlobalRef(
                 env->FindClass("com/oslorde/luadroid/LuaException"));
@@ -339,7 +338,7 @@ void ScriptContext::setPendingException(TJNIEnv *env, const String &msg) {
     env->SetObjectField(pendingJavaError, id, jmsg.get());
 }
 
-jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject, JavaType *type,jobject real) {
+jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *type,jobject real) {
     jvalue ret;
     if (type->isChar()) {
         if(unlikely(luaObject.type==T_OBJECT)){
@@ -374,7 +373,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
             Vector<std::unique_ptr<BaseFunction>> func;
             func.emplace_back(info);
             info->javaRefCount++;
-            ret.l = proxy(env, type, nullptr, methods, func);
+            ret.l = proxy( type, nullptr, methods, func);
 
             if (ret.l != INVALID_OBJECT) {
                 func.begin()->release();
@@ -390,25 +389,25 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
                 }
                 auto&& iter=parsedTable->find(luaObject.lazyTable);
                 if(iter==parsedTable->end()){
-                    JavaType *mapType = HashMapType(env);
+                    JavaType *mapType = HashMapType();
                     ValidLuaObject lenObject;
                     lenObject.type = T_INTEGER;
-                    auto &&table = luaObject.lazyTable->getTable(env, this)->get();
+                    auto &&table = luaObject.lazyTable->getTable(this)->get();
                     lenObject.integer = static_cast<lua_Integer>(table.size());
                     Vector<JavaType *> types{nullptr};
                     Vector<ValidLuaObject> args;
                     args.push_back(std::move(lenObject));
-                    JObject map = JObject(env, mapType->newObject(env,types, args));
+                    JObject map = JObject(env, mapType->newObject(this,types, args));
                     parsedTable->emplace(luaObject.lazyTable,map.get());
                     for (auto &&pair:table) {
-                        jobject key = luaObjectToJObject(env, std::move(pair.first));
+                        jobject key = luaObjectToJObject(std::move(pair.first));
                         if (key == INVALID_OBJECT) goto ERROR_HANDLE;
-                        jobject value = luaObjectToJObject(env, std::move(pair.second));
+                        jobject value = luaObjectToJObject(std::move(pair.second));
                         if (value == INVALID_OBJECT) {
                             env->DeleteLocalRef(key);
                             goto ERROR_HANDLE;
                         }
-                        env->CallObjectMethod(map, sMapPut, JObject(env, key).get(),
+                        env->CallObjectMethod(map, ScriptContext::sMapPut, JObject(env, key).get(),
                                               JObject(env, value).get());
                     }
                     parsedTable->erase(luaObject.lazyTable);
@@ -419,7 +418,7 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
                     parsedTable= nullptr;
                 }
             } else if (type->isInterface(env)) {
-                ret.l = luaObject.lazyTable->asInterface(env, this, type);
+                ret.l = luaObject.lazyTable->asInterface(this, type);
             }
             HOLD_JAVA_EXCEPTION(this, {
                 goto ERROR_HANDLE;
@@ -472,51 +471,51 @@ jvalue ScriptContext::luaObjectToJValue(TJNIEnv *env, ValidLuaObject &luaObject,
     return ret;
 }
 
-JavaType *ScriptContext::HashMapType(TJNIEnv *env) {
-    if (HashMapClass == nullptr) {
-        HashMapClass = ensureType(env, "LinkedHashMap");
-        sMapPut = env->GetMethodID(HashMapClass->getType(), "put", "(Ljava/lang/Object;"
+JavaType *ThreadContext::HashMapType() {
+    if (scriptContext->HashMapClass == nullptr) {
+        scriptContext->HashMapClass = ensureType("LinkedHashMap");
+        ScriptContext::sMapPut = env->GetMethodID(scriptContext->HashMapClass->getType(), "put", "(Ljava/lang/Object;"
                 "Ljava/lang/Object;)Ljava/lang/Object;");
     }
-    return HashMapClass;
+    return scriptContext->HashMapClass;
 }
 
-JavaType *ScriptContext::FunctionType(TJNIEnv *env) {
-    if (FunctionClass == nullptr) {
-        FunctionClass = ensureType(env, "com.oslorde.luadroid.LuaFunction");
+JavaType *ThreadContext::FunctionType() {
+    if (scriptContext->FunctionClass == nullptr) {
+        scriptContext->FunctionClass = ensureType("com.oslorde.luadroid.LuaFunction");
     }
-    return FunctionClass;
+    return scriptContext->FunctionClass;
 }
 
-jobject ScriptContext::luaObjectToJObject(TJNIEnv *env, ValidLuaObject &&luaObject) {
+jobject ThreadContext::luaObjectToJObject(ValidLuaObject &&luaObject) {
     switch (luaObject.type) {
         case T_NIL:
             return nullptr;
         case T_INTEGER: {
-            return env->CallStaticObjectMethod(LongClass->getType(), LongClass->
+            return env->CallStaticObjectMethod(scriptContext->LongClass->getType(), scriptContext->LongClass->
                     getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
         case T_BOOLEAN: {
-            return env->CallStaticObjectMethod(BooleanClass->getType(), BooleanClass->
+            return env->CallStaticObjectMethod(scriptContext->BooleanClass->getType(), scriptContext->BooleanClass->
                     getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
         case T_FLOAT: {
-            return env->CallStaticObjectMethod(DoubleClass->getType(), DoubleClass->
+            return env->CallStaticObjectMethod(scriptContext->DoubleClass->getType(), scriptContext->DoubleClass->
                     getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
         case T_OBJECT: {
-            jvalue v = luaObjectToJValue(env, luaObject, HashMapType(env));
+            jvalue v = luaObjectToJValue(luaObject,HashMapType());
             v.l = env->NewLocalRef(v.l);
             return v.l;
         }
         case T_STRING:
         case T_TABLE:
         case T_FUNCTION: {
-            jvalue v = luaObjectToJValue(env, luaObject, FunctionType(env));
+            jvalue v = luaObjectToJValue(luaObject, FunctionType());
             return v.l;
         }
         case T_CHAR:{
-            return env->CallStaticObjectMethod(CharacterClass->getType(), CharacterClass->
+            return env->CallStaticObjectMethod(scriptContext->CharacterClass->getType(), scriptContext->CharacterClass->
                     getBoxMethodForBoxType(env), luaObject.integer).invalidate();
         }
     }
@@ -538,7 +537,7 @@ ScriptContext::~ScriptContext() {
     env->DeleteWeakGlobalRef(javaRef);
 }
 
-jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *interfaces,
+jobject ThreadContext::proxy(JavaType *main, Vector<JavaType *> *interfaces,
                              const Vector<JObject> &principal,
                              Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared,
                              long nativeInfo,jobject superObject) {
@@ -548,7 +547,7 @@ jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *i
         interfaceArray = env->NewObjectArray(interfaceCount, classType, nullptr);
         for (jsize i = interfaceCount - 1; i >= 0; --i) {
             env->SetObjectArrayElement(interfaceArray, i,
-                                       interfaces->at((unsigned long) i)->getType());
+                                       interfaces->at(i)->getType());
         }
     }
     jsize principalCount = (jsize) principal.size();
@@ -565,13 +564,14 @@ jobject ScriptContext::proxy(TJNIEnv *env, JavaType *main, Vector<JavaType *> *i
     JType<jlongArray> proxyArray = env->NewLongArray(proxyCount);
     env->SetLongArrayRegion(proxyArray, 0, proxyCount, buf);
     jobject ret = env->asJNIEnv()->CallObjectMethod(
-            javaRef, sProxy, (jlong) this, main->getType(), interfaceArray.get(),
+            scriptContext->javaRef, sProxy, main->getType(), interfaceArray.get(),
             principalArray.get(), proxyArray.get(), shared, nativeInfo,superObject);
     HOLD_JAVA_EXCEPTION(this, {
         return INVALID_OBJECT;
     });
     return ret;
 }
+
 
 
 void ScriptContext::registerLogger(TJNIEnv *env, jobject out, jobject err) {

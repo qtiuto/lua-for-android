@@ -74,6 +74,7 @@ private:
     typedef Map<String, bool> InvalidMap;
 
     friend class ScriptContext;
+    friend class ThreadContext;
 
     static jmethodID sGetComponentType;
     static jmethodID sFindMembers;
@@ -114,9 +115,9 @@ private:
 
     uint weightObject(TJNIEnv* env,JavaType *target, JavaType *from);
 public:
-    jobject newObject(TJNIEnv* env,Vector<JavaType *> &types, Vector<ValidLuaObject> &params);
+    jobject newObject(ThreadContext *context, Vector<JavaType *> &types, Vector<ValidLuaObject> &params);
 
-    jarray newArray(TJNIEnv* env,jint size, Vector<ValidLuaObject> &params);
+    jarray newArray(ThreadContext *context,jint size, Vector<ValidLuaObject> &params);
 
     jclass getType() const { return type; }
 
@@ -225,8 +226,6 @@ public:
     }
 
     inline TYPE_ID  getTypeID(){ return typeID;}
-
-    inline ScriptContext* getContext(){ return context; }
 
     const MethodInfo *findMethod(TJNIEnv* env,const String &name, bool isStatic, Vector<JavaType *> &types,
                                  Vector<ValidLuaObject> *arguments);

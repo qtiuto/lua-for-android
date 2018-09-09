@@ -692,7 +692,7 @@ public class ScriptContext implements GCTracker {
         return null;
     }
 
-    private Object proxy(final long nativePtr, final Class<?> main,
+    private Object proxy(final Class<?> main,
                          Class<?>[] leftInterfaces, Method[] methods,
                          long[] values, boolean shared, long nativeInfo,Object superObject) throws Exception {
         if (main == null) throw new IllegalArgumentException("No proxy class");

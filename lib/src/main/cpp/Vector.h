@@ -134,6 +134,18 @@ public:
     void erase(iterator iterator) {
         erase(iterator - begin());
     }
+    int indexOf(_Tp& value){
+        for(int i=0;i<=_size;++i){
+            if(std::equal_to<_Tp>()(value,array[i])){
+                return i;
+            }
+        }
+        return -1;
+    }
+    void erase(_Tp& value){
+        int index = indexOf(value);
+        if(index!=-1)erase(index);
+    }
 
     void reserve(size_type len) {
         if (len <= _capacity) return;

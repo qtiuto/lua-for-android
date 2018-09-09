@@ -115,7 +115,7 @@ public:
     }
 };
 
-class ScriptContext;
+class ThreadContext;
 
 class LazyTable {
     const int index;
@@ -125,9 +125,9 @@ public:
     LazyTable(int index, lua_State *L) : index(index > 0 ? index : lua_gettop(L) + index + 1),
                                          L(L) {}
 
-    LuaTable<ValidLuaObject> *getTable(TJNIEnv *env, ScriptContext *context);
+    LuaTable<ValidLuaObject> *getTable(ThreadContext *context);
 
-    jobject asInterface(TJNIEnv *env, ScriptContext *context, JavaType *type);
+    jobject asInterface(ThreadContext *context, JavaType *type);
 
     bool isInterface() {
         lua_pushnil(L);
