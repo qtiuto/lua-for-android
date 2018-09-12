@@ -6,51 +6,17 @@ import android.util.Pair;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
-
 import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.GenericArrayType;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Proxy;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
-import java.lang.reflect.WildcardType;
-import java.util.AbstractCollection;
-import java.util.AbstractList;
-import java.util.AbstractMap;
-import java.util.AbstractSet;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.LinkedTransferQueue;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.TransferQueue;
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class ScriptContext implements GCTracker {
     private static final int JAVA_CHAR = 0;
@@ -781,7 +747,7 @@ public class ScriptContext implements GCTracker {
      */
     public void flushLog() {
         try {
-            Thread.sleep(50);
+            Thread.sleep(100);//max sleep time for log thread
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

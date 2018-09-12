@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <time.h>
 #include <thread>
+#include <sys/resource.h>
 
 static volatile int refCount = 0;
 static SpinLock mutex;
@@ -44,6 +45,9 @@ void requireLogger(std::function<void(const char *, bool)> logger) {
             vm->AttachCurrentThread(&env, NULL);
             char *buffer = new char[1024];
             ssize_t nBytes;
+            jclass c=env->FindClass("android/os/Process");
+            env->CallStaticVoidMethod(c,env->GetStaticMethodID(c,"setThreadPriority","(I)V"),-2);
+            env->DeleteLocalRef(c);
             while (refCount > 0) {
                 int nfds = poll(fds, 2, 100);
                 if (nfds > 0) {
