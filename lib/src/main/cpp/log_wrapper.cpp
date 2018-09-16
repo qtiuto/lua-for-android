@@ -9,7 +9,6 @@
 #include <poll.h>
 #include <time.h>
 #include <thread>
-#include <sys/resource.h>
 
 static volatile int refCount = 0;
 static SpinLock mutex;
