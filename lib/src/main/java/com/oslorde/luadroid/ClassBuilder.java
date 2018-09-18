@@ -109,6 +109,15 @@ public class ClassBuilder {
     }
 
     /**
+     * declare a public class extending Object with generated name
+     * @see ClassBuilder#declare(String, int, Class, Object[])
+     */
+
+    public static ClassBuilder declare(){
+        return declare(null,Modifier.PUBLIC,null);
+    }
+
+    /**
      * declare a public class extending Object
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
@@ -154,7 +163,7 @@ public class ClassBuilder {
 
     /**
      * @param name class name,can be null
-     * @param flag class modifiers,{@link Modifier}
+     * @param flag class modifiers,{@link java.lang.reflect.Modifier}
      * @param superType class to extend,null is treated as Object.class
      *                  if the class is interface and no interfaces
      *                  then the class is the only interface.
