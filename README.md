@@ -299,7 +299,9 @@ A little Editor is embedded in the code,you can run it to test.
 
    A userdata named 'cross' is imported to support cross-thread communication.
    It behaves like a table,so you can just put any lua object to 
-   it.Note that userdata is shared by memory copy so if it has a _gc
+   it.
+   
+   Note that userdata is shared by memory copy so if it has a _gc
    metamethod,error will be raised, since it may induce memory corrupt
    ion.Corutine can't be shared also since it has it's own lua state,
    and a lua state can't be shared cross thread.Take care that all key 
@@ -310,14 +312,15 @@ A little Editor is embedded in the code,you can run it to test.
    Once you have a type from import or Type,you can access its  static 
    fields  like **Type.name** or  **Type\['name']** and its methods like 
    **Type.name(...)** or **Type\['name'](...)**. Once you got a java object 
-   you can do the similar operation to its Object fields or methods.
+   you can do the similar operation to its non-static fields or methods.
      
    However,if the class has some fields and methods with the same name,
    you can't get or set the field by Type.name or obj.name. Instead,
-   you must use (Type or obj).name\[any value you like] to use the field.
+   you must use **(Type or obj).name\[any value you like]** to use the field.
+   
    Another special case is that the field with the same name but
-   different types,which is not allowed by the complier but ok in jvm.
-   To distinguish it,use (Type or obj).name\[according type] to operate
+   different types,which is not allowed by the compiler but ok in jvm.
+   To distinguish it,use **(Type or obj).name\[according type]** to operate
    on the field.
      
    ##### Note:  
@@ -338,13 +341,13 @@ A little Editor is embedded in the code,you can run it to test.
    to be called,and return a lua string.
        
      
-### Type Specification
+## Type Specification
    You can add a type before the arg in method call,new(),newArray
    or the args in proxy(),so as to indicate the type you wish the
    argument to be, and then  have the proper method or constructor to
    be called.
       
-### Method deduction
+## Method deduction
    If type is supplied,the closet type is considered first.
      
    For integer value,if it's in int32 range,then it's aussumed to be 
@@ -381,7 +384,7 @@ A little Editor is embedded in the code,you can run it to test.
    User date is treated as integer.
      
 
-### Automatic Conversion
+## Automatic Conversion
     
    For field set and method call or proxy return,lua object will be converted
    automatically according to the type.Type check ha thse same rule in 
@@ -397,27 +400,33 @@ A little Editor is embedded in the code,you can run it to test.
    For function,like call proxy with only one type and one function
    provided.
      
-   For table ,if the table is convertible,it's converted by the table converter
+   For table, if the table is convertible, it's converted by the table converter
    else it's like call proxy with super set to the type and methods set to 
-   the table if it's valid to be converted to be proxied.Additionally,generic type
-   check and conversion will be performed automatically,That's to say,Type such as 
+   the table if it's valid to be converted to be proxied. Additionally, generic type
+   check and conversion will be performed automatically, That's to say, Type such as 
    List<Integer>,List<Short> or List<List<String>> will be supported.
      
    User date is treated as integer.
       
    Note: All primitive type accept their boxed type and all boxed type
    accept their primitive type.Autobox and auto-unbox will be performed
-   if necessary
+   if necessary.
           
-### Module name in lua
+## Module name in lua
      
    The module java is loaded once the lua state initialize with
    all its members exported to the global table if you specified
-   importAllFunctions (default true) in the constructor of Script-
-   Context.And global value "java" refers to the table.Note that
-   java.type is exported as ‘Type’ to avoid conflict.
+   importAllFunctions (default true) in the constructor of ScriptContext.
+   And global value **"java"** refers to the table.Note that
+   **java.type** is exported as **‘Type’** to avoid conflict.
+   e.g.
+   ```lua
+   java.type == Type
+   java.import == import
+   java.new == new
+   ```
       
-### ScriptContext Api
+## ScriptContext Api
      
    * constructor:see Module name in lua and proxy
      
@@ -431,12 +440,23 @@ A little Editor is embedded in the code,you can run it to test.
      proper result.
      
    * putTableConverter:put a converter to support automatic table conversion
-     
-### ClassBuilder Api
+    
+   e.g,
+   ```java  
+   import "com.oslorde.luadroid.*";
+    ScriptContext context=new ScriptContext();
+    Object[] results = context.run("print 'Hello World'");
+   ```
+## ClassBuilder Api
    Class Builder is imported default to support dynamic class generation
-   Lua function callback rule is the same as proxy
+   Lua function callback rule is the same as proxy.
    
-### More     
+   e.g.
+   ```lua
+   ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
+   .newInstance(Type("Object")()).run()
+   ```
+## More     
    For more information,see java doc in **doc** directory
      
       
