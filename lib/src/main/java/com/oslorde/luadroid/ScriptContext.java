@@ -747,7 +747,7 @@ public class ScriptContext implements GCTracker {
      */
     public void flushLog() {
         try {
-            Thread.sleep(100);//max sleep time for log thread
+            Thread.sleep(100);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -759,8 +759,7 @@ public class ScriptContext implements GCTracker {
      * @return Compiled Script
      */
     public CompiledScript compile(String script) {
-        long compile = 0;
-        compile = compile(nativePtr, script, false);
+        long compile = compile(nativePtr, script, false);
         return new CompiledScript(compile);
 
     }
@@ -772,15 +771,6 @@ public class ScriptContext implements GCTracker {
     public CompiledScript compile(File file) {
         return new CompiledScript(compile(nativePtr, file.getPath(), true));
 
-    }
-
-    /**
-     *
-     * @param scriptFile file
-     * @return script result,conversion see README
-     */
-    public Object[] run(File scriptFile) {//for reflection
-        return runScript(nativePtr, scriptFile.getPath(), true);
     }
 
     /**
