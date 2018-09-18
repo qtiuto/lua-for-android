@@ -1574,7 +1574,10 @@ int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
             forceRelease(elements);
             luaL_error(L, "Arg unexpected for array");
         }
-        checkLuaType(context->env, L, type, object);
+        if(checkLuaTypeNoThrow(context->env, L, type, object)){
+            forceRelease(elements,object);
+            lua_error(L);
+        }
         elements.push_back(std::move(object));
     }
     JArray ret(context->env, type->newArray(context,(jint) size, elements));
