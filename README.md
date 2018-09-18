@@ -1,4 +1,5 @@
 ##General
+
 Both lua(5.1-5.3) and luajit(2.0.5 and 2.1.0-beta3) are supported.
      
 Configure Android.mk by setting `LUA_LIB :=(lua or luajit)`
@@ -10,13 +11,16 @@ to your code.
      
 A little Editor is embedded in the code,you can run it to test.
      
-##Performance:
+##Performance
+
   Around 2000000 method call(Math.abs) per second on my Oneplus 5 device
   Note that if you run it in debug mode,CheckJni mode is enabled by the
   vm,and it will take away more than half of the efficency.
+  
 ##Documentation
      
-###Functions:
+###Functions
+
   The below are functions exported as global values in lua.**'...'** means
   repeating the previous one if following some code or means any if it's 
   inside a body.
@@ -253,7 +257,7 @@ A little Editor is embedded in the code,you can run it to test.
       }
       ```
       e.g.
-      ```
+      ```lua
       proxy(Type('Runanble'),function() print 'ty' end).run()
       --or
       proxy(Type('Runanble'),'run',function() print 'ty' end).run()
@@ -273,6 +277,7 @@ A little Editor is embedded in the code,you can run it to test.
       
       ```
       #####Note:
+      
        If you passed an object to extend,then the proxy object is 
        directly allocated and have all fields from the object to be
        copied into the return object without constructor call.
@@ -291,6 +296,7 @@ A little Editor is embedded in the code,you can run it to test.
        whether localFunction is set in the constructor of ScriptContext
     
 ##Multi-thread support
+
    A userdata named 'cross' is imported to support cross-thread communication.
    It behaves like a table,so you can just put any lua object to 
    it.Note that userdata is shared by memory copy so if it has a _gc
@@ -299,7 +305,7 @@ A little Editor is embedded in the code,you can run it to test.
    and a lua state can't be shared cross thread.Take care that all key 
    will be converted to string.
      
-##Member Access:
+##Member Access
      
    Once you have a type from import or Type,you can access its  static 
    fields  like **Type.name** or  **Type\['name']** and its methods like 
@@ -332,13 +338,13 @@ A little Editor is embedded in the code,you can run it to test.
    to be called,and return a lua string.
        
      
-###Type Specification:
+###Type Specification
    You can add a type before the arg in method call,new(),newArray
    or the args in proxy(),so as to indicate the type you wish the
    argument to be, and then  have the proper method or constructor to
    be called.
       
-###Method deduction:
+###Method deduction
    If type is supplied,the closet type is considered first.
      
    For integer value,if it's in int32 range,then it's aussumed to be 
@@ -375,7 +381,7 @@ A little Editor is embedded in the code,you can run it to test.
    User date is treated as integer.
      
 
-###Automatic Conversion:
+###Automatic Conversion
     
    For field set and method call or proxy return,lua object will be converted
    automatically according to the type.Type check ha thse same rule in 
@@ -403,7 +409,7 @@ A little Editor is embedded in the code,you can run it to test.
    accept their primitive type.Autobox and auto-unbox will be performed
    if necessary
           
-###Module name in lua:
+###Module name in lua
      
    The module java is loaded once the lua state initialize with
    all its members exported to the global table if you specified
@@ -411,7 +417,7 @@ A little Editor is embedded in the code,you can run it to test.
    Context.And global value "java" refers to the table.Note that
    java.type is exported as ‘Type’ to avoid conflict.
       
-###ScriptContext api:
+###ScriptContext Api
      
    * constructor:see Module name in lua and proxy
      
@@ -426,7 +432,7 @@ A little Editor is embedded in the code,you can run it to test.
      
    * putTableConverter:put a converter to support automatic table conversion
      
-###ClassBuilder api:
+###ClassBuilder Api
    Class Builder is imported default to support dynamic class generation
    Lua function callback rule is the same as proxy
    
