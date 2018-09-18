@@ -443,7 +443,7 @@ A little Editor is embedded in the code,you can run it to test.
     
    e.g,
    ```java  
-   import "com.oslorde.luadroid.*";
+    import "com.oslorde.luadroid.*";
     ScriptContext context=new ScriptContext();
     Object[] results = context.run("print 'Hello World'");
    ```
