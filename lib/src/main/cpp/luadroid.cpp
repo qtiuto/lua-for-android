@@ -1406,6 +1406,7 @@ int javaProxy(lua_State *L) {
             luaFuncs.emplace_back(function);
             curMethodTypes.clear();
             i = j + 1;//add stack index on success;
+            if(!curMethod) break;
         } else
             break;
     }
