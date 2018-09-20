@@ -28,4 +28,3 @@ before_script:
 script:
   - chmod +x gradlew
   - ./gradlew clean check --profile
-  - ./gradlew dependencyUpdates
