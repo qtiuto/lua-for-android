@@ -23,3 +23,7 @@ install:
   - echo y | sdkmanager "lldb;3.1"
 before_script:
   - export ANDROID_NDK_HOME=$ANDROID_HOME/ndk-bundle
+script:
+  - ./gradlew clean check --profile
+  - pandoc `ls -1rt build/reports/profile/profile-*.html | tail -n1` -t plain
+  - ./gradlew dependencyUpdates
