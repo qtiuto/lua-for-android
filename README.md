@@ -6,10 +6,11 @@ Configure Android.mk by setting `LUA_LIB :=(lua or luajit)`
 to choose the proper version.
      
 Currently, lua 5.3.5 is in **lua** dir and luajit 2.1.0 beta-3 is in **luajit** dir.
-Load the lib by LibLoader.java or add `System.loadLibrary("luadroid.so")`
+Load the lib by LibLoader.java in module app or add `System.loadLibrary("luadroid.so")`
 to your code.
      
-A little Editor is embedded in the code,you can run it to test.
+Module lib is the true library that you can embedded into your code.
+Module app is a lua editor for running test in android.
      
 ## Performance
 
@@ -24,7 +25,7 @@ A little Editor is embedded in the code,you can run it to test.
   The below are functions exported as global values in lua.**'...'** means
   repeating the previous one if following some code or means any if it's 
   inside a body.
-  * import:
+  * **import**:
   
     Imports a package or a class. 
     
@@ -52,7 +53,7 @@ A little Editor is embedded in the code,you can run it to test.
       By default,**"java.lang.\*"**, **"java.util.\*"**, **"android.view.\*"**,
       **"android.widget.\*"**, and **"android.app.\*"** are imported,but only
       **"java.lang.\*"** is allowed to be overwritted.
-  * new:  
+  * **new**:  
       Constructs a new instance.
       
       Usage: `new(Type,args...)`
@@ -67,7 +68,7 @@ A little Editor is embedded in the code,you can run it to test.
        StringBuilder("haha")
       ```
       
-  * newArray:  
+  * **newArray**:  
   
       Constructs an array. 
        
@@ -88,7 +89,8 @@ A little Editor is embedded in the code,you can run it to test.
       accepted,since only one type is acceptable.Auto conversion will
       be performed if needed.
       
-  * Type:  
+  * **Type**:  
+  
       Returns a type by give className,shortName or class
       
       Usage:`Type(full name)` or `Type(short name)` or` Type(Class Object)`
@@ -115,13 +117,13 @@ A little Editor is embedded in the code,you can run it to test.
       **'View$OnClickListener'** instead of **'View.OnClickListener'** or 
       **'OnClickListener'**
       
-  * instanceof:  
+  * **instanceof**:  
   
       To check whether the given object is an instance of the give type.
       
       Usage: `instanceof(object,type)`
       
-  * sync:  
+  * **sync**:  
   
       Equals to **sychronized(object){...}**
       
@@ -130,7 +132,7 @@ A little Editor is embedded in the code,you can run it to test.
       Note:yield is not supported cause it will break lock scope and have
        object unlocked
       
-  * object:  
+  * **object**:  
   
       Converts a lua object to java object,here is the mapping
       
@@ -144,21 +146,21 @@ A little Editor is embedded in the code,you can run it to test.
       
       Usage:`object(lua object)`
       
-  * charString:  
+  * **charString**:  
   
       Converts an integer to an one-character string by its value,e.g.
       10 -> '\n'
       
       Usage:`charString(integer)`
       
-  * charValue:  
+  * **charValue**:  
   
       Convert one-character string to a an integer  by its value,e.g.
       '\n'-> 10
       
       Usage:`charValue(on-character string)`
       
-  * try:  
+  * **try**:  
       Starts java try,both lua error and java exception are caught
       Usage:
       ```lua
@@ -219,7 +221,7 @@ A little Editor is embedded in the code,you can run it to test.
       Notice: the exception must be java obejct of type or sub-type of
       java.lang.Throwable
       
-  * proxy:  
+  * **proxy**:  
   
       To implement interfaces ,alternatively plus with extending a class
       Usage:
@@ -295,7 +297,7 @@ A little Editor is embedded in the code,you can run it to test.
        Whether the object is multi-thread supported is determined by
        whether localFunction is set in the constructor of ScriptContext
     
-## Multi-thread support
+## Multi-thread Support
 
    A userdata named 'cross' is imported to support cross-thread communication.
    It behaves like a table,so you can just put any lua object to 
@@ -347,7 +349,7 @@ A little Editor is embedded in the code,you can run it to test.
    argument to be, and then  have the proper method or constructor to
    be called.
       
-## Method deduction
+## Method Deduction
    If type is supplied,the closet type is considered first.
      
    For integer value,if it's in int32 range,then it's aussumed to be 
