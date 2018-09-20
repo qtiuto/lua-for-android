@@ -1,4 +1,5 @@
 language: android
+jdk: openjdk8
 sudo: true
 android:
   components:
@@ -13,8 +14,18 @@ android:
 install:
   - echo y | sdkmanager "ndk-bundle"
   - echo y | sdkmanager "lldb;3.1"
+before_cache:
+  - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+  - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+cache:
+  directories:
+    - $HOME/.gradle/caches/
+    - $HOME/.gradle/wrapper/
+    - $HOME/.android/build-cache
 before_script:
   - export ANDROID_NDK_HOME=$ANDROID_HOME/ndk-bundle
+
 script:
+  - chmod +x gradlew
   - ./gradlew clean check --profile
   - ./gradlew dependencyUpdates
