@@ -11,16 +11,10 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.util.Log;
-import android.view.Gravity;
-import android.view.Menu;
-import android.view.MenuInflater;
-import android.view.MenuItem;
-import android.view.View;
-import android.view.ViewGroup;
+import android.view.*;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
-
 import com.oslorde.luadroid.R;
 import com.oslorde.luadroid.ScriptContext;
 
@@ -37,6 +31,7 @@ public class MainActivity extends Activity {
 
     static {
         System.loadLibrary("luadroid");
+        //LibLoader.load();
     }
 
     LuaEditor editor;
@@ -67,7 +62,7 @@ public class MainActivity extends Activity {
             btn.setOnClickListener(v -> editor.paste(text));
             psBar.addView(btn);
         }
-        context.addToLua("context", this, true);
+        context.addToLua("context", this);
         new Thread(() -> {
             File file = new File("/sdcard/test.lua");
             if (file.exists()) {
@@ -127,7 +122,7 @@ public class MainActivity extends Activity {
                         }
                     };
                     context.setLogger(out, err);
-                    Object[] results = context.run(editor.getText().toString());
+                    Object[] results = context.run(context.compile(editor.getText().toString()));
                     context.flushLog();
                     if (string.length() > 0 && string.charAt(string.length() - 1) != '\n')
                         string.append("\n");
