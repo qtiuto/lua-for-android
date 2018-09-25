@@ -821,8 +821,8 @@ public class ScriptContext implements GCTracker {
      *
      * @param name lua global name
      * @param obj value,null to remove the global value
-     * @param local false:the method to be added to all lua State
-     *              true:the method to be added to only current state.
+     * @param local false:the method to be added to all lua state,and will be added to new lua states.
+     *              true:the method to be added to only current state.If no running state, no operation.
      * @return this
      */
     public final ScriptContext addToLua(String name, Object obj, boolean local) {
@@ -842,8 +842,8 @@ public class ScriptContext implements GCTracker {
      * @param luaName lua global name
      * @param methodName method name in the class
      * @param instOrType o bject for method or the declaring class
-     * @param local false:the method to be added to all lua State
-     *              true:the method to be added to only current state.
+     * @param local false:the method to be added to all lua state,and will be added to new lua states,
+     *              true:the method to be added to only current state.If no running state, no operation.
      * @return this
      * @throws NoSuchMethodException if the method not found
      */
