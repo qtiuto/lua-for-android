@@ -2511,7 +2511,7 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
         recordLuaError(context, L, ret);
         goto over;
     }
-    argCount = args != nullptr ? 0 : env->GetArrayLength(args);
+    argCount = args ?  env->GetArrayLength(args):0;
     for (int i = 0; i < argCount; ++i) {
         JObject object(env->GetObjectArrayElement(args, i));
         pushJavaObject(L, context, object);
