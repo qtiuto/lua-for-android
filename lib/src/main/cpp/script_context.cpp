@@ -44,8 +44,7 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
     if (object == nullptr) {
         addedMap.erase(name);
     } else if(!currentOnly)
-        addedMap.emplace(name,
-                         std::make_pair(methodName == nullptr ? String() : methodName, object));
+        addedMap[name]= std::make_pair(methodName == nullptr ? String() : methodName, object);
     lock.unlock();
     pthread_mutex_lock(&sAddInfo.mutex);
     struct sigaction sig, old;

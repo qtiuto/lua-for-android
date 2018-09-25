@@ -208,7 +208,7 @@ public:
 
     void saveLuaObject(CrossThreadLuaObject &object, const char *name) {
         ScopeLock sentry(mapLock);
-        crossThreadMap.emplace(String(name), std::move(object));
+        crossThreadMap[name]=std::move(object);
     }
 
     void clean() {

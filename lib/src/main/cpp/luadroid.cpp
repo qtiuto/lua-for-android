@@ -822,6 +822,7 @@ void pushMetaTable(TJNIEnv *env, lua_State *L, ScriptContext *context,
 
 bool parseCrossThreadLuaObject(lua_State *L, ThreadContext *context, int idx,
                                CrossThreadLuaObject &luaObject) {
+
     switch (lua_type(L, idx)) {
         case LUA_TNIL:
             luaObject.type = T_NIL;
@@ -907,9 +908,9 @@ bool parseCrossThreadLuaObject(lua_State *L, ThreadContext *context, int idx,
                     if (hasMeta && lua_istable(L, -1)) {
                         CrossThreadLuaObject object;
                         lua_getfield(L,-1,"__gc");
-                        bool ok=!lua_isnil(L,-1);
+                        bool ok=lua_isnil(L,-1);
                         lua_pop(L,1);
-                        ok=ok&&parseCrossThreadLuaObject(L, context, -1, object);
+                        ok=ok&&parseCrossThreadLuaObject(L, context, lua_gettop(L), object);
                         lua_pop(L, 1);
                         if (ok) {
                             data->metaTable = object.table;
@@ -951,8 +952,8 @@ bool parseCrossThreadLuaObject(lua_State *L, ThreadContext *context, int idx,
                 while (lua_next(L, idx)) {
                     CrossThreadLuaObject key;
                     CrossThreadLuaObject value;
-                    bool ok = parseCrossThreadLuaObject(L, context, -2, key) &&
-                              parseCrossThreadLuaObject(L, context, -1, value);
+                    bool ok = parseCrossThreadLuaObject(L, context, lua_gettop(L)-1, key) &&
+                              parseCrossThreadLuaObject(L, context, lua_gettop(L), value);
                     lua_pop(L, 1);
                     if (ok)
                         luaTable->get().push_back({std::move(key), std::move(value)});
@@ -966,12 +967,12 @@ bool parseCrossThreadLuaObject(lua_State *L, ThreadContext *context, int idx,
                 }
 
                 int hasMeta = lua_getmetatable(L, idx);
-                if (hasMeta && lua_istable(L, -1)) {
+                if (hasMeta) {
                     CrossThreadLuaObject object;
                     lua_getfield(L,-1,"__gc");
-                    bool ok=!lua_isnil(L,-1);
+                    bool ok=lua_isnil(L,-1);
                     lua_pop(L,1);
-                    ok=ok&&parseCrossThreadLuaObject(L, context, -1, object);
+                    ok=ok&&parseCrossThreadLuaObject(L, context, lua_gettop(L), object);
                     lua_pop(L, 1);
                     if (ok) {
                         luaTable->metaTable = object.table;
@@ -1516,7 +1517,7 @@ int javaImport(lua_State *L) {
             }
         }
         auto type = context->scriptContext->ensureType(env, c);
-        import->stubbed.emplace(name, type);
+        import->stubbed[name]=type;
         pushJavaType(L,type);
         lua_pushvalue(L, -1);
         lua_setglobal(L, name.data());
@@ -1788,9 +1789,9 @@ int javaPut(lua_State *L) {
     }
     if(object.type==T_NIL){
         context->scriptContext->deleteLuaObject(name);
-    } else context->scriptContext->saveLuaObject(object, name);
+    } else
+        context->scriptContext->saveLuaObject(object, name);
     return 0;
-
 }
 
 int javaGet(lua_State *L) {
@@ -2219,21 +2220,25 @@ FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIndex) {
     lua_pop(L, 1);
     parsedFuncs->push_back(std::make_pair(funcIndex, ret));
     Vector<CrossThreadLuaObject> upvalues;
-
+#if LUA_VERSION_NUM>502
+    lua_rawgeti(L,LUA_REGISTRYINDEX,LUA_RIDX_GLOBALS);
+#endif
     for (int i = 1;; ++i) {
-        const char* name;
-        if ((name=lua_getupvalue(L, funcIndex, i)) == NULL)
+        if ((lua_getupvalue(L, funcIndex, i)) == NULL)
             break;
         CrossThreadLuaObject object;
 #if LUA_VERSION_NUM>=502
-        if(strcmp(name,"_ENV")==0)
+        if(lua_rawequal(L,-1,-2))
             ret->globalIndex=i;
         else
 #endif
-            parseCrossThreadLuaObject(L, context, -1, object);
+            parseCrossThreadLuaObject(L, context, lua_gettop(L), object);
         upvalues.push_back(std::move(object));
         lua_pop(L,1);
     }
+#if LUA_VERSION_NUM>502
+    lua_pop(L,1);
+#endif
     ret->setUpValues(Array<CrossThreadLuaObject>(std::move(upvalues)));
 
     ret->setImport(context->getImport());
@@ -2444,6 +2449,7 @@ void addJavaMethod(TJNIEnv *env, jclass, jlong ptr, jstring jname, jstring metho
 jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) {
     ScriptContext *scriptContext = (ScriptContext *) ptr;
     ThreadContext* context=scriptContext->getThreadContext();
+    auto old=context->changeScriptContext(scriptContext);
     auto L = scriptContext->getLua();
     JString s(env, script);
     int ret;
@@ -2462,6 +2468,7 @@ jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) 
     lua_pushcfunction(L, luaFullGC);
     lua_pcall(L, 0, 0, 0);
     s.invalidate();
+    context->changeScriptContext(old);
     return retVal;
 }
 
