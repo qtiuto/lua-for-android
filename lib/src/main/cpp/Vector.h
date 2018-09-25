@@ -18,9 +18,14 @@ class Vector {
     size_type _capacity = 0;
     _Tp cache[cacheCount];//use cache to improve performance and avoid memory fragments
 
+    inline bool isUsingCache(){
+        return array==cache;
+    }
+
     inline void release() {
-        if (array != cache)
+        if (array != cache){
             delete[] array;
+        }
     }
 
     inline void checkIndex(int index) const {
@@ -53,6 +58,7 @@ class Vector {
         return i + 1;
     }
 
+
 public:
     Vector() {}
 
@@ -67,6 +73,11 @@ public:
     }
 
     Vector(Vector<_Tp> &&other) : array(other.array), _size(other._size), _capacity(other._capacity) {
+        if(other.isUsingCache()){
+            array=cache;
+            arrayMove(other.cache,cache,_size);
+        }
+
         other.array = nullptr;
         other._size = 0;
         other._capacity = 0;
@@ -101,6 +112,10 @@ public:
         _size = other._size;
         array = other.array;
         _capacity = other._capacity;
+        if(other.isUsingCache()){
+            array=cache;
+            arrayMove(other.cache,cache,_size);
+        }
         other.array = nullptr;
         other._size = 0;
         other._capacity = 0;
