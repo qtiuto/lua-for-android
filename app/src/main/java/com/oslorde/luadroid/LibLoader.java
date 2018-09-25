@@ -12,6 +12,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -61,7 +62,7 @@ public class LibLoader {
                 File src = new File((String) method.invoke(ScriptContext.class.getClassLoader(), "luadroid"));
                 if (src.exists())
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        Files.copy(src.toPath(), tmp.toPath());
+                        Files.copy(src.toPath(), tmp.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     } else {
                         FileInputStream in = null;
                         FileOutputStream out = null;
