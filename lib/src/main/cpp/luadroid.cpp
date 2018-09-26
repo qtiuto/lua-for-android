@@ -2513,8 +2513,7 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     }
     argCount = args ?  env->GetArrayLength(args):0;
     for (int i = 0; i < argCount; ++i) {
-        JObject object(env->GetObjectArrayElement(args, i));
-        pushJavaObject(L, context, object);
+        pushJavaObject(L, context, env->GetObjectArrayElement(args, i));
     }
     ret = lua_pcall(L, argCount, LUA_MULTRET, handlerIndex);
     if (unlikely(ret != LUA_OK)) {
