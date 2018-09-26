@@ -540,31 +540,34 @@ jobject ThreadContext::proxy(JavaType *main, Vector<JavaType *> *interfaces,
                              const Vector<JObject> &principal,
                              Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared,
                              long nativeInfo,jobject superObject) {
-    jsize interfaceCount;
+    int interfaceCount;
     JObjectArray interfaceArray;
-    if (interfaces != nullptr && (interfaceCount = (jsize) interfaces->size())) {
+    if (interfaces != nullptr && (interfaceCount =  interfaces->size())) {
         interfaceArray = env->NewObjectArray(interfaceCount, classType, nullptr);
-        for (jsize i = interfaceCount - 1; i >= 0; --i) {
+        for (int i = interfaceCount - 1; i >= 0; --i) {
             env->SetObjectArrayElement(interfaceArray, i,
                                        interfaces->at(i)->getType());
         }
     }
-    jsize principalCount = (jsize) principal.size();
-    JObjectArray principalArray =principalCount==0? JObjectArray():
-                                 env->NewObjectArray(principalCount, env->GetObjectClass(principal[0]), nullptr);
-    for (jsize i = principalCount - 1; i >= 0; --i) {
+    int principalCount =  principal.size();
+    JObjectArray principalArray;
+    if (principalCount > 0)
+        principalArray = env->NewObjectArray(principalCount, env->GetObjectClass(principal[0]), nullptr);
+    for (int i = principalCount - 1; i >= 0; --i) {
         env->SetObjectArrayElement(principalArray, i, principal[i]);
     }
-    jsize proxyCount = (jsize) proxy.size();
+    int proxyCount = proxy.size();
     jlong buf[proxyCount];
     for (jsize i = proxyCount - 1; i >= 0; --i) {
         buf[i] = (jlong) proxy[i].get();
     }
     JType<jlongArray> proxyArray = env->NewLongArray(proxyCount);
     env->SetLongArrayRegion(proxyArray, 0, proxyCount, buf);
-    jobject ret = env->asJNIEnv()->CallObjectMethod(
-            scriptContext->javaRef, sProxy, main->getType(), interfaceArray.get(),
-            principalArray.get(), proxyArray.get(), shared, nativeInfo,superObject);
+    jvalue args[]={{.l=main->getType()}, {.l=interfaceArray.get()},
+                   {.l=principalArray.get()}, {.l=proxyArray.get()},
+                   {.z=(jboolean)shared}, {.j=nativeInfo}, {.l=superObject}};
+    jobject ret = env->asJNIEnv()->CallObjectMethodA(
+            scriptContext->javaRef, sProxy,args);//use jvalue to avoid stack limit in 32 bit mode
     HOLD_JAVA_EXCEPTION(this, {
         return INVALID_OBJECT;
     });
