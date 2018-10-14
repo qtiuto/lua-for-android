@@ -254,14 +254,17 @@ public class ScriptContext implements GCTracker {
     }
     /** 1-5 is left for box type,6 left for object,interfaces is always 7*/
     private static int weightObject(Class<?> target, Class<?> from) {
-        if (target.isPrimitive() || from.isPrimitive()) return 0;
+        if ((target.isPrimitive() || from.isPrimitive())) {
+            if(target==from) return 7;//left for primitive array
+            else return 0;
+        }
         if (target == Object.class) return 6;
         if (target.isInterface() && target.isAssignableFrom(from)) {
             return 7;
         }
         if (target.isArray()) {
             if (from.isArray())
-                return weightObject(from.getComponentType(), target.getComponentType());
+                return weightObject(target.getComponentType(), from.getComponentType());
             else return 0;
         } else if (from.isArray()) return 0;
         int weight = 1;
