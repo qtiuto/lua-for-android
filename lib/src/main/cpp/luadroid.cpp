@@ -41,6 +41,8 @@ static int javaNewArray(lua_State *L)noexcept;
 
 static int javaImport(lua_State *L)noexcept;
 
+static int javaUsing(lua_State*L);
+
 static int javaCharValue(lua_State *L)noexcept;
 
 static int javaCharString(lua_State *L)noexcept;
@@ -156,6 +158,7 @@ static const luaL_Reg javaInterfaces[] =
          {"new",        javaNew},
          {"newArray",   javaNewArray},
          {"import",     javaImport},
+         {"using",javaUsing},
          {"proxy",      javaProxy},
          {"sync",       javaSync},
          {"object",     javaToJavaObject},
@@ -194,6 +197,7 @@ jclass stringType;
 jclass classType;
 jclass throwableType;
 jclass contextClass;
+jclass loaderClass;
 jmethodID objectHash;
 jmethodID classGetName;
 jmethodID objectToString;
@@ -1482,6 +1486,51 @@ LocalFunctionInfo *saveLocalFunction(lua_State *L, int i) {
     lua_settable(L, LUA_REGISTRYINDEX);
     return info;
 }
+static void qualifyJavaName(String& name){
+    for(auto i=name.length();i!=0;){
+        auto c=name[--i];
+        if(c=='$'||c=='-'){
+            name[i]='_';
+        }
+    }
+}
+
+int javaUsing(lua_State*L){
+    ThreadContext *context = getContext(L);
+    TJNIEnv *env = context->env;
+    if(lua_isstring(L,1)){
+        const char* pack=lua_tostring(L,1);
+        static jmethodID importAll= env->GetMethodID(contextClass, "importAll", "(Ljava/lang/String;)[Ljava/lang/String;");
+        JString jpack= env->NewStringUTF(pack);
+        JObjectArray classes(env->CallObjectMethod(context->scriptContext->javaRef, importAll, jpack.get()));
+        HOLD_JAVA_EXCEPTION(context,{ return 0;});
+        int length=env->GetArrayLength(classes);
+        int packLen=env->GetStringLength(jpack);
+        for (; length!=0; ) {
+            String cl((JString)env->GetObjectArrayElement(classes,--length));
+            auto &&clazz = context->findClass(cl);
+            if(clazz==nullptr)
+                continue;
+            auto type = context->scriptContext->ensureType(env, clazz);
+            String name(cl.data()+(packLen==0?0:packLen+1));
+            context->getImport()->stubbed[name]=type;
+            pushJavaType(L,type);
+            qualifyJavaName(name);
+            lua_setglobal(L,name.data());
+        }    
+        
+    } else {
+        JavaObject * loader=checkJavaObject(L,1);
+        if(loaderClass== nullptr)
+            loaderClass= static_cast<jclass>(env->NewGlobalRef(env->FindClass("java/lang/ClassLoader")));
+        if(env->IsInstanceOf(loader->object,loaderClass)){
+            static jmethodID  loadClassLoader=env->GetMethodID(contextClass,"loadClassLoader","(Ljava/lang/ClassLoader;)V");
+            env->CallVoidMethod(context->scriptContext->javaRef,loadClassLoader,loader->object);
+            context->getImport()->externalLoaders.push_back(env->NewGlobalRef(loader->object));
+        }
+    }
+    return 0;
+}
 
 int javaImport(lua_State *L) {
     ThreadContext *context = getContext(L);
@@ -1502,11 +1551,8 @@ int javaImport(lua_State *L) {
         if (start != String::npos) {
             name = s.substr(start + 1);
         } else name = s;
-        if (!changeClassName(s)) {
-            TopErrorHandle("Invalid type name:%s", s.c_str());
-        }
-        JClass c(env->FindClass(&s[0]));
-        HOLD_JAVA_EXCEPTION(context, {  TopErrorHandle(" Type:%s not found", s.c_str()); });
+        JClass c(context->findClass(s));
+       if(c== nullptr){  TopErrorHandle(" Type:%s not found", s.c_str()); }
         const auto &iter = import->stubbed.find(name);
         if (iter != import->stubbed.end() && !env->IsSameObject(c, (*iter).second->getType())) {
             JString prevName(
@@ -1520,6 +1566,7 @@ int javaImport(lua_State *L) {
         import->stubbed[name]=type;
         pushJavaType(L,type);
         lua_pushvalue(L, -1);
+        qualifyJavaName(name);
         lua_setglobal(L, name.data());
         return 1;
     }
@@ -1972,7 +2019,7 @@ int getFieldOrMethod(lua_State *L) {
                 pushJavaObject(L,context,type->getType());
                 return 1;
             }
-            lua_pushfstring(L, "No member is named %s in class %s", name.data(),
+            lua_pushfstring(L, "No %sstatic member is named %s in class %s",isStatic?"":"non-", name.data(),
                             type->name(env).str());
             lua_error(L);
             return 0;
@@ -2459,6 +2506,7 @@ jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) 
     if (ret != LUA_OK) {
         context->setPendingException("Failed to load");
         recordLuaError(context, L, ret);
+        context->changeScriptContext(old);
         context->throwToJava();
     } else {
         FuncInfo *info = saveLuaFunction(L, context, -1);
@@ -2479,11 +2527,7 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     Import *oldImport= nullptr;
     ScriptContext* oldScriptContext=context->changeScriptContext(scriptContext);
     if (_setjmp(errorJmp)) {
-        if (context->hasErrorPending()) {
-            context->throwToJava();
-        }
-        context->changeScriptContext(oldScriptContext);
-        context->changeImport(oldImport);
+        context->restore(oldScriptContext,oldImport);
         return nullptr;
     }
     Import myIMport;
@@ -2536,14 +2580,11 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
         }
     }
     over:
-    context->changeImport(oldImport);
     lua_settop(L, top);
     lua_pushcfunction(L, luaFullGC);
     lua_pcall(L, 0, 0, 0);
 
-    if (context->hasErrorPending()) {
-        context->throwToJava();
-    }
+    context->restore(oldScriptContext,oldImport);
     return result;
 }
 
@@ -2555,10 +2596,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
     Import *oldImport= nullptr;
     ScriptContext* oldScriptContext=context->changeScriptContext(scriptContext);
     if (_setjmp(errorJmp)) {
-        if (context->hasErrorPending())
-            context->throwToJava();
-        context->changeScriptContext(oldScriptContext);
-        context->changeImport(oldImport);
+        context->restore(oldScriptContext,oldImport);
         return 0;
     }
     lua_State *L = scriptContext->getLua();
@@ -2575,6 +2613,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
         if (unlikely(lua_isnil(L, -1))) {
             context->setPendingException(
                     "Local Function must run in the given thread it's extracted from");
+            context->changeScriptContext(oldScriptContext);
             context->throwToJava();
             return 0;
         }
@@ -2651,13 +2690,10 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
             if (ret == INVALID_OBJECT) ret = nullptr;
         }
     }
-    context->changeScriptContext(oldScriptContext);
-    context->changeImport(oldImport);
     lua_settop(L, handlerIndex - 1);
     lua_pushcfunction(L, luaFullGC);
     lua_pcall(L, 0, 0, 0);
-    if (context->hasErrorPending())
-        context->throwToJava();
+    context->restore(oldScriptContext,oldImport);
     return ret;
 }
 

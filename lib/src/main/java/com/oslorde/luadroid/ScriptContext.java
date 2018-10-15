@@ -8,6 +8,8 @@ import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
+import dalvik.system.BaseDexClassLoader;
+import dalvik.system.DexFile;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -251,6 +253,92 @@ public class ScriptContext implements GCTracker {
                 fieldSet.add(type);
             }
         }
+    }
+    //Too many memory usages.
+    private Set<String> dexFiles;
+    private Map<String,List<String>> packages;
+    private final Object importLock=new Object();
+
+    private String[] importAll(String pack) throws Exception {
+        synchronized (importLock){
+            initLoader();
+            List<String> nameList = packages.get(pack);
+            String[] empty = new String[0];
+            if(nameList==null)
+                return empty;
+            return nameList.toArray(empty);
+        }
+    }
+
+
+    private void loadClassLoader(ClassLoader loader) throws Exception {
+        synchronized (importLock){
+            initLoader();
+            Field fPathList = BaseDexClassLoader.class.getDeclaredField("pathList");
+            Field fDexElements=null;
+            Field fDexFile=null;
+            while (loader!=null){
+                if(loader instanceof BaseDexClassLoader){
+                    fPathList.setAccessible(true);
+                    Object pathList= fPathList.get(loader);
+                    if(pathList==null) continue;
+                    if(fDexElements==null){
+                        fDexElements = pathList.getClass().getDeclaredField("dexElements");
+                        fDexElements.setAccessible(true);
+                    }
+                    Object[] elements= (Object[]) fDexElements.get(pathList);
+                    if(elements==null) continue;
+                    for (Object ele : elements) {
+                        if(fDexFile==null){
+                            fDexFile = ele.getClass().getDeclaredField("dexFile");
+                            fDexFile.setAccessible(true);
+                        }
+                        DexFile dexFile= (DexFile) fDexFile.get(ele);
+                        if(dexFile==null) continue;
+                        if(!dexFiles.contains(dexFile.getName())){
+                            addDexFile(dexFile);
+                        }
+                    }
+                }
+                loader=loader.getParent();
+            }
+        }
+
+    }
+
+    private void initLoader() throws Exception {
+        if(dexFiles==null){
+            dexFiles=new HashSet<>();
+            packages=new HashMap<>();
+            String[] bootJars=System.getenv("BOOTCLASSPATH").split(":");
+            for (String path : bootJars) {
+                DexFile dexFile = new DexFile(path);
+                addDexFile(dexFile);
+            }
+            loadClassLoader(ScriptContext.class.getClassLoader());
+        }
+    }
+
+    private void addDexFile(DexFile dexFile) {
+        Enumeration<String> entries = dexFile.entries();
+        while (entries.hasMoreElements()){
+            String cl=entries.nextElement();
+            cl=cl.replace('/','.');
+            String pack=getPackage(cl);
+            List<String> names=packages.get(pack);
+            if(names==null){
+                names=new ArrayList<>();
+                names.add(cl);
+                packages.put(pack,names);
+            }else names.add(cl);
+        }
+        dexFiles.add(dexFile.getName());
+    }
+
+    private static String getPackage(String cl){
+        int index=cl.lastIndexOf('.');
+        if(index==-1) return "";
+        return cl.substring(0,index);
     }
     /** 1-5 is left for box type,6 left for object,interfaces is always 7*/
     private static int weightObject(Class<?> target, Class<?> from) {

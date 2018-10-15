@@ -17,6 +17,7 @@ extern jclass stringType;
 extern jclass classType;
 extern jclass throwableType;
 extern jclass contextClass;
+extern jclass loaderClass;
 extern jmethodID objectHash;
 extern jmethodID classGetName;
 extern jmethodID objectToString;

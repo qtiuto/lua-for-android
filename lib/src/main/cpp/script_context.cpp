@@ -5,6 +5,7 @@
 #include "utf8.h"
 #include <grp.h>
 
+bool changeClassName(String &className) noexcept;
 thread_local ThreadContext ScriptContext::threadContext ;
 jmethodID ScriptContext::sMapPut = nullptr;
 jmethodID ScriptContext::sWriteBytes;
@@ -85,7 +86,6 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
 
 }
 
-bool changeClassName(String &className) noexcept;
 #define BOX_INIT(Type) Type##Class(ensureType(env,env->FindClass("java/lang/"#Type)))
 ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, bool localFunction) :
         importAll((init(env, javaObject),importAll)), localFunction(localFunction),
@@ -272,6 +272,28 @@ JavaType* ensureShortArrayType(ThreadContext* info,const char *typeName){
     return ret;
 }
 
+
+JClass ThreadContext::findClass(String className){
+    if(!changeClassName(className))
+        return JClass();
+    JClass type = env->FindClass(className.data());
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if(import->externalLoaders.size()>0){
+            static jmethodID loadClass=env->GetMethodID(loaderClass,"loadClass","(Ljava/lang/String;)Ljava/lang/Class;");
+            JString jclassName=env->NewStringUTF(className.data());
+            for(auto loader:import->externalLoaders){
+                type=env->CallObjectMethod(loader,loadClass,jclassName.get());
+                if(env->ExceptionCheck()){
+                    env->ExceptionClear();
+                } else break;
+            }
+        }
+
+    }
+    return type;
+}
+
 JavaType *ThreadContext::ensureType(const char *typeName) {
 #define MatchPrimitive(type)\
     ({if(strcmp(typeName,#type)==0){\
@@ -300,20 +322,14 @@ JavaType *ThreadContext::ensureType(const char *typeName) {
         }
         for (auto &&pack:import->packages) {
             String full(pack + typeName);
-            changeClassName(full);
-            type = env->FindClass(&full[0]);
-            if (env->ExceptionCheck()) {
-                env->ExceptionClear();
-                continue;
-            }
+            type = findClass(full);
+            if(type== nullptr) continue;
             return scriptContext->ensureType(env, type);
         }
     }
     String qul = typeName;
-    if (!changeClassName(qul)) return nullptr;
-    type = env->FindClass(&qul[0]);
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
+    type = findClass(qul);
+    if (type== nullptr) {
         return nullptr;
     }
     JavaType *ret = scriptContext->ensureType(env, type);

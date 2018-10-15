@@ -14,6 +14,7 @@ class JavaType;
 struct Import {
     typedef Map<String, JavaType *> TypeCache;
     Vector<String> packages;
+    Vector<jobject> externalLoaders;
     TypeCache stubbed;
 
     Import():packages{"java.lang."
@@ -26,6 +27,15 @@ struct Import {
     }
 
     Import(const Import &other) : packages(other.packages), stubbed(other.stubbed) {
+    }
+
+    ~Import(){
+        if(externalLoaders.size()>0){
+            AutoJNIEnv env;
+            for (auto loader:externalLoaders) {
+                env->DeleteGlobalRef(loader);
+            }
+        }
     }
 };
 

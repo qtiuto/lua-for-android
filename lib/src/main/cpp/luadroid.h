@@ -102,6 +102,13 @@ public:
         }
     }
 
+    void restore(ScriptContext* oldContext,Import* oldImport){
+        changeScriptContext(oldContext);
+        changeImport(oldImport);
+        if(hasErrorPending())
+            throwToJava();
+    }
+
     void throwToJava() {
         AutoJNIEnv env;
         jthrowable p = (jthrowable) pendingJavaError;
@@ -133,6 +140,8 @@ public:
     jthrowable getPendingJavaError() {
         return pendingJavaError;
     }
+
+    JClass findClass(String str);
 
     JavaType *ensureType(const char *typeName);
     jobject proxy(JavaType *main, Vector<JavaType *> *interfaces,
