@@ -7,7 +7,7 @@ android {
 
     defaultConfig {
         minSdkVersion 15
-        targetSdkVersion 26
+        targetSdkVersion 27
         versionCode 1
         versionName "1.0"
 
@@ -25,8 +25,8 @@ android {
 }
 
 dependencies {
-    implementation 'com.jakewharton.android.repackaged:dalvik-dx:7.1.0_r7'
+    // https://mvnrepository.com/artifact/com.jakewharton.android.repackaged/dalvik-dx
+    implementation group: 'com.jakewharton.android.repackaged', name: 'dalvik-dx', version: '9.0.0_r3'
+
     testImplementation 'junit:junit:4.12'
-    androidTestImplementation 'com.android.support.test:runner:1.0.1'
-    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
 }

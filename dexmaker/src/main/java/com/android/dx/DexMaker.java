@@ -31,6 +31,8 @@ import com.android.dx.rop.code.RopMethod;
 import com.android.dx.rop.cst.CstString;
 import com.android.dx.rop.cst.CstType;
 import com.android.dx.rop.type.StdTypeList;
+import dalvik.system.BaseDexClassLoader;
+import dalvik.system.DexClassLoader;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -38,16 +40,9 @@ import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
-
-import dalvik.system.BaseDexClassLoader;
-import dalvik.system.DexClassLoader;
 
 import static com.android.dx.rop.code.AccessFlags.ACC_CONSTRUCTOR;
 import static java.lang.reflect.Modifier.PRIVATE;
@@ -367,7 +362,7 @@ public final class DexMaker {
     public byte[] generate() {
         if (outputDex == null) {
             DexOptions options = new DexOptions();
-            options.targetApiLevel = DexFormat.API_NO_EXTENDED_OPCODES;
+            options.minSdkVersion = DexFormat.API_NO_EXTENDED_OPCODES;
             outputDex = new DexFile(options);
         }
 
@@ -511,7 +506,7 @@ public final class DexMaker {
     DexFile getDexFile() {
         if (outputDex == null) {
             DexOptions options = new DexOptions();
-            options.targetApiLevel = DexFormat.API_NO_EXTENDED_OPCODES;
+            options.minSdkVersion = DexFormat.API_NO_EXTENDED_OPCODES;
             outputDex = new DexFile(options);
         }
         return outputDex;
@@ -542,7 +537,7 @@ public final class DexMaker {
             }
 
             DexOptions dexOptions = new DexOptions();
-            dexOptions.targetApiLevel = DexFormat.API_NO_EXTENDED_OPCODES;
+            dexOptions.minSdkVersion = DexFormat.API_NO_EXTENDED_OPCODES;
 
             CstType thisType = type.constant;
 

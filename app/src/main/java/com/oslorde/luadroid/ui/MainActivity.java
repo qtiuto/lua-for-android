@@ -31,7 +31,6 @@ public class MainActivity extends Activity {
 
     static {
         System.loadLibrary("luadroid");
-        //LibLoader.load();
     }
 
     LuaEditor editor;
