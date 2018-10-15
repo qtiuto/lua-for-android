@@ -7,6 +7,9 @@ Configure Android.mk by setting `LUA_LIB :=(lua or luajit)`
 to choose the proper version.
      
 Currently, lua 5.3.5 is in **lua** dir and luajit 2.1.0 beta-3 is in **luajit** dir.
+To support languages other than English(cause java support them),I alter the llex.c 
+for lua 5.3.5. Thus, all non-ascii characters will be supported(utf-8 only)
+
 Load the lib by LibLoader.java in module app or add `System.loadLibrary("luadroid.so")`
 to your code.
      
@@ -43,23 +46,56 @@ Module app is a lua editor for running test in android.
          pr.myPid()
      ```
     If you import a Type then the returned value is the type and a
-     global value named the short name is set.For example，
+    global value named the short name is set.If the short name contains
+    illegal characters like '$' or '-' which are allowed by java class name,
+    these characters will be changed to '_'.
+    For example，
      ```lua
         local p=import "android.os.Process"
         p.myPid() 
         --or 
         import "android.os.Process"
         Process.myPid()
+        --or
+        import "android.view.View$OnClickListener"
+        print(View_OnClickListener.onClick)
      ```
       By default,**"java.lang.\*"**, **"java.util.\*"**, **"android.view.\*"**,
       **"android.widget.\*"**, and **"android.app.\*"** are imported,but only
-      **"java.lang.\*"** is allowed to be overwritted.
+      **"java.lang.\*"** is allowed to be overwritten.
+      
+  * **using**
+      Import all of the classes under the specified package, or add a external class loader.
+      
+      Usage:  `using  'java.lang'`or using(externalClassLoader)
+      
+      For example:
+      ```lua
+          using "android.os"
+          Process.myPid()
+          --or
+          using "java.lang"
+          using(ClassLoader.getSystemClassLoader())
+          --for xposed environment only
+          using "de.robv.android.xposed"
+      ``` 
+      Note:
+      The call is pretty time-consuming (about 1s at first call)and will hold a large memory
+      to store all loaded class names.On the other hand,it can't make sure that all classes 
+      can be found,cause some classloaders may use proxy classloader to loadClass.
+      
+      Internally,it use `dalvik.system.DexFile#entries` to get all classes.
+      
+      For illegal characters in class name, see **import**
+      
+      If you add a external class loader, then any class inside it is available for **type** or **import**.
+
   * **new**:  
       Constructs a new instance.
       
-      Usage: `new(Type,args...)`
+      Usage: `new(type,args...)`
       
-      This is equal to call  `Type(args...)`.
+      This is equal to call  `type(args...)`.
       
       e.g.
       ```lua
@@ -117,6 +153,12 @@ Module app is a lua editor for running test in android.
       Inner class must pass in qualified name like
       **'View$OnClickListener'** instead of **'View.OnClickListener'** or 
       **'OnClickListener'**
+      
+      You can put in multiple args actually, and the return value is according to
+      the args number. e.g.
+      ```lua
+         ob,str=Type('Object','String') 
+       ```
       
   * **instanceof**:  
   
