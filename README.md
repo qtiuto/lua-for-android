@@ -483,8 +483,8 @@ Module app is a lua editor for running test in android.
    The module java is loaded once the lua state initialize with
    all its members exported to the global table if you specified
    importAllFunctions (default true) in the constructor of ScriptContext.
-   And global value **"java"** refers to the table.Note that
-   **java.type** is exported as **‘Type’** to avoid conflict.
+   And the global value **java** refers to the table. Note that
+   **java.type** is exported as **Type** to avoid conflict.
    e.g.
    
    
