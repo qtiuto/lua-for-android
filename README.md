@@ -398,6 +398,7 @@ Module app is a lua editor for running test in android.
    
    You can index any java object with **set/put get/at** methods.When you index or add an 
    index these two method will be invoked,or you can add custom indexer.
+   
      ```lua
       using "java.util"
       local arr=HashMap({a=5,b=6})
@@ -440,6 +441,7 @@ Module app is a lua editor for running test in android.
    For table,if the type is convertible from table in registered
    table converters,the type is considered first,or if the value have the
    below layout 
+   
     ```lua
       {methodName=function() end...}
      ```
@@ -485,6 +487,7 @@ Module app is a lua editor for running test in android.
    And global value **"java"** refers to the table.Note that
    **java.type** is exported as **‘Type’** to avoid conflict.
    e.g.
+   
     ```lua
      print(print(java.type == Type)--true
      print(java.import == import)--true
@@ -511,7 +514,8 @@ Module app is a lua editor for running test in android.
    
    * putIteratorFactory:put an iterator factory to generate a proper iterator
     
-   e.g,
+   e.g.
+   
    ```java  
     import com.oslorde.luadroid.*;
     ScriptContext context=new ScriptContext();
@@ -520,8 +524,8 @@ Module app is a lua editor for running test in android.
 ## ClassBuilder Api
    Class Builder is imported default to support dynamic class generation
    Lua function callback rule is the same as proxy.
-   
    e.g.
+   
     ```lua
     ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
    .newInstance(Type("Object")()).run()
