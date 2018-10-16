@@ -488,6 +488,7 @@ Module app is a lua editor for running test in android.
    **java.type** is exported as **‘Type’** to avoid conflict.
    e.g.
    
+   
     ```lua
      print(print(java.type == Type)--true
      print(java.import == import)--true
@@ -526,10 +527,10 @@ Module app is a lua editor for running test in android.
    Lua function callback rule is the same as proxy.
    e.g.
    
-    ```lua
+   ```lua
     ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
    .newInstance(Type("Object")()).run()
-    ```
+   ```
 ## More     
    For more information,see java doc in **doc** directory
      
