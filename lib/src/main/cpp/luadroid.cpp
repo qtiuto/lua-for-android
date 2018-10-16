@@ -42,6 +42,7 @@ static int javaNewArray(lua_State *L)noexcept;
 static int javaImport(lua_State *L)noexcept;
 
 static int javaUsing(lua_State*L);
+static int javaIterate(lua_State*L);
 
 static int javaCharValue(lua_State *L)noexcept;
 
@@ -201,7 +202,6 @@ jclass loaderClass;
 jmethodID objectHash;
 jmethodID classGetName;
 jmethodID objectToString;
-jmethodID sLength;
 static __thread jmp_buf errorJmp;
 
 #define JAVA_OBJECT "java_object"
@@ -457,6 +457,9 @@ void ScriptContext::config(lua_State *L) {
         lua_pushlightuserdata(L,context);
         lua_pushcclosure(L, javaObjectToString,1);
         lua_setfield(L, index, "__tostring");
+        lua_pushlightuserdata(L,context);
+        lua_pushcclosure(L, javaIterate,1);
+        lua_setfield(L, index, "__pairs");
         lua_pushlightuserdata(L,context);
         lua_pushcclosure(L, getObjectLength,1);
         lua_setfield(L, index, "__len");
@@ -1657,6 +1660,56 @@ int javaNew(lua_State *L) {
     }
     return 1;
 }
+static int javaNext(lua_State* L){
+    ThreadContext *context = getContext(L);
+    JavaObject* object= static_cast<JavaObject *>(lua_touserdata(L, 1));
+    TJNIEnv *env = context->env;
+    static jmethodID hasNext= env->GetMethodID(object->type->getType(),"hasNext","()Z");
+    static jmethodID nextEntry= env->GetMethodID(object->type->getType(),"nextEntry","()[Ljava/lang/Object;");
+    jboolean hasMore=env->CallBooleanMethod(object->object,hasNext);
+    HOLD_JAVA_EXCEPTION(context,{luaL_error(L,"");});
+    if(!hasMore){
+        lua_pushnil(L);
+        return 1;
+    }
+    JObjectArray next(env->CallObjectMethod(object->object,nextEntry));
+    HOLD_JAVA_EXCEPTION(context,{luaL_error(L,"");});
+    int len=env->GetArrayLength(next);
+    if(len==1){
+        int64_t key=lua_tointeger(L,2);
+        JObject value=env->GetObjectArrayElement(next,0);
+        lua_pushinteger(L,++key);
+        if(value== nullptr)lua_pushnil(L);
+        else pushJavaObject(L,context,value);
+    } else{
+        JObject key=env->GetObjectArrayElement(next,0);
+        JObject value=env->GetObjectArrayElement(next,1);
+        if(key== nullptr)
+            lua_pushinteger(L,0);
+        else pushJavaObject(L,context,key);
+        if(value== nullptr)lua_pushnil(L);
+        else pushJavaObject(L,context,value);
+    }
+    return 2;
+}
+
+int javaIterate(lua_State* L){
+    ThreadContext *context = getContext(L);
+    auto env=context->env;
+    static jmethodID  iterate=env->GetMethodID(contextClass,"iterate","(Ljava/lang/Object;)Lcom/oslorde/luadroid/MapIterator;");
+    JavaObject* object= checkJavaObject(L,1);
+    JObject iterator=env->CallObjectMethod(context->scriptContext->javaRef,iterate,object->object);
+    HOLD_JAVA_EXCEPTION(context,{});
+    if(iterator==nullptr){
+        luaL_error(L,"Bad argument for iterator:%s",luaL_tolstring(L,1, nullptr));
+    }
+    lua_pushlightuserdata(L,context);
+    lua_pushcclosure(L,javaNext,1);
+    pushJavaObject(L,context,iterator);
+    lua_pushinteger(L,0);
+    return 3;
+}
+
 int javaNewArray(lua_State *L) {
     ThreadContext *context = getContext(L);
     JavaType *type = checkJavaType(L,1);
@@ -1666,15 +1719,29 @@ int javaNewArray(lua_State *L) {
 int javaToJavaObject(lua_State *L) {
     ThreadContext *context = getContext(L);
     auto env=context->env;
-    ValidLuaObject luaObject;
-    parseLuaObject(L, context, 1, luaObject);
-    if(luaObject.type==T_OBJECT)
-        return 1;
-    jobject object = context->luaObjectToJObject(std::move(luaObject));
-    if (object == INVALID_OBJECT)
-        luaL_error(L, "");
-    pushJavaObject(L, context, JObject(env, object));
-    return 1;
+    Vector<JavaType*> types;
+    Vector<ValidLuaObject> luaObjects;
+    readArguments(L,context,types,luaObjects,1);
+    int len=luaObjects.size();
+    for (int i = 0; i < len; ++i) {
+        JavaType* type=types[i];
+        if(type== nullptr){
+            jobject obj=context->luaObjectToJObject(luaObjects[i]);
+            if(likely(obj!=INVALID_OBJECT))
+                pushJavaObject(L,context,JObject(env,obj));
+            continue;
+        } else if(!type->isPrimitive()){
+            jvalue v=context->luaObjectToJValue(luaObjects[i],type);
+            if(likely(v.l!=INVALID_OBJECT)){
+                pushJavaObject(L,context,v.l);
+                cleanArg(env,v.l,luaObjects[i].shouldRelease);
+            }
+            continue;
+        }
+        lua_pushnil(L);
+    }
+
+    return len;
 
 }
 
@@ -1938,7 +2005,34 @@ int callMethod(lua_State *L) {
     cleanArgs(args, argCount, objects, env);
     return retCount;
 }
-
+static int pushMapValue(lua_State *L,ThreadContext* context,TJNIEnv* env,jobject obj){
+    static jmethodID sGet = env->GetMethodID(contextClass, "at", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    ValidLuaObject object;
+    parseLuaObject(L,context,2,object);
+    JObject  v(env,context->luaObjectToJObject(object));
+    auto&& retObj = env->CallObjectMethod(context->scriptContext->javaRef, sGet, obj, v.get());
+    HOLD_JAVA_EXCEPTION(context,{luaL_error(L,"");});
+    if(retObj==nullptr)
+        lua_pushnil(L);
+    else pushJavaObject(L, context, retObj);
+    return 1;
+}
+static int setMapValue(lua_State *L,ThreadContext* context,TJNIEnv* env,jobject obj){
+    static jmethodID sSet = env->GetMethodID(contextClass, "set", "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V");
+    ValidLuaObject key;
+    parseLuaObject(L,context,2,key);
+    ValidLuaObject value;
+    parseLuaObject(L,context,3,value);
+    JObject  k(env,context->luaObjectToJObject(key));
+    jobject  v=context->luaObjectToJObject(value);
+    if(v==INVALID_OBJECT){
+        forceRelease(key,value,k);
+        luaL_error(L,"invalid map value");
+    }
+    env->CallVoidMethod(context->scriptContext->javaRef,sSet,obj,k.get(),JObject(env,v).get());
+    HOLD_JAVA_EXCEPTION(context,{luaL_error(L,"");});
+    return 0;
+}
 int getFieldOrMethod(lua_State *L) {
     bool isStatic = isJavaTypeOrObject(L,1);
     JavaObject *obj = isStatic ? nullptr : (JavaObject*) lua_touserdata(L,1);
@@ -1961,21 +2055,26 @@ int getFieldOrMethod(lua_State *L) {
             return 1;
         }
     }
-    if (unlikely(!luaL_isstring(L, 2)))
+    if (unlikely(!luaL_isstring(L, 2))){
+        if(!isStatic&&(lua_isnumber(L,2)||testType(L,2,OBJECT_KEY))){
+            return pushMapValue(L,context,env,obj->object);
+        }
         luaL_error(L, "Invaild type to get a field or method:%s", luaL_typename(L, 2));
+    }
 
     FakeString name(lua_tostring(L, 2));
 
     /*if(!validJavaName(name))luaL_error(L,"The name is invalid for java use:%s",name);*/
-    int fieldCount = type->getFieldCount(env,name, isStatic);
+    auto fieldArr = type->ensureField(env,name, isStatic);
     bool isMethod = type->ensureMethod(env,name, isStatic) != nullptr;
+    int fieldCount=fieldArr== nullptr?0:fieldArr->size();
     if (fieldCount == 1 && !isMethod) {
-        auto info = type->findField(env,std::move(name), isStatic, nullptr);
-        JavaType *fieldType = info->type.rawType;
+        auto&& info = fieldArr->at(0);
+        JavaType *fieldType = info.type.rawType;
 #define GetField(typeID,jtype, jname, TYPE)\
         case JavaType::typeID:{\
             lua_push##TYPE(L,isStatic?env->GetStatic##jname##Field(type->getType()\
-                    ,info->id):env->Get##jname##Field(obj->object,info->id));\
+                    ,info.id):env->Get##jname##Field(obj->object,info.id));\
         }
 #define GetIntegerField(typeID,jtype, jname) GetField(typeID,jtype,jname,integer)
 #define GetFloatField(typeID,jtype, jname) GetField(typeID,jtype,jname,number)
@@ -1986,7 +2085,7 @@ int getFieldOrMethod(lua_State *L) {
 #define GetInteger64Field()\
     case JavaType::LONG:{\
         jlong v=isStatic?env->GetStaticLongField(type->getType()\
-                    ,info->id):env->GetLongField(obj->object,info->id);\
+                    ,info->id):env->GetLongField(obj->object,info.id);\
         if(int64_t(double(v))!=v)\
             lua_pushnumber(L,v);\
         else Integer64::pushLong(L,v);\
@@ -2005,11 +2104,11 @@ int getFieldOrMethod(lua_State *L) {
             GetFloatField(DOUBLE,double,Double)\
             GetField(BOOLEAN,boolean,Boolean,boolean)\
             case JavaType::CHAR:{\
-            jchar c=isStatic?env->GetStaticCharField(type->getType(),info->id):env->GetCharField(obj->object,info->id);\
+            jchar c=isStatic?env->GetStaticCharField(type->getType(),info.id):env->GetCharField(obj->object,info.id);\
             PushChar(c);\
             }\
             default:{\
-            JObject object=isStatic?env->GetStaticObjectField(type->getType(),info->id):env->GetObjectField(obj->object,info->id);\
+            JObject object=isStatic?env->GetStaticObjectField(type->getType(),info.id):env->GetObjectField(obj->object,info.id);\
             if(object==nullptr) lua_pushnil(L);else pushJavaObject(L,context,object);\
             }}
         PushField();
@@ -2019,9 +2118,12 @@ int getFieldOrMethod(lua_State *L) {
                 pushJavaObject(L,context,type->getType());
                 return 1;
             }
-            lua_pushfstring(L, "No %sstatic member is named %s in class %s",isStatic?"":"non-", name.data(),
+            if(isStatic)
+                luaL_error(L, "No static member is named %s in class %s", name.data(),
                             type->name(env).str());
-            lua_error(L);
+            else{
+                return pushMapValue(L,context,env,obj->object);
+            }
             return 0;
         }
         pushMember(context, L, isStatic, fieldCount, isMethod);
@@ -2031,13 +2133,14 @@ int getFieldOrMethod(lua_State *L) {
 
 int getObjectLength(lua_State *L) {
     JavaObject *objRef = (JavaObject *)(lua_touserdata(L, 1));
-    auto env=getContext(L)->env;
+    ThreadContext *context = getContext(L);
+    auto env= context->env;
     if (objRef->type->isArray(env)) lua_pushinteger(L, env->GetArrayLength((jarray) objRef->object));
     else {
-        int len = env->CallStaticIntMethod(contextClass, sLength, objRef->object);
-        if (unlikely(len == -1))
-            luaL_error(L, "The object %s has no length property", luaL_tolstring(L, 1, nullptr));
-        else lua_pushinteger(L, len);
+        static jmethodID sLength = env->GetMethodID(contextClass, "length", "(Ljava/lang/Object;)I");
+        int len = env->CallIntMethod(context->scriptContext->javaRef, sLength, objRef->object);
+        HOLD_JAVA_EXCEPTION(context,{luaL_error(L,"");});
+        lua_pushinteger(L, len);
     }
     return 1;
 }
@@ -2059,9 +2162,9 @@ int getField(lua_State *L) {
         luaL_error(L, "The class has duplicated field name %s", name);
     }
     auto env=flag->context->env;
-    auto info = type->findField(env,FakeString(name), isStatic,
+    auto&& info = *type->findField(env,FakeString(name), isStatic,
                                 flag->isDuplicatedField ? nullptr : *fieldTypeRef);
-    JavaType *fieldType = info->type.rawType;
+    JavaType *fieldType = info.type.rawType;
     PushField();
     return 1;
 }
@@ -2170,15 +2273,27 @@ int setFieldOrArray(lua_State *L) {
             return 0;
         }
     }
-    if (unlikely(!luaL_isstring(L, 2)))
+    if (unlikely(!luaL_isstring(L, 2))){
+        if(!isStatic&&(lua_isnumber(L,2)||testType(L,2,OBJECT_KEY))){
+            setMapValue(L,context,env,objRef->object);
+            return 0;
+        }
         luaL_error(L, "Invalid index for a field member:%s",
                    luaL_tolstring(L, 2, NULL));
+    }
+
     const FakeString name(lua_tostring(L, 2));
-    int fieldCount = type->getFieldCount(env,name, isStatic);
-    if (fieldCount <= 0) luaL_error(L,"No such field");
-    if (fieldCount > 1) luaL_error(L,"The name %s repsents not only one field", name.data());
-    auto info = type->findField(env,name, isStatic, nullptr);
-    JavaType *fieldType = info->type.rawType;
+    auto arr=type->ensureField(env,name, isStatic);
+    if (arr== nullptr){
+        if(!isStatic){
+            setMapValue(L,context,env,objRef->object);
+            return 0;
+        }
+        luaL_error(L,"No such field");
+    }
+    if (arr->size() > 1) luaL_error(L,"The name %s repsents not only one field", name.data());
+    auto &&info = arr->at(0);
+    JavaType *fieldType = info.type.rawType;
     ValidLuaObject luaObject;
     if (unlikely(!parseLuaObject(L, context, 3, luaObject))) {
         luaL_error(L,"Invalid value passed to java as a field with type:%s",
@@ -2572,8 +2687,7 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
             for (int i = resultSize - 1; i >= 0; --i) {
                 ValidLuaObject object;
                 parseLuaObject(L, context, handlerIndex + i + 1, object);
-                jobject value = context->luaObjectToJObject(std::move
-                        (object));
+                jobject value = context->luaObjectToJObject(object);
                 if (value != INVALID_OBJECT)
                     env->SetObjectArrayElement(result, i, JObject(env, value).get());
             }
@@ -2678,7 +2792,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
             for (int i = handlerIndex + 1, top = lua_gettop(L), j = 0; i <= top; ++i, ++j) {
                 ValidLuaObject object;
                 parseLuaObject(L, context, i, object);
-                jobject value = context->luaObjectToJObject( std::move(object));
+                jobject value = context->luaObjectToJObject( object);
                 if (value != INVALID_OBJECT)
                     env->SetObjectArrayElement(result, j, JObject(env, value));
             }
@@ -2686,7 +2800,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
         } else {
             ValidLuaObject object;
             parseLuaObject(L, context, -1, object);
-            ret = context->luaObjectToJObject(std::move(object));
+            ret = context->luaObjectToJObject(object);
             if (ret == INVALID_OBJECT) ret = nullptr;
         }
     }

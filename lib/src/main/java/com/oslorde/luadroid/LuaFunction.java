@@ -1,9 +1,8 @@
 package com.oslorde.luadroid;
 
 /**
- * Created by Karven on 2018/2/11.
+ * Mapping for lua functions.
  */
-
 public interface LuaFunction {
     Object[] invoke(Object... args);
 }

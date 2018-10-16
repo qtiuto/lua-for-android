@@ -171,7 +171,6 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
         contextClass = (jclass) env->NewGlobalRef(cl);
         sProxy = env->GetMethodID(cl, "proxy", "(Ljava/lang/Class;[Ljava/lang/Class;"
                 "[Ljava/lang/reflect/Method;[JZJLjava/lang/Object;)Ljava/lang/Object;");
-        sLength = env->GetStaticMethodID(cl, "length", "(Ljava/lang/Object;)I");
         JavaType::sFindMembers = env->GetStaticMethodID(cl, "findMembers"
                 , "(Ljava/lang/Class;Ljava/lang/String;ZZ)[Ljava/lang/Object;");
         JavaType::sWeightObject = env->GetStaticMethodID(cl, "weightObject",
@@ -415,9 +414,9 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
                     JObject map = JObject(env, mapType->newObject(this,types, args));
                     parsedTable->emplace(luaObject.lazyTable,map.get());
                     for (auto &&pair:table) {
-                        jobject key = luaObjectToJObject(std::move(pair.first));
+                        jobject key = luaObjectToJObject(pair.first);
                         if (key == INVALID_OBJECT) goto ERROR_HANDLE;
-                        jobject value = luaObjectToJObject(std::move(pair.second));
+                        jobject value = luaObjectToJObject(pair.second);
                         if (value == INVALID_OBJECT) {
                             env->DeleteLocalRef(key);
                             goto ERROR_HANDLE;
@@ -502,7 +501,7 @@ JavaType *ThreadContext::FunctionType() {
     return scriptContext->FunctionClass;
 }
 
-jobject ThreadContext::luaObjectToJObject(ValidLuaObject &&luaObject) {
+jobject ThreadContext::luaObjectToJObject(ValidLuaObject &luaObject) {
     switch (luaObject.type) {
         case T_NIL:
             return nullptr;

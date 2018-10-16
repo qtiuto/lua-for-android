@@ -24,6 +24,9 @@ import java.util.concurrent.locks.LockSupport;
 
 import static java.lang.reflect.Modifier.PUBLIC;
 
+/**
+ * For building a class
+ */
 @SuppressWarnings("ALL")
 public class ClassBuilder {
     private static Object sUnsafe;

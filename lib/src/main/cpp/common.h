@@ -25,7 +25,6 @@ extern jmethodID charValue;
 extern jmethodID booleanValue;
 extern jmethodID longValue;
 extern jmethodID doubleValue;
-extern jmethodID sLength;
 
 typedef std::string String;
 

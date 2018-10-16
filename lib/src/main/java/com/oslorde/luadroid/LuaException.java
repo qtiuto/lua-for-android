@@ -1,6 +1,10 @@
 package com.oslorde.luadroid;
 
+/**
+ * General exception type for lua code
+ */
 public class LuaException extends RuntimeException {
+
     public LuaException() {
     }
 

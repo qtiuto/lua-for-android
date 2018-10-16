@@ -149,7 +149,7 @@ public:
                   bool shared= false, long nativeInfo=0,jobject superObject= nullptr);
     jvalue luaObjectToJValue( ValidLuaObject &luaObject, JavaType *type,jobject real= nullptr);
 
-    jobject luaObjectToJObject( ValidLuaObject &&luaObject);
+    jobject luaObjectToJObject( ValidLuaObject &luaObject);
 
     JavaType *HashMapType();
 

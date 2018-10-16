@@ -3,6 +3,10 @@ package com.oslorde.luadroid;
 import java.lang.reflect.Type;
 import java.util.Map;
 
+/**
+ * For converting a table to given type
+ * @param <T> given type
+ */
 interface TableConverter<T>  {
     /**
      * @return the type you expect the the sub table in the key
@@ -18,5 +22,6 @@ interface TableConverter<T>  {
     default Type expectedValueTableType(){
         return null;
     }
+
     T convert(Map<?, ?> table) throws Throwable;
 }

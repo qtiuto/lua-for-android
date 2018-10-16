@@ -2,15 +2,11 @@ package com.oslorde.luadroid;
 
 
 import android.os.Build;
-import android.util.Pair;
-import android.util.SparseArray;
-import android.util.SparseBooleanArray;
-import android.util.SparseIntArray;
+import android.util.*;
 import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
 import dalvik.system.BaseDexClassLoader;
 import dalvik.system.DexFile;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -18,8 +14,11 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.*;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * For running a lua context
+ */
 public class ScriptContext implements GCTracker {
     private static final int JAVA_CHAR = 0;
     private static final int JAVA_BOOLEAN = 1;
@@ -49,11 +48,17 @@ public class ScriptContext implements GCTracker {
     static {
     }
 
+    private final Object importLock=new Object();
     private HashMap<Class, TableConverter> sConverters;
+    private HashMap<Class,Indexer> indexers;
+    private HashMap<Class,IteratorFactory> iterators;
     private long nativePtr;
     private OutputStream outLogger;
     private OutputStream errLogger;
     private WeakReference<GCListener> gcListener;
+    //Too many memory usages.
+    private Set<String> dexFiles;
+    private Map<String,List<String>> packages;
 
     public ScriptContext() {
         this(true, false);
@@ -109,22 +114,57 @@ public class ScriptContext implements GCTracker {
 
     }
 
-    private static int length(Object object) {
-        if (object.getClass().isArray())
-            return Array.getLength(object);
-        else if (object instanceof Collection)
-            return ((Collection) object).size();
-        else if (object instanceof Map)
-            return ((Map) object).size();
-        else if (object instanceof JSONArray)
-            return ((JSONArray) object).length();
-        else if (object instanceof SparseArray)
-            return ((SparseArray) object).size();
-        else if (object instanceof SparseBooleanArray)
-            return ((SparseBooleanArray) object).size();
-        else if (object instanceof SparseIntArray)
-            return ((SparseIntArray) object).size();
-        throw new UnsupportedOperationException();
+    private static Method findMethodNoExcept(Class<?> origClazz, String name,
+                                              Class<?>... parameterTypes){
+        for (Class<?> clazz=origClazz; clazz != null; clazz = clazz
+                .getSuperclass()) {
+            try {
+                Method method = clazz.getDeclaredMethod(name, parameterTypes);
+                if (!method.isAccessible()) {
+                    method.setAccessible(true);
+                }
+                return method;
+            } catch (NoSuchMethodException e) {
+                // ignore and search next
+            }
+        }
+        return null;
+    }
+
+    private static Method findIndexerMethod(Class<?> origClazz, String name,Class keyType,int argLen){
+        for (Class<?> clazz=origClazz; clazz != null; clazz = clazz
+                .getSuperclass()) {
+            Method[] methods = clazz.getDeclaredMethods();
+            Method best=null;
+            int score=-1;
+            for (Method method:
+                    methods) {
+                if(!method.getName().equals(name))
+                    continue;
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                if(parameterTypes.length!=argLen||!parameterTypes[0].isAssignableFrom(keyType)){
+                    if(keyType!=Long.class||(parameterTypes[0]!=int.class&&parameterTypes[0]!=long.class))
+                    continue;
+                }
+                int curScore=0;
+                if(parameterTypes[0]==Object.class)
+                    curScore=1;
+                if(argLen==2&&parameterTypes[1]==Object.class)
+                    curScore++;
+
+                if(curScore>score){
+                    best=method;
+                    score=curScore;
+                }
+            }
+            if(best!=null){
+                if (!best.isAccessible()) {
+                    best.setAccessible(true);
+                }
+                return best;
+            }
+        }
+        return null;
     }
 
     private static Method getSingleInterface(Class cl) {
@@ -192,6 +232,7 @@ public class ScriptContext implements GCTracker {
 
         return retList.isEmpty() ? null : retList.toArray();
     }
+
     private static Object[] convertConstructors(Constructor[] constructors) {
         Object[] ret=new Object[constructors.length*5];
         int i=0;
@@ -210,7 +251,6 @@ public class ScriptContext implements GCTracker {
         }
         return ret;
     }
-
 
     private static void checkAndAddMethods(
             String name, boolean isStatic, ArrayList<Object> retList,
@@ -254,92 +294,13 @@ public class ScriptContext implements GCTracker {
             }
         }
     }
-    //Too many memory usages.
-    private Set<String> dexFiles;
-    private Map<String,List<String>> packages;
-    private final Object importLock=new Object();
-
-    private String[] importAll(String pack) throws Exception {
-        synchronized (importLock){
-            initLoader();
-            List<String> nameList = packages.get(pack);
-            String[] empty = new String[0];
-            if(nameList==null)
-                return empty;
-            return nameList.toArray(empty);
-        }
-    }
-
-
-    private void loadClassLoader(ClassLoader loader) throws Exception {
-        synchronized (importLock){
-            initLoader();
-            Field fPathList = BaseDexClassLoader.class.getDeclaredField("pathList");
-            Field fDexElements=null;
-            Field fDexFile=null;
-            while (loader!=null){
-                if(loader instanceof BaseDexClassLoader){
-                    fPathList.setAccessible(true);
-                    Object pathList= fPathList.get(loader);
-                    if(pathList==null) continue;
-                    if(fDexElements==null){
-                        fDexElements = pathList.getClass().getDeclaredField("dexElements");
-                        fDexElements.setAccessible(true);
-                    }
-                    Object[] elements= (Object[]) fDexElements.get(pathList);
-                    if(elements==null) continue;
-                    for (Object ele : elements) {
-                        if(fDexFile==null){
-                            fDexFile = ele.getClass().getDeclaredField("dexFile");
-                            fDexFile.setAccessible(true);
-                        }
-                        DexFile dexFile= (DexFile) fDexFile.get(ele);
-                        if(dexFile==null) continue;
-                        if(!dexFiles.contains(dexFile.getName())){
-                            addDexFile(dexFile);
-                        }
-                    }
-                }
-                loader=loader.getParent();
-            }
-        }
-
-    }
-
-    private void initLoader() throws Exception {
-        if(dexFiles==null){
-            dexFiles=new HashSet<>();
-            packages=new HashMap<>();
-            String[] bootJars=System.getenv("BOOTCLASSPATH").split(":");
-            for (String path : bootJars) {
-                DexFile dexFile = new DexFile(path);
-                addDexFile(dexFile);
-            }
-            loadClassLoader(ScriptContext.class.getClassLoader());
-        }
-    }
-
-    private void addDexFile(DexFile dexFile) {
-        Enumeration<String> entries = dexFile.entries();
-        while (entries.hasMoreElements()){
-            String cl=entries.nextElement();
-            cl=cl.replace('/','.');
-            String pack=getPackage(cl);
-            List<String> names=packages.get(pack);
-            if(names==null){
-                names=new ArrayList<>();
-                names.add(cl);
-                packages.put(pack,names);
-            }else names.add(cl);
-        }
-        dexFiles.add(dexFile.getName());
-    }
 
     private static String getPackage(String cl){
         int index=cl.lastIndexOf('.');
         if(index==-1) return "";
         return cl.substring(0,index);
     }
+
     /** 1-5 is left for box type,6 left for object,interfaces is always 7*/
     private static int weightObject(Class<?> target, Class<?> from) {
         if (target.isPrimitive() || from.isPrimitive()) {
@@ -412,6 +373,395 @@ public class ScriptContext implements GCTracker {
 
     }
 
+    private static Class resolveType(Type type){
+        if(type instanceof Class)
+            return (Class) type;
+        else if(type instanceof ParameterizedType)
+            return (Class) ((ParameterizedType) type).getRawType();
+        else if(type instanceof WildcardType)
+            return  resolveType(((WildcardType) type).getUpperBounds()[0]);
+        else if(type instanceof TypeVariable)
+            return resolveType(((TypeVariable) type).getBounds()[0]);
+        else  if(type instanceof GenericArrayType){
+            Type component=((GenericArrayType) type).getGenericComponentType();
+            Class c=resolveType(component);
+            return Array.newInstance(c,0).getClass();
+        }
+       throw new RuntimeException("Unexpected type:"+type);
+    }
+
+    static Func getFunc(LuaFunction function,TypeId[] argTypes,TypeId returnType){
+        InvokeHandler handler= (InvokeHandler) Proxy.getInvocationHandler(function);
+        MethodInfo info=handler.methodMap.values().iterator().next();
+        Func func=handler.context().new Func(info.luaFuncInfo,argTypes,returnType);
+        info.luaFuncInfo=0;
+        return func;
+    }
+
+    private static int getTypeLuaType(TypeId<?> type) {
+        int retType;
+        if (type == TypeId.CHAR) {
+            retType = JAVA_CHAR;
+        } else if (type == TypeId.BOOLEAN) {
+            retType = JAVA_BOOLEAN;
+        } else if (type == TypeId.INT || type ==  TypeId.LONG || type ==  TypeId.SHORT|| type ==  TypeId.BYTE) {
+            retType = JAVA_INTEGER;
+        } else if (type == TypeId.DOUBLE || type == TypeId.FLOAT) {
+            retType = JAVA_DOUBLE;
+        } else if (type == TypeId.VOID) {
+            retType = JAVA_VOID;
+        } else {
+            retType = JAVA_OBJECT;
+        }
+        return retType;
+    }
+
+    /**
+     * add an indexer for index or new index or length call
+     * @param target target class
+     * @param indexer indexer
+     * @param <T> relative type
+     */
+    public <T> void putIndexer(Class<T> target,Indexer<? super T> indexer){
+        lazyIndexers().put(target,indexer);
+    }
+
+    /**
+     * add an iterator factory to generate a iterator for pairs call
+     * @param target target class
+     * @param factory factory
+     * @param <T> relative type
+     */
+    public <T> void putIteratorFactory(Class<T> target,IteratorFactory<? super T> factory){
+        lazyIteratorFactories().put(target,factory);
+    }
+
+    private Indexer resolveIndexer(Object v,Class keyType){
+        Class c=v.getClass();
+        HashMap<Class,Indexer> indexers=lazyIndexers();
+        Indexer indexer = indexers.get(v.getClass());
+        if(indexer!=null) return indexer;
+        Out:
+        if(v instanceof List){
+            indexer= new ListIndexer<List>(){
+                @Override
+                public int size(List obj) {
+                    return obj.size();
+                }
+                @Override
+                public Object at(List obj, int key) {
+                    return obj.get(key);
+                }
+                @Override
+                public void set(List obj, int key, Object v) {
+                    obj.set(key,v);
+                }
+            };
+        }else if(v instanceof Map)
+            indexer= new Indexer<Map>(){
+                @Override
+                public int size(Map obj) {
+                    return obj.size();
+                }
+
+                @Override
+                public Object at(Map obj, Object key) {
+                    return obj.get(key);
+                }
+
+                @Override
+                public void set(Map obj, Object key, Object v) {
+                    obj.put(key,v);
+                }
+            };
+        else if(keyType!=null){
+            Method sizeMethod=findMethodNoExcept(c,"size");
+            if(sizeMethod==null) sizeMethod=findMethodNoExcept(c,"length");
+            Method getMethod=findIndexerMethod(c,"get",keyType,1);
+            if(getMethod==null) getMethod=findIndexerMethod(c,"at",keyType,1);
+            if(getMethod==null) break Out;
+            Method setMethod=findIndexerMethod(c,"set",keyType,2);
+            if(setMethod==null) setMethod=findIndexerMethod(c,"put",keyType,2);
+            Method finalGetMethod = getMethod;
+            Method finalSetMethod = setMethod;
+            Method finalSizeMethod = sizeMethod;
+            indexer=new Indexer() {
+                Class rawKeyType=finalGetMethod.getParameterTypes()[0];
+                int keyTypeID=getClassLuaType(rawKeyType);
+                Class rawValueType;
+                int valueTypeID;
+                Type realValueType;
+                {
+                    if(finalSetMethod!=null){
+                        rawValueType=finalSetMethod.getParameterTypes()[1];
+                        valueTypeID=getClassLuaType(rawValueType);
+                        realValueType=finalSetMethod.getGenericParameterTypes()[1];
+                    }
+                }
+                @Override
+                public Object at(Object obj, Object key) throws Throwable{
+                    return finalGetMethod.invoke(obj,fixValue(key,keyTypeID,rawKeyType,rawKeyType,false));
+                }
+
+                @Override
+                public void set(Object obj, Object key, Object v)throws Throwable {
+                    if(finalSetMethod ==null) throw new UnsupportedOperationException("set");
+                    finalSetMethod.invoke(obj,fixValue(key,valueTypeID,rawKeyType,rawKeyType,false),
+                            fixValue(v,valueTypeID,rawValueType,realValueType,true));
+                }
+
+                @Override
+                public int size(Object obj) throws Exception{
+                    if(finalSizeMethod ==null) throw new UnsupportedOperationException("size");
+                    return (int) finalSizeMethod.invoke(obj);
+                }
+            };
+        }
+        if(indexer!=null)indexers.put(v.getClass(),indexer);
+        return indexer;
+    }
+
+    private int length(Object object) throws Exception{
+        if (object instanceof Collection)
+            return ((Collection) object).size();
+        else if (object instanceof Map)
+            return ((Map) object).size();
+        Indexer indexer=resolveIndexer(object,null);
+        if(indexer==null){
+            Class c=object.getClass();
+            Method sizeMethod=findMethodNoExcept(c,"length");
+            if(sizeMethod==null) sizeMethod=findMethodNoExcept(c,"size");
+            if(sizeMethod!=null)
+                return ((Number) sizeMethod.invoke(object)).intValue();
+            throw new LuaException("Can't get length of "+object);
+        }
+        return indexer.size(object);
+    }
+
+    private HashMap<Class,Indexer> lazyIndexers(){
+        if(indexers==null){
+            indexers=new HashMap<>();
+        }
+        return indexers;
+    }
+
+    private void set(Object obj,Object key,Object v) throws Throwable{
+        Indexer indexer=resolveIndexer(obj,key.getClass());
+        if(indexer==null||!indexer.supportsKey(key))
+            throw new LuaException(obj+" doesn't have a member with key:"+key);
+        indexer.set(obj,key,v);
+    }
+
+    private  Object at(Object v,Object key) throws Throwable{
+        Indexer indexer=resolveIndexer(v,key.getClass());
+        if(indexer==null&&key instanceof String){
+            throw new LuaException("No non-static member is named "+key+" in class "+v.getClass().getName());
+        }
+        if(indexer==null||!indexer.supportsKey(key))
+            throw new LuaException(v+" doesn't have a member with key:"+key);
+        return indexer.at(v,key);
+    }
+
+    private HashMap<Class,IteratorFactory> lazyIteratorFactories(){
+        if(iterators==null){
+            iterators=new HashMap<>();
+            IteratorFactory factory= v -> {
+                int length;
+                length = length(v);
+                Method keyAt=v.getClass().getMethod("keyAt",int.class);
+                Method valueAt=v.getClass().getMethod("valueAt",int.class);
+                return new MapIterator() {
+                    int i;
+                    @Override
+                    public Object[] nextEntry() throws Throwable{
+                        return new Object[]{keyAt.invoke(v,i),valueAt.invoke(v,i++)};
+                    }
+
+                    @Override
+                    public boolean hasNext() {
+                        return i<length;
+                    }
+                };
+            };
+            iterators.put(SparseArray.class, factory);
+            iterators.put(SparseBooleanArray.class, factory);
+            iterators.put(SparseIntArray.class, factory);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+                iterators.put(SparseLongArray.class, factory);
+            }
+            iterators.put(JSONObject.class, (IteratorFactory<JSONObject>) v -> {
+                Iterator<String> iterator=v.keys();
+                return new MapIterator() {
+                    @Override
+                    public boolean hasNext() {
+                        return iterator.hasNext();
+                    }
+
+                    @Override
+                    public Object[] nextEntry() throws Throwable {
+                        String key=iterator.next();
+                        return new Object[]{key,v.get(key)};
+                    }
+                };
+            });
+
+        }
+        return iterators;
+    }
+
+    private MapIterator iterate(Object v) throws Throwable{
+        HashMap<Class,IteratorFactory> iterators=lazyIteratorFactories();
+        IteratorFactory factory=iterators.get(v.getClass());
+        if(factory==null){
+            if(v instanceof Collection){
+                factory= v1 -> {
+                    Iterator iter=((Collection) v1).iterator();
+                    return new ListIterator() {
+                        @Override
+                        public Object next() {
+                            return iter.next();
+                        }
+
+                        @Override
+                        public boolean hasNext() {
+                            return iter.hasNext();
+                        }
+                    };
+                };
+            }else if(v instanceof Map)
+                factory= v12 -> {
+                    Iterator<Map.Entry> iter=((Map) v12).entrySet().iterator();
+                    return new MapIterator() {
+                        @Override
+                        public boolean hasNext() {
+                            return iter.hasNext();
+                        }
+
+                        @Override
+                        public Object[] nextEntry() {
+                            Map.Entry entry=iter.next();
+                            return new Object[]{entry.getKey(),entry.getValue()};
+                        }
+                    };
+                };
+            else if(v.getClass().isArray()){
+                factory= v13 -> {
+                    int len=Array.getLength(v13);
+                    return new ListIterator() {
+                        int i;
+                        @Override
+                        public Object next() {
+                            return Array.get(v13,i++);
+                        }
+
+                        @Override
+                        public boolean hasNext() {
+                            return i<len;
+                        }
+                    };
+                };
+            }else {
+                Indexer indexer= resolveIndexer(v, int.class);
+                if(indexer!=null&&!indexer.supportsKey(Object.class)){
+                    factory= v14 -> {
+                        int length = length(v14);
+                        return new ListIterator() {
+                            int i;
+                            @Override
+                            public Object next() throws Throwable{
+                                return at(v14,i++);
+                            }
+
+                            @Override
+                            public boolean hasNext() {
+                                return i<length;
+                            }
+                        };
+                    };
+                }
+            }
+            if(factory!=null)iterators.put(v.getClass(),factory);
+
+        }
+        if(factory==null) return null;
+        return factory.generate(v);
+    }
+
+    private String[] importAll(String pack) throws Exception {
+        synchronized (importLock){
+            initLoader();
+            List<String> nameList = packages.get(pack);
+            String[] empty = new String[0];
+            if(nameList==null)
+                return empty;
+            return nameList.toArray(empty);
+        }
+    }
+
+    private void loadClassLoader(ClassLoader loader) throws Exception {
+        synchronized (importLock){
+            initLoader();
+            Field fPathList = BaseDexClassLoader.class.getDeclaredField("pathList");
+            Field fDexElements=null;
+            Field fDexFile=null;
+            while (loader!=null){
+                if(loader instanceof BaseDexClassLoader){
+                    fPathList.setAccessible(true);
+                    Object pathList= fPathList.get(loader);
+                    if(pathList==null) continue;
+                    if(fDexElements==null){
+                        fDexElements = pathList.getClass().getDeclaredField("dexElements");
+                        fDexElements.setAccessible(true);
+                    }
+                    Object[] elements= (Object[]) fDexElements.get(pathList);
+                    if(elements==null) continue;
+                    for (Object ele : elements) {
+                        if(fDexFile==null){
+                            fDexFile = ele.getClass().getDeclaredField("dexFile");
+                            fDexFile.setAccessible(true);
+                        }
+                        DexFile dexFile= (DexFile) fDexFile.get(ele);
+                        if(dexFile==null) continue;
+                        if(!dexFiles.contains(dexFile.getName())){
+                            addDexFile(dexFile);
+                        }
+                    }
+                }
+                loader=loader.getParent();
+            }
+        }
+
+    }
+
+    private void initLoader() throws Exception {
+        if(dexFiles==null){
+            dexFiles=new HashSet<>();
+            packages=new HashMap<>();
+            String[] bootJars=System.getenv("BOOTCLASSPATH").split(":");
+            for (String path : bootJars) {
+                DexFile dexFile = new DexFile(path);
+                addDexFile(dexFile);
+            }
+            loadClassLoader(ScriptContext.class.getClassLoader());
+        }
+    }
+
+    private void addDexFile(DexFile dexFile) {
+        Enumeration<String> entries = dexFile.entries();
+        while (entries.hasMoreElements()){
+            String cl=entries.nextElement();
+            cl=cl.replace('/','.');
+            String pack=getPackage(cl);
+            List<String> names=packages.get(pack);
+            if(names==null){
+                names=new ArrayList<>();
+                names.add(cl);
+                packages.put(pack,names);
+            }else names.add(cl);
+        }
+        dexFiles.add(dexFile.getName());
+    }
+
     @Override
     public void onNewGC(WeakReference<GCTracker> reference) {
         nativeClean(nativePtr);
@@ -427,7 +777,6 @@ public class ScriptContext implements GCTracker {
         TableConverter<HashMap<?, ?>> mapConverter = table -> (HashMap<?, ?>) table;
         sConverters.put(HashMap.class, mapConverter);
         sConverters.put(Map.class, mapConverter);
-        sConverters.put(AbstractMap.class, mapConverter);
         sConverters.put(LinkedHashMap.class, mapConverter);
         sConverters.put(JSONObject.class, JSONObject::new);
 
@@ -436,32 +785,16 @@ public class ScriptContext implements GCTracker {
         TableConverter<ArrayList<?>> listConverter = table -> new ArrayList<>(table.values());
         sConverters.put(ArrayList.class, listConverter);
         sConverters.put(Collection.class, listConverter);
-        sConverters.put(AbstractCollection.class, listConverter);
         sConverters.put(List.class, listConverter);
-        sConverters.put(AbstractList.class, listConverter);
         TableConverter<ArrayDeque<?>> dequeueConverter = table -> new ArrayDeque<>(table.values());
         sConverters.put(ArrayDeque.class, dequeueConverter);
         sConverters.put(Queue.class, dequeueConverter);
         sConverters.put(Deque.class, dequeueConverter);
-        TableConverter<SynchronousQueue<?>> blockingQueueConverter = table -> {
-            SynchronousQueue<Object> objects = new SynchronousQueue<>();
-            objects.addAll(table.values());
-            return objects;
-        };
-        sConverters.put(SynchronousQueue.class, blockingQueueConverter);
-        sConverters.put(BlockingQueue.class, blockingQueueConverter);
-        TableConverter<LinkedBlockingDeque<?>> blockingDequeConverter = table -> new LinkedBlockingDeque<>(table.values());
-        sConverters.put(BlockingDeque.class, blockingDequeConverter);
-        sConverters.put(LinkedBlockingDeque.class, blockingDequeConverter);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            TableConverter<LinkedTransferQueue<?>> transferQueueConverter = table -> new LinkedTransferQueue<>(table.values());
-            sConverters.put(TransferQueue.class, transferQueueConverter);
-            sConverters.put(LinkedTransferQueue.class, transferQueueConverter);
-        }
+
+
         TableConverter<HashSet<?>> setConverter = table -> new HashSet<>(table.values());
         sConverters.put(HashSet.class, setConverter);
         sConverters.put(Set.class, setConverter);
-        sConverters.put(AbstractSet.class, setConverter);
         return sConverters;
     }
 
@@ -475,7 +808,6 @@ public class ScriptContext implements GCTracker {
     public <T, F extends T> TableConverter putTableConverter(Class<T> type, TableConverter<F> converter) {
         return lazyConverts().put(type, converter);
     }
-
 
     private boolean isTableType(Class<?> cls) {
         if (lazyConverts().containsKey(cls)) return true;
@@ -492,16 +824,6 @@ public class ScriptContext implements GCTracker {
                 });
                 return true;
             }
-            /*if(Set.class.isAssignableFrom(cls)){
-                if((constructor=cls.getConstructor())==null)
-                    return false;
-                sConverters.put(cls, table -> {
-                    Collection list= (Collection) constructor.newInstance();
-                    list.addAll(table.keySet());
-                    return list;
-                });
-                return true;
-            }*/
             if (Collection.class.isAssignableFrom(cls)&&!isAbstract) {
                 if ((constructor = cls.getConstructor()) == null)
                     return false;
@@ -596,25 +918,11 @@ public class ScriptContext implements GCTracker {
             return converter.convert(table);
         return null;
     }
-    private static Class resolveType(Type type){
-        if(type instanceof Class)
-            return (Class) type;
-        else if(type instanceof ParameterizedType)
-            return (Class) ((ParameterizedType) type).getRawType();
-        else if(type instanceof WildcardType)
-            return  resolveType(((WildcardType) type).getUpperBounds()[0]);
-        else if(type instanceof TypeVariable)
-            return resolveType(((TypeVariable) type).getBounds()[0]);
-        else  if(type instanceof GenericArrayType){
-            Type component=((GenericArrayType) type).getGenericComponentType();
-            Class c=resolveType(component);
-            return Array.newInstance(c,0).getClass();
-        }
-       throw new RuntimeException("Unexpected type:"+type);
-    }
+
     private Type checkTableType(Type type){
         return isTableType(resolveType(type))?type:null;
     }
+
     private Type resolveKeyTableType(Type type){
         if(type instanceof ParameterizedType){
             Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
@@ -628,6 +936,7 @@ public class ScriptContext implements GCTracker {
             return resolveKeyTableType(((TypeVariable) type).getBounds()[0]);
         else return null;
     }
+
     private Type resolveValueTableType(Type type){
         if(type instanceof ParameterizedType){
             Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
@@ -644,9 +953,11 @@ public class ScriptContext implements GCTracker {
             return resolveValueTableType(((TypeVariable) type).getBounds()[0]);
         else return null;
     }
+
     private Object fixValue(Object from,int type,Class raw,Type real) throws Throwable{
         return fixValue(from,type,raw,real,isTableType(raw));
     }
+
     private Object fixValue2(Object from,Class raw,Type real,boolean shouldFixTable) throws Throwable{
         if(from==null||raw==void.class) return null;
         if((raw==Integer.class||raw==Integer.TYPE)&&from instanceof Long)
@@ -666,6 +977,7 @@ public class ScriptContext implements GCTracker {
             throw new LuaException("Incompatible Object passed:expected:"+real+",got:"+from);
         return from;
     }
+
     private Object fixValue(Object from,int classType,Class raw,Type real,boolean shouldFixTable) throws Throwable{
         if(from==null) return null;
         switch (classType) {
@@ -854,6 +1166,7 @@ public class ScriptContext implements GCTracker {
         return new CompiledScript(compile);
 
     }
+
     /**
      *
      * @param file script file
@@ -873,6 +1186,7 @@ public class ScriptContext implements GCTracker {
     public Object[] run(CompiledScript script, Object... args) {
         return runScript(nativePtr, script, false, args);
     }
+
     /**
      *
      * @param script script
@@ -882,6 +1196,7 @@ public class ScriptContext implements GCTracker {
     public Object[] run(String script, Object... args) {
         return runScript(nativePtr, script, false, args);
     }
+
     /**
      *
      * @param scriptFile script
@@ -1047,6 +1362,9 @@ public class ScriptContext implements GCTracker {
         }
     }
 
+    /**
+     * A compiled script for future call
+     */
     public static class CompiledScript extends Number {
         private long address;
 
@@ -1149,30 +1467,7 @@ public class ScriptContext implements GCTracker {
         }
 
     }
-    static Func getFunc(LuaFunction function,TypeId[] argTypes,TypeId returnType){
-        InvokeHandler handler= (InvokeHandler) Proxy.getInvocationHandler(function);
-        MethodInfo info=handler.methodMap.values().iterator().next();
-        Func func=handler.context().new Func(info.luaFuncInfo,argTypes,returnType);
-        info.luaFuncInfo=0;
-        return func;
-    }
-    private static int getTypeLuaType(TypeId<?> type) {
-        int retType;
-        if (type == TypeId.CHAR) {
-            retType = JAVA_CHAR;
-        } else if (type == TypeId.BOOLEAN) {
-            retType = JAVA_BOOLEAN;
-        } else if (type == TypeId.INT || type ==  TypeId.LONG || type ==  TypeId.SHORT|| type ==  TypeId.BYTE) {
-            retType = JAVA_INTEGER;
-        } else if (type == TypeId.DOUBLE || type == TypeId.FLOAT) {
-            retType = JAVA_DOUBLE;
-        } else if (type == TypeId.VOID) {
-            retType = JAVA_VOID;
-        } else {
-            retType = JAVA_OBJECT;
-        }
-        return retType;
-    }
+
     public class Func{
         long funcRef;
         int[] argTypes;

@@ -158,7 +158,7 @@ Module app is a lua editor for running test in android.
       the args number. e.g.
       ```lua
          ob,str=Type('Object','String') 
-       ```
+      ```
       
   * **instanceof**:  
   
@@ -177,17 +177,26 @@ Module app is a lua editor for running test in android.
       
   * **object**:  
   
-      Converts a lua object to java object,here is the mapping
+      Converts a lua object to java object,if no type provided, it works according to
+      the following mapping,or it will works according to **Automatic Conversion** section
+      The type is passed in like a general java method call.Don't pass in a primitive type,
+      or nil will be return.
       
       * number ->java.lang.Long or java.lang.Double,according to the value
       * string ->java.lang.String
       * boolean ->java.lang.Boolean
-      * userdata ->java.lang.Long,the value is its address
-      * table ->java.util.HashMap
+      * userdata ->null
+      * table ->java.util.LinkedHashMap
       * function ->com.oslorde.luadroid.LuaFunction
       * java object is unchanged
       
-      Usage:`object(lua object)`
+      Usage:`object(lua object...)
+      e.g.
+      ```lua
+      using 'java.lang'
+      i,k=object("Yu",Integer,1)
+      --then i is a String object and k is an Integer object 
+      ```
       
   * **charString**:  
   
@@ -250,7 +259,7 @@ Module app is a lua editor for running test in android.
        Note:**yeild** is not supported inside any function you passed in,
         cause it may have finally function un-called
        
-  * throw:  
+  * **throw**:  
   
       Throws a java exception to the code,it will be caught by the above
       try function or try catch in your java code.
@@ -373,7 +382,7 @@ Module app is a lua editor for running test in android.
    
    **'.length'** of an array object will return its length,you can use '#' 
    operator to get the length of an array object also.'#' operator also
-   works for Collection,Map,JsonArray and SparseArray.
+   works for any object with **length()** or **size()** method decalred.
       
       
    The lua method **'tostring'** works for any java object,and toString method
@@ -384,7 +393,20 @@ Module app is a lua editor for running test in android.
    
    **'..'** operator will concat a java object with any lua object with **tostring**
    to be called,and return a lua string.
-       
+   
+   The lua method **'pairs'** works for any java object work **Collection** or **Map**
+   or **SparseArray** or **Array**, or you can add custom iterator.
+   
+   You can index any java object with **set/put get/at** methods.When you index or add an 
+   index these two method will be invoked,or you can add custom indexer.
+     ```lua
+      using "java.util"
+      local arr=HashMap({a=5,b=6})
+      arr.c='kkk'
+      arr[2]=8
+      print(#arr,arr[])
+      
+      ```
      
 ## Type Specification
    You can add a type before the arg in method call,new(),newArray
@@ -420,9 +442,10 @@ Module app is a lua editor for running test in android.
    For table,if the type is convertible from table in registered
    table converters,the type is considered first,or if the value have the
    below layout 
-   ```lua
-   {methodName=function() end...}
-   ```
+    ```lua
+      {methodName=function() end...}
+      
+     ```
    and the type is interface,
    then it's considered as an implementation for the interface.
    
@@ -465,11 +488,12 @@ Module app is a lua editor for running test in android.
    And global value **"java"** refers to the table.Note that
    **java.type** is exported as **‘Type’** to avoid conflict.
    e.g.
-   ```lua
-   java.type == Type
-   java.import == import
-   java.new == new
-   ```
+    ```lua
+     print(print(java.type == Type)--true
+     print(java.import == import)--true
+     print(java.new == new)--true
+      
+     ```
       
 ## ScriptContext Api
      
@@ -479,28 +503,35 @@ Module app is a lua editor for running test in android.
      
    * run:run a script with several arguments,and all it returned is stored
      in an Object[] and values are converted the same as **object()** function
+     with no type provided
      
    * changeCallSite: change the method you wish the lua function to
      agent,so that it can accept proper arguments and you can receive
      proper result.
      
    * putTableConverter:put a converter to support automatic table conversion
+   
+   * putIndexer:put an indexer to support index or new index operation
+   
+   * putIteratorFactory:put an iterator factory to generate a proper iterator
     
    e.g,
-   ```java  
-    import "com.oslorde.luadroid.*";
+   ` ``java  
+    import com.oslorde.luadroid.*;
     ScriptContext context=new ScriptContext();
     Object[] results = context.run("print 'Hello World'");
-   ```
+    
+    ```
 ## ClassBuilder Api
    Class Builder is imported default to support dynamic class generation
    Lua function callback rule is the same as proxy.
    
    e.g.
-   ```lua
+    ```lua
    ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
    .newInstance(Type("Object")()).run()
-   ```
+   
+    ```
 ## More     
    For more information,see java doc in **doc** directory
      
