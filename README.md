@@ -328,7 +328,6 @@ Module app is a lua editor for running test in android.
        shared=false,
        args={5}
       }
-      
       ```
       ##### Note:
       
@@ -405,7 +404,6 @@ Module app is a lua editor for running test in android.
       arr.c='kkk'
       arr[2]=8
       print(#arr,arr[])
-      
       ```
      
 ## Type Specification
@@ -444,7 +442,6 @@ Module app is a lua editor for running test in android.
    below layout 
     ```lua
       {methodName=function() end...}
-      
      ```
    and the type is interface,
    then it's considered as an implementation for the interface.
@@ -492,7 +489,6 @@ Module app is a lua editor for running test in android.
      print(print(java.type == Type)--true
      print(java.import == import)--true
      print(java.new == new)--true
-      
      ```
       
 ## ScriptContext Api
@@ -516,21 +512,19 @@ Module app is a lua editor for running test in android.
    * putIteratorFactory:put an iterator factory to generate a proper iterator
     
    e.g,
-   ` ``java  
+   ```java  
     import com.oslorde.luadroid.*;
     ScriptContext context=new ScriptContext();
     Object[] results = context.run("print 'Hello World'");
-    
-    ```
+   ```
 ## ClassBuilder Api
    Class Builder is imported default to support dynamic class generation
    Lua function callback rule is the same as proxy.
    
    e.g.
     ```lua
-   ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
+    ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
    .newInstance(Type("Object")()).run()
-   
     ```
 ## More     
    For more information,see java doc in **doc** directory
