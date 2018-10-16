@@ -270,7 +270,7 @@ Module app is a lua editor for running test in android.
       ```lua
          throw(Type('RuntimeException')("haha"))
      ```
-      Notice: the exception must be java obejct of type or sub-type of
+      Notice: the exception must be java object of type or sub-type of
       java.lang.Throwable
       
   * **proxy**:  
@@ -341,8 +341,8 @@ Module app is a lua editor for running test in android.
        
        For extension usage,a value represents the super is appended
        
-       Interface implentation is supported by java.lang.reflect.Proxy
-       but class extension is supported by dexmaker, which may consume
+       Interface implementation is supported by **java.lang.reflect.Proxy**
+       but class extension is supported by **dexmaker**, which may consume
        several time to generate and load a dex file.
       
        Whether the object is multi-thread supported is determined by
@@ -377,12 +377,11 @@ Module app is a lua editor for running test in android.
    on the field.
      
    ##### Note:  
-   **Type.class** will return the Class object represented by the type
+   **Type.class** will return the class object represented by the type
    
-   **'.length'** of an array object will return its length,you can use '#' 
+   **'.length'** of an array object will return its length,you can use **'#'** 
    operator to get the length of an array object also.'#' operator also
-   works for any object with **length()** or **size()** method decalred.
-      
+   works for any object with **length()** or **size()** method declared.
       
    The lua method **'tostring'** works for any java object,and toString method
    will be invoked.
@@ -396,7 +395,7 @@ Module app is a lua editor for running test in android.
    The lua method **'pairs'** works for any java object work **Collection** or **Map**
    or **SparseArray** or **Array**, or you can add custom iterator.
    
-   You can index any java object with **set/put get/at** methods.When you index or add an 
+   You can index any java object with **set/put**,**get/at** methods.When you index or add an 
    index these two method will be invoked,or you can add custom indexer.
    
    ```lua
@@ -490,7 +489,7 @@ Module app is a lua editor for running test in android.
    
    
    ```lua
-     print(print(java.type == Type)--true
+     print(java.type == Type)--true
      print(java.import == import)--true
      print(java.new == new)--true
    ```
@@ -534,7 +533,6 @@ Module app is a lua editor for running test in android.
 ## More     
    For more information,see java doc in **doc** directory
      
-      
 ## Email: 
  <qtiuto@gmail.com>     
 
