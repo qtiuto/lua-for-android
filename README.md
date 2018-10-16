@@ -399,13 +399,13 @@ Module app is a lua editor for running test in android.
    You can index any java object with **set/put get/at** methods.When you index or add an 
    index these two method will be invoked,or you can add custom indexer.
    
-     ```lua
+   ```lua
       using "java.util"
       local arr=HashMap({a=5,b=6})
       arr.c='kkk'
       arr[2]=8
       print(#arr,arr[])
-      ```
+   ```
      
 ## Type Specification
    You can add a type before the arg in method call,new(),newArray
@@ -442,9 +442,9 @@ Module app is a lua editor for running test in android.
    table converters,the type is considered first,or if the value have the
    below layout 
    
-    ```lua
+   ```lua
       {methodName=function() end...}
-     ```
+   ```
    and the type is interface,
    then it's considered as an implementation for the interface.
    
@@ -489,11 +489,11 @@ Module app is a lua editor for running test in android.
    e.g.
    
    
-    ```lua
+   ```lua
      print(print(java.type == Type)--true
      print(java.import == import)--true
      print(java.new == new)--true
-     ```
+   ```
       
 ## ScriptContext Api
      
