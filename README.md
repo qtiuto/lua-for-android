@@ -207,7 +207,7 @@ Module app is a lua editor for running test in android.
       
   * **charValue**:  
   
-      Convert one-character string to a an integer  by its value,e.g.
+      Convert one-character string to a an integer by its value,e.g.
       '\n'-> 10
       
       Usage:`charValue(on-character string)`
@@ -221,7 +221,7 @@ Module app is a lua editor for running test in android.
        --or 
        try{
               function () end,--body
-              catch=function (e) end --catch all exception,alternative
+              catch=function (e) end --catch all exceptions,alternative
               or --alternative
               { [exception type 1]=function (e) end,
                 [exception type 2]=function (e) end,
@@ -270,7 +270,7 @@ Module app is a lua editor for running test in android.
       ```lua
          throw(Type('RuntimeException')("haha"))
      ```
-      Notice: the exception must be java object of type or sub-type of
+      Notice: the exception must be a java object of type or sub-type of 
       java.lang.Throwable
       
   * **proxy**:  
