@@ -12,8 +12,12 @@
 class JavaType;
 
 struct Import {
-    typedef Map<String, JavaType *> TypeCache;
-    Vector<String> packages;
+    struct TypeInfo{
+        JavaType* type;
+        const char* pack;
+    };
+    typedef Map<String, TypeInfo> TypeCache;
+    std::unordered_set<String> packages;
     Vector<jobject> externalLoaders;
     TypeCache stubbed;
 

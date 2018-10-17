@@ -7,6 +7,7 @@ import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
 import dalvik.system.BaseDexClassLoader;
 import dalvik.system.DexFile;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -794,6 +795,7 @@ public class ScriptContext implements GCTracker {
         sConverters.put(Map.class, mapConverter);
         sConverters.put(LinkedHashMap.class, mapConverter);
         sConverters.put(JSONObject.class, JSONObject::new);
+        sConverters.put(JSONArray.class, table -> new JSONArray(table.values()));
 
         TableConverter<ConcurrentHashMap<?, ?>> mapConverter3 = ConcurrentHashMap::new;
         sConverters.put(ConcurrentHashMap.class, mapConverter3);

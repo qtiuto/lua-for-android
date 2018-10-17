@@ -18,7 +18,7 @@ Module app is a lua editor for running test in android.
 
   Around 2000000 method call(Math.abs) per second on my Oneplus 5 device
   Note that if you run it in debug mode,CheckJni mode is enabled by the
-  vm,and it will take away more than half of the efficency.
+  vm,and it will take away more than half of the efficiency.
   
 ## Documentation
      
@@ -87,7 +87,10 @@ Module app is a lua editor for running test in android.
       
       Internally,it use `dalvik.system.DexFile#entries` to get all classes.
       
-      For **non-ascii**   characters or '$' or '-' in class name, see **import**
+      For **non-ascii** characters or '$' or '-' in class name, see **import**
+      
+      If a previously imported class has the same name with the a class under the package,
+      then the class won't be imported, but the previous class will be set to the globle table.
       
       If you add a external class loader, then any class inside it is available for **type** or **import**.
 

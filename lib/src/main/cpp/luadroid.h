@@ -80,6 +80,8 @@ struct ThreadContext{
 private:
     Import* import;
     jthrowable pendingJavaError;
+    inline JClass getTypeNoCheck(const String &className) const;
+    inline JavaType* ensureShortArrayType(const char *typeName) ;
 public:
 
     void setPendingException( const String &msg);

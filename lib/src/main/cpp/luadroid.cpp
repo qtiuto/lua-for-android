@@ -1507,24 +1507,38 @@ static bool qualifyJavaName(String& name){
 int javaUsing(lua_State*L){
     ThreadContext *context = getContext(L);
     TJNIEnv *env = context->env;
-    if(lua_isstring(L,1)){
+    Import *import = context->getImport();
+    if(lua_isstring(L, 1)){
         const char* pack=lua_tostring(L,1);
         static jmethodID importAll= env->GetMethodID(contextClass, "importAll", "(Ljava/lang/String;)[Ljava/lang/String;");
         JString jpack= env->NewStringUTF(pack);
         JObjectArray classes(env->CallObjectMethod(context->scriptContext->javaRef, importAll, jpack.get()));
         HOLD_JAVA_EXCEPTION(context,{ return 0;});
         int length=env->GetArrayLength(classes);
-        int packLen=env->GetStringLength(jpack);
+        String importPack=pack;
+        if(pack[0])importPack+='.';
+        int packLen=(int)importPack.size();
+        if(length!=0){
+            pack= import->packages.insert(importPack).first->data();
+        }
         for (; length!=0; ) {
             JString cl(env->GetObjectArrayElement(classes,--length));
-            String name(cl.str()+(packLen==0?0:packLen+1));
+            String name(cl.str()+packLen);
             JavaType* type;
-            if((type=context->getImport()->stubbed[name])== nullptr){
+            auto &&iter = import->stubbed.find(name);
+            if(iter==import->stubbed.end()){
                  auto &&clazz = context->findClass(cl.str());
                  if(clazz==nullptr)
                      continue;
                  type= context->scriptContext->ensureType(env, clazz);
-                 context->getImport()->stubbed[name]=type;
+                 import->stubbed[name]={type, pack};
+            } else {
+                type=iter->second.type;
+#if DEBUG_BUILD
+                if(strcmp(iter->second.pack,pack)!=0){
+                    printf("name %s overloaded for new %s and old %s\n",name.data(),pack,iter->second.pack);
+                }
+#endif
             }
             if(!qualifyJavaName(name))continue;
             lua_getglobal(L,name.data());
@@ -1543,7 +1557,7 @@ int javaUsing(lua_State*L){
         if(env->IsInstanceOf(loader->object,loaderClass)){
             static jmethodID  loadClassLoader=env->GetMethodID(contextClass,"loadClassLoader","(Ljava/lang/ClassLoader;)V");
             env->CallVoidMethod(context->scriptContext->javaRef,loadClassLoader,loader->object);
-            context->getImport()->externalLoaders.push_back(env->NewGlobalRef(loader->object));
+            import->externalLoaders.push_back(env->NewGlobalRef(loader->object));
         }
     }
     return 0;
@@ -1554,34 +1568,39 @@ int javaImport(lua_State *L) {
     SetErrorJMP();
     auto env=context->env;
     if (!luaL_isstring(L, -1)) luaL_error(L, "Should pass a string for import");
-    String s(lua_tostring(L, -1));
+    auto&& s=lua_tostring(L, -1);
     Import *import = context->getImport();
     if(s[0]=='[') TopErrorHandle("Don't import array type!");
-    if (strcmp(&s[s.length() - 2], ".*") == 0) {
-        s = s.substr(0, s.length() - 1);
-        const auto &end = import->packages.end();
-        auto iter = std::find(import->packages.begin(), end, s);
-        if (iter != end) import->packages.push_back(std::move(s));
+    const char* separate = strrchr(s,'.');
+    String pack;
+    if (separate!= nullptr) {
+        auto len = separate - s + 1;
+        pack.resize(len);
+        memcpy(&pack[0],s,len);
+    }
+    size_t len=strlen(s);
+    if (s[len-1]=='*'&&separate==s+len-2) {//ends with .*
+        import->packages.emplace(std::move(pack));
     } else {
-        size_t start = s.rfind('.');
-        String name;
-        if (start != String::npos) {
-            name = s.substr(start + 1);
-        } else name = s;
-        JClass c(context->findClass(s));
-       if(c== nullptr){  TopErrorHandle(" Type:%s not found", s.c_str()); }
-        const auto &iter = import->stubbed.find(name);
-        if (iter != import->stubbed.end() && !env->IsSameObject(c, (*iter).second->getType())) {
-            JString prevName(
-                    (JString) env->CallObjectMethod((*iter).second->getType(), classGetName));
-            if (strncmp(prevName, "java.lang.", 10) != 0) {
+        String name=separate?separate+1:s;
+        auto &&iter = import->stubbed.find(name);
+        if (iter != import->stubbed.end()) {
+            const char *prevName = iter->second.pack;
+            if (strcmp(prevName, pack.data()) == 0&&strcmp(prevName, "java.lang.") != 0) {
                 TopErrorHandle("Only single import is allowed for name: %s"
-                                       ",with previous class: %s", name.c_str(), prevName.str());
+                                       ",with previous class: %s", name.c_str(), prevName);
             }
+            pushJavaType(L,iter->second.type);
+            goto RET;
         }
-        auto type = context->scriptContext->ensureType(env, c);
-        import->stubbed[name]=type;
-        pushJavaType(L,type);
+        {
+            JClass c(context->findClass(s));
+            if(c== nullptr){  TopErrorHandle(" Type:%s not found", s); }
+            auto type = context->scriptContext->ensureType(env, c);
+            import->stubbed[name]={type,import->packages.find(pack)->data()};
+            pushJavaType(L,type);
+        }
+        RET:
         if(qualifyJavaName(name)){
             lua_pushvalue(L, -1);
             lua_setglobal(L, name.data());

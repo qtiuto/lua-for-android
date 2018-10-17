@@ -230,8 +230,27 @@ JavaType *ScriptContext::getVoidClass(TJNIEnv *env) {
     return ensureType(env, (JClass) env->GetStaticObjectField(Void, mid));
 
 }
-JavaType* ensureShortArrayType(ThreadContext* info,const char *typeName){
-    TJNIEnv* env=info->env;
+
+inline JClass ThreadContext::getTypeNoCheck(const String &className) const {
+    JClass type = env->FindClass(className.data());
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if(import->externalLoaders.size() > 0){
+            static jmethodID loadClass= env->GetMethodID(loaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+            JString jclassName= env->NewStringUTF(className.data());
+            for(auto loader:import->externalLoaders){
+                type= env->CallObjectMethod(loader, loadClass, jclassName.get());
+                if(env->ExceptionCheck()){
+                    env->ExceptionClear();
+                } else break;
+            }
+        }
+
+    }
+    return type;
+}
+
+inline JavaType* ThreadContext::ensureShortArrayType(const char *typeName){
     size_t nameLen=strchr(typeName,'[')-typeName;
     String trueType(typeName,nameLen);
     if(trueType=="int") trueType="I";
@@ -243,56 +262,33 @@ JavaType* ensureShortArrayType(ThreadContext* info,const char *typeName){
     else if(trueType=="double") trueType="D";
     else if(trueType=="short") trueType="S";
     else{
-        const Import *import =info-> getImport();
         for (auto &&pack:import->packages) {
             String full(pack + trueType);
-            changeClassName(full);
-            env->FindClass(&full[0]);
-            if (env->ExceptionCheck()) {
-                env->ExceptionClear();
-                continue;
+            if(findClass(full)!= nullptr){
+                trueType='L'+full+';';
+                break;
             }
-            trueType='L'+full+';';
-            break;
         }
     }
     size_t arrDepth=(strlen(typeName)-nameLen)>>1;
-    char* legalName=new char[trueType.size()+arrDepth+1];
-    memset(legalName,'[',arrDepth);
-    memcpy(legalName+arrDepth,trueType.data(),trueType.length()+1);
-    JClass type = env->FindClass(legalName);
-    delete [] legalName;
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
+    String legalName(trueType.size()+arrDepth,'[');
+    memcpy(&legalName[arrDepth],trueType.data(),trueType.length()+1);
+    JClass type = getTypeNoCheck(legalName);
+    if (type== nullptr) {
         return nullptr;
     }
-    JavaType *ret = info->scriptContext->ensureType(env, type);
-    info->getImport()->stubbed.emplace(typeName,ret);
+    JavaType *ret = scriptContext->ensureType(env, type);
+    getImport()->stubbed[typeName]={ret, nullptr};
     return ret;
 }
+
 
 
 JClass ThreadContext::findClass(String& className){
     if(!changeClassName(className))
         return JClass();
-    JClass type = env->FindClass(className.data());
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        if(import->externalLoaders.size()>0){
-            static jmethodID loadClass=env->GetMethodID(loaderClass,"loadClass","(Ljava/lang/String;)Ljava/lang/Class;");
-            JString jclassName=env->NewStringUTF(className.data());
-            for(auto loader:import->externalLoaders){
-                type=env->CallObjectMethod(loader,loadClass,jclassName.get());
-                if(env->ExceptionCheck()){
-                    env->ExceptionClear();
-                } else break;
-            }
-        }
-
-    }
-    return type;
+    return getTypeNoCheck(className);
 }
-
 JavaType *ThreadContext::ensureType(const char *typeName) {
 #define MatchPrimitive(type)\
     ({if(strcmp(typeName,#type)==0){\
@@ -313,17 +309,19 @@ JavaType *ThreadContext::ensureType(const char *typeName) {
     JClass type;
     if (strchr(typeName, '.') == nullptr&&typeName[0]!='[') {
         if (strchr(typeName, '/') != nullptr) return nullptr;
-        const Import *import = getImport();
+        Import *import = getImport();
         auto&& iter = import->stubbed.find(FakeString(typeName));
-        if (iter != import->stubbed.end()) return iter->second;
+        if (iter != import->stubbed.end()) return iter->second.type;
         if(typeName[strlen(typeName)-1]==']'){
-            return ensureShortArrayType(this,typeName);
+            return ensureShortArrayType(typeName);
         }
         for (auto &&pack:import->packages) {
             String full(pack + typeName);
             type = findClass(full);
             if(type== nullptr) continue;
-            return scriptContext->ensureType(env, type);
+            JavaType* ret= scriptContext->ensureType(env, type);
+            import->stubbed[typeName]={ret,pack.data()};
+            return ret;
         }
     }
     String qul = typeName;
