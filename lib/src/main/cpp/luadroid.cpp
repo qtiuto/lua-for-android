@@ -1586,7 +1586,7 @@ int javaImport(lua_State *L) {
         auto &&iter = import->stubbed.find(name);
         if (iter != import->stubbed.end()) {
             const char *prevName = iter->second.pack;
-            if (strcmp(prevName, pack.data()) == 0&&strcmp(prevName, "java.lang.") != 0) {
+            if (strcmp(prevName, pack.data()) != 0&&strcmp(prevName, "java.lang.") != 0) {
                 TopErrorHandle("Only single import is allowed for name: %s"
                                        ",with previous class: %s", name.c_str(), prevName);
             }
@@ -1597,7 +1597,13 @@ int javaImport(lua_State *L) {
             JClass c(context->findClass(s));
             if(c== nullptr){  TopErrorHandle(" Type:%s not found", s); }
             auto type = context->scriptContext->ensureType(env, c);
-            import->stubbed[name]={type,import->packages.find(pack)->data()};
+            Import::TypeInfo info={type};
+            auto&& existedPack=import->packages.find(pack);
+            if(existedPack==import->packages.end()){
+                info.cachePack=std::move(pack);
+                info.pack=info.cachePack.data();
+            } else info.pack=existedPack->data();
+            import->stubbed[name]=std::move(info);
             pushJavaType(L,type);
         }
         RET:

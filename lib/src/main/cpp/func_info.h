@@ -15,6 +15,7 @@ struct Import {
     struct TypeInfo{
         JavaType* type;
         const char* pack;
+        String cachePack;
     };
     typedef Map<String, TypeInfo> TypeCache;
     std::unordered_set<String> packages;
