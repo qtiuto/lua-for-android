@@ -272,7 +272,7 @@ JavaType* ensureShortArrayType(ThreadContext* info,const char *typeName){
 }
 
 
-JClass ThreadContext::findClass(String className){
+JClass ThreadContext::findClass(String& className){
     if(!changeClassName(className))
         return JClass();
     JClass type = env->FindClass(className.data());

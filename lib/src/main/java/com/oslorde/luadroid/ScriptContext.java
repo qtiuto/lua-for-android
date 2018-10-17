@@ -58,7 +58,7 @@ public class ScriptContext implements GCTracker {
     private WeakReference<GCListener> gcListener;
     //Too many memory usages.
     private Set<String> dexFiles;
-    private Map<String,List<String>> packages;
+    private Map<String,Object> packages;
 
     public ScriptContext() {
         this(true, false);
@@ -690,11 +690,16 @@ public class ScriptContext implements GCTracker {
     private String[] importAll(String pack) throws Exception {
         synchronized (importLock){
             initLoader();
-            List<String> nameList = packages.get(pack);
-            String[] empty = new String[0];
+            Object names = packages.get(pack);
+            if(names instanceof String[])
+                return (String[]) names;
+            List<String> nameList= (List<String>) names;
+            String[] ret = new String[0];
             if(nameList==null)
-                return empty;
-            return nameList.toArray(empty);
+                return ret;
+            ret= nameList.toArray(ret);
+            packages.put(pack,ret);
+            return ret;
         }
     }
 
@@ -752,12 +757,22 @@ public class ScriptContext implements GCTracker {
             String cl=entries.nextElement();
             cl=cl.replace('/','.');
             String pack=getPackage(cl);
-            List<String> names=packages.get(pack);
+            Object names=packages.get(pack);
+            List<String> nameList;
             if(names==null){
-                names=new ArrayList<>();
-                names.add(cl);
-                packages.put(pack,names);
-            }else names.add(cl);
+                nameList=new ArrayList<>();
+                nameList.add(cl);
+                packages.put(pack,nameList);
+            }else if(names instanceof String[]){
+                nameList=new ArrayList<>(Arrays.asList((String[]) names));
+                nameList.add(cl);
+                packages.put(pack,nameList);
+            }
+            else{
+                nameList= (List<String>) names;
+                nameList.add(cl);
+            }
+
         }
         dexFiles.add(dexFile.getName());
     }
@@ -837,61 +852,7 @@ public class ScriptContext implements GCTracker {
             Class<?> componentType = cls.getComponentType();
             if (componentType != null) {
                 if (componentType.isPrimitive()) {
-                    if (componentType == int.class) {
-                        sConverters.put(cls, table -> {
-                            int[] array = new int[table.size()];
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                array[i++] = ((Long) v).intValue();
-                            }
-                            return array;
-                        });
-                    } else if (componentType == byte.class) {
-                        sConverters.put(cls, table -> {
-                            byte[] array = new byte[table.size()];
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                array[i++] = ((Long) v).byteValue();
-                            }
-                            return array;
-                        });
-                    } else if (componentType == long.class) {
-                        sConverters.put(cls, table -> {
-                            long[] array = new long[table.size()];
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                array[i++] = (Long) v;
-                            }
-                            return array;
-                        });
-                    } else if (componentType == short.class) {
-                        sConverters.put(cls, table -> {
-                            short[] array = new short[table.size()];
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                array[i++] = ((Long) v).shortValue();
-                            }
-                            return array;
-                        });
-                    } else if (componentType == float.class) {
-                        sConverters.put(cls, table -> {
-                            float[] array = new float[table.size()];
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                array[i++] = ((Double) v).floatValue();
-                            }
-                            return array;
-                        });
-                    } else if (componentType == double.class) {
-                        sConverters.put(cls, table -> {
-                            double[] array = new double[table.size()];
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                array[i++] = (Double) v;
-                            }
-                            return array;
-                        });
-                    } else if (componentType == char.class) {
+                    if (componentType == char.class) {
                         sConverters.put(cls, table -> {
                             char[] array = new char[table.size()];
                             int i = 0;
@@ -900,7 +861,18 @@ public class ScriptContext implements GCTracker {
                             }
                             return array;
                         });
-                    } else return false;
+                    } else {
+                        int classType=getClassType(nativePtr,componentType);
+                        sConverters.put(cls, table -> {
+                            Object array = Array.newInstance(componentType,table.size());
+                            int i = 0;
+                            for (Object v : table.values()) {
+                                Array.set(array,i++,fixValue(v,classType,componentType,componentType,false));
+                            }
+                            return array;
+                        });
+
+                    }
                 } else {
                     sConverters.put(cls, table -> table.values().toArray((Object[])
                             Array.newInstance(componentType, table.size())));

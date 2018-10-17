@@ -7,8 +7,6 @@ Configure Android.mk by setting `LUA_LIB :=(lua or luajit)`
 to choose the proper version.
      
 Currently, lua 5.3.5 is in **lua** dir and luajit 2.1.0 beta-3 is in **luajit** dir.
-To support languages other than English(cause java support them),I alter the llex.c 
-for lua 5.3.5. Thus, all non-ascii characters will be supported(utf-8 only)
 
 Load the lib by LibLoader.java in module app or add `System.loadLibrary("luadroid.so")`
 to your code.
@@ -47,8 +45,10 @@ Module app is a lua editor for running test in android.
      ```
     If you import a Type then the returned value is the type and a
     global value named the short name is set.If the short name contains
-    illegal characters like '$' or '-' which are allowed by java class name,
-    these characters will be changed to '_'.
+    the character **'$'**  which is used by inner class name,
+    the character will be changed to **'_'**.If the short name contains **'-'** or
+    **non-ascii** characters, the global value won't be set, but you can still
+    use the return value to get it;
     For example，
      ```lua
         local p=import "android.os.Process"
@@ -66,6 +66,7 @@ Module app is a lua editor for running test in android.
       
   * **using**
       Import all of the classes under the specified package, or add a external class loader.
+      See **import** for the import way.
       
       Usage:  `using  'java.lang'`or using(externalClassLoader)
       
@@ -86,7 +87,7 @@ Module app is a lua editor for running test in android.
       
       Internally,it use `dalvik.system.DexFile#entries` to get all classes.
       
-      For illegal characters in class name, see **import**
+      For **non-ascii**   characters or '$' or '-' in class name, see **import**
       
       If you add a external class loader, then any class inside it is available for **type** or **import**.
 

@@ -1489,13 +1489,19 @@ LocalFunctionInfo *saveLocalFunction(lua_State *L, int i) {
     lua_settable(L, LUA_REGISTRYINDEX);
     return info;
 }
-static void qualifyJavaName(String& name){
-    for(auto i=name.length();i!=0;){
-        auto c=name[--i];
-        if(c=='$'||c=='-'){
-            name[i]='_';
+
+static bool qualifyJavaName(String& name){
+    auto i=name.length();
+    char* s=&name[0];
+    for(;i!=0;){
+        auto c=s[--i];
+        if(c=='$'){
+            s[i]='_';
+        }else if(c=='-'||int8_t (c)<0){
+            return false;
         }
     }
+    return true;
 }
 
 int javaUsing(lua_State*L){
@@ -1510,17 +1516,25 @@ int javaUsing(lua_State*L){
         int length=env->GetArrayLength(classes);
         int packLen=env->GetStringLength(jpack);
         for (; length!=0; ) {
-            String cl((JString)env->GetObjectArrayElement(classes,--length));
-            auto &&clazz = context->findClass(cl);
-            if(clazz==nullptr)
-                continue;
-            auto type = context->scriptContext->ensureType(env, clazz);
-            String name(cl.data()+(packLen==0?0:packLen+1));
-            context->getImport()->stubbed[name]=type;
-            pushJavaType(L,type);
-            qualifyJavaName(name);
-            lua_setglobal(L,name.data());
-        }    
+            JString cl(env->GetObjectArrayElement(classes,--length));
+            String name(cl.str()+(packLen==0?0:packLen+1));
+            JavaType* type;
+            if((type=context->getImport()->stubbed[name])== nullptr){
+                 auto &&clazz = context->findClass(cl.str());
+                 if(clazz==nullptr)
+                     continue;
+                 type= context->scriptContext->ensureType(env, clazz);
+                 context->getImport()->stubbed[name]=type;
+            }
+            if(!qualifyJavaName(name))continue;
+            lua_getglobal(L,name.data());
+            JavaType* existed= (JavaType *)lua_touserdata(L, -1);
+            lua_pop(L,1);
+            if(existed!=type){
+                pushJavaType(L,type);
+                lua_setglobal(L,name.data());
+            }
+        }
         
     } else {
         JavaObject * loader=checkJavaObject(L,1);
@@ -1568,9 +1582,10 @@ int javaImport(lua_State *L) {
         auto type = context->scriptContext->ensureType(env, c);
         import->stubbed[name]=type;
         pushJavaType(L,type);
-        lua_pushvalue(L, -1);
-        qualifyJavaName(name);
-        lua_setglobal(L, name.data());
+        if(qualifyJavaName(name)){
+            lua_pushvalue(L, -1);
+            lua_setglobal(L, name.data());
+        }
         return 1;
     }
     return 0;

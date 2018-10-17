@@ -141,7 +141,12 @@ public:
         return pendingJavaError;
     }
 
-    JClass findClass(String str);
+
+    JClass findClass(String&& str){
+        return findClass(str);
+    }
+
+    JClass findClass(String& str);
 
     JavaType *ensureType(const char *typeName);
     jobject proxy(JavaType *main, Vector<JavaType *> *interfaces,
