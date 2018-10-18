@@ -194,7 +194,8 @@ Module app is a lua editor for running test in android.
       * function ->com.oslorde.luadroid.LuaFunction
       * java object is unchanged
       
-      Usage:`object(lua object...)
+      Usage:`object(lua object...)`
+      
       e.g.
       ```lua
       using 'java.lang'
@@ -280,6 +281,7 @@ Module app is a lua editor for running test in android.
   * **proxy**:  
   
       To implement interfaces ,alternatively plus with extending a class
+      
       Usage:
       ```lua
       proxy([class to extend or object of class to extend],
@@ -297,10 +299,10 @@ Module app is a lua editor for running test in android.
        
        --super and interfaces can't be nil at the same time
        
-       methods=function (...) end,--function to handle all method call
+       methods=function (...) end,--function to handle the only method of a functional interface
        or {
-        methodName=function(...) end,--function to handle all method
-        --with the same name
+        methodName=function(...) end,--function to handle all method with the same name
+        
         or
         {
          [param types...,function (...) end]...--handle specific method
