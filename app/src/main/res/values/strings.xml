@@ -8,4 +8,8 @@
     <string name="redo">Redo</string>
     <string name="undo">Undo</string>
     <string name="not_found">Not Found</string>
+    <string name="save">Save</string>
+    <string name="open">Open</string>
+    <string name="confirm">Confirm</string>
+    <string name="cancel">Cancel</string>
 </resources>

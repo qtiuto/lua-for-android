@@ -302,7 +302,6 @@ Module app is a lua editor for running test in android.
        methods=function (...) end,--function to handle the only method of a functional interface
        or {
         methodName=function(...) end,--function to handle all method with the same name
-        
         or
         {
          [param types...,function (...) end]...--handle specific method

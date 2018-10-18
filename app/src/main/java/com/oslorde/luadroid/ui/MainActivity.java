@@ -1,12 +1,14 @@
 package com.oslorde.luadroid.ui;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
+import android.os.Environment;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -19,7 +21,6 @@ import com.oslorde.luadroid.R;
 import com.oslorde.luadroid.ScriptContext;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 
@@ -28,6 +29,8 @@ import java.io.OutputStream;
  */
 
 public class MainActivity extends Activity {
+
+    public static final String LAST = "last";
 
     static {
         System.loadLibrary("luadroid");
@@ -39,46 +42,54 @@ public class MainActivity extends Activity {
     String[] ps = {"(", ")", "[", "]", "{", "}", "\"", "=", ":", ".", ",", "_", "+", "-", "*", "/", "\\", "%", "#", "^", "$", "?", "<", ">", "~", ";", "'"};
     CharSequence result;
     private PopupWindow popupWindow;
+    private File file;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.main);
-        editor = findViewById(R.id.editor);
-        psBar = findViewById(R.id.ps_bar);
-        for (String text : ps) {
-            StateListDrawable sd = new StateListDrawable();
-            sd.addState(new int[]{android.R.attr.state_pressed}, new ColorDrawable(0x88000088));
-            sd.addState(new int[]{0}, new ColorDrawable(0x00ffffff));
-            TextView btn = new TextView(this);
-            btn.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            btn.setTextColor(Color.WHITE);
-            btn.setTextSize(20);
-            int pd = (int) (btn.getTextSize() / 2);
-            btn.setPadding(pd, pd / 2, pd, pd / 4);
-            btn.setText(text);
-            btn.setBackground(sd);
-            btn.setOnClickListener(v -> editor.paste(text));
-            psBar.addView(btn);
+        if(editor==null){
+            setContentView(R.layout.main);
+            editor = findViewById(R.id.editor);
+            psBar = findViewById(R.id.ps_bar);
+            for (String text : ps) {
+                StateListDrawable sd = new StateListDrawable();
+                sd.addState(new int[]{android.R.attr.state_pressed}, new ColorDrawable(0x88000088));
+                sd.addState(new int[]{0}, new ColorDrawable(0x00ffffff));
+                TextView btn = new TextView(this);
+                btn.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                btn.setTextColor(Color.WHITE);
+                btn.setTextSize(20);
+                int pd = 20;
+                btn.setPadding(pd, pd / 2, pd, pd / 4);
+                btn.setText(text);
+                btn.setBackground(sd);
+                btn.setOnClickListener(v -> {
+                    editor.paste(text);
+                });
+                psBar.addView(btn);
+            }
+            context.addToLua("context", this);
         }
-        context.addToLua("context", this);
-        new Thread(() -> {
-            File file = new File("/sdcard/test.lua");
-            if (file.exists()) {
-                try {
-                    FileInputStream in = new FileInputStream(file);
-                    byte[] bytes = new byte[in.available()];
-                    in.read(bytes);
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        String text = new String(bytes);
-                        editor.setText(text);
-                    });
-                    in.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
+
+        Intent intent=getIntent();
+        Uri uri=intent.getData();
+        if(uri!=null){
+            if("file".equals(uri.getScheme())){
+                String path = uri.getPath();
+                if(path!=null){
+                    file=new File(path);
                 }
             }
-        }).start();
+        }else if(file==null){
+            file=new File(getPreferences(0).getString(LAST,
+                    new File(Environment.getExternalStorageDirectory().getPath(),"test.lua").getPath()));
+        }
+        loadFile();
+    }
+
+    private void loadFile() {
+        editor.open(file.getAbsolutePath());
+        getPreferences(0).edit().putString(LAST,file.getPath()).apply();
     }
 
     @Override
@@ -162,6 +173,24 @@ public class MainActivity extends Activity {
             case R.id.view_result:
                 showResult();
                 break;
+            case R.id.save:
+                save();
+                break;
+            case R.id.open:{
+                save();
+                final FilePicker filePicker =new FilePicker(this, file,
+                        pathname -> pathname.isDirectory() || pathname.getName().matches(".+(.lua)$"));
+                filePicker.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 800));
+                new AlertDialog.Builder(this,android.R.style.Theme_DeviceDefault_Light_Dialog).setView(filePicker).setNegativeButton(R.string.cancel,null).
+                                setPositiveButton(R.string.confirm, (dialog2, which) -> {
+                                    File f =filePicker.getSelectedFile();
+                                    if(f!=null){
+                                        file=f;
+                                        loadFile();
+                                    }
+                                }).show();
+            }
+
 
         }
         return super.onOptionsItemSelected(item);
@@ -201,7 +230,7 @@ public class MainActivity extends Activity {
 
     private void save() {
         try {
-            FileOutputStream out = new FileOutputStream("/sdcard/test.lua");
+            FileOutputStream out = new FileOutputStream(file);
             out.write(editor.getText().toString().getBytes());
         } catch (Exception e) {
             e.printStackTrace();

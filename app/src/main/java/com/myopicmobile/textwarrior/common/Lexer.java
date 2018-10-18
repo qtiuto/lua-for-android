@@ -280,7 +280,7 @@ public class Lexer {
                         }
 
                         lastName = name;
-                    } else if (type == LuaTokenTypes.SHORTCOMMENT || type == LuaTokenTypes.LONGCOMMENT) {
+                    } else if (type == LuaTokenTypes.SHORTCOMMENT || type == LuaTokenTypes.LONGCOMMENT || type==LuaTokenTypes.LUADOC_COMMENT) {
                         //注释
                         if (lastType != type)
                             tokens.add(pair = new Pair(len, DOUBLE_SYMBOL_LINE));

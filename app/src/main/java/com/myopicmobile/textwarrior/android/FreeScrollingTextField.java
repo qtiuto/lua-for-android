@@ -465,13 +465,15 @@ public class FreeScrollingTextField extends View
                 _caretSpan.setFirst(_caretSpan.getFirst() + addCount);
                 int curr = _caretPosition;
                 for (; curr >= 0; curr--) {
-                    char c = _hDoc.charAt(curr - 1);
-                    if (!(Character.isLetterOrDigit(c) || c == '_' || c == '.')) {
+                    char c = _hDoc.charAt(curr-1);
+                    if (!(Character.isLetterOrDigit(c) || c == '_' || c == '.')||c>256) {
                         break;
                     }
                 }
-                if (_caretPosition - curr > 0)
-                    _autoCompletePanel.update(_hDoc.subSequence(curr, _caretPosition - curr));
+                if (_caretPosition - curr > 0) {
+                    String constraint = _hDoc.subSequence(curr, _caretPosition - curr).toString();
+                    _autoCompletePanel.update(constraint);
+                }
                 else
                     _autoCompletePanel.dismiss();
             }
@@ -2758,10 +2760,10 @@ public class FreeScrollingTextField extends View
             int originalRow = _caretRow;
             int originalOffset = _hDoc.getRowOffset(originalRow);
             _hDoc.insertBefore(text.toCharArray(), _caretPosition, System.nanoTime());
+            _caretPosition += text.length();
             _textLis.onAdd(text, _caretPosition, text.length());
             _hDoc.endBatchEdit();
 
-            _caretPosition += text.length();
             updateCaretRow();
 
             setEdited(true);

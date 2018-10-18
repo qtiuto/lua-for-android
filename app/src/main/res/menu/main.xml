@@ -1,31 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <item
-        android:id="@+id/run"
-        android:icon="@drawable/play"
-        android:showAsAction="always"
-        android:title="@string/run" />
-    <item
-        android:id="@+id/undo"
-        android:icon="@drawable/undo"
-        android:showAsAction="always"
-        android:title="@string/undo" />
-    <item
-        android:id="@+id/redo"
-        android:icon="@drawable/redo"
-        android:showAsAction="always"
-        android:title="@string/redo" />
-    <item
-        android:id="@+id/gotoLine"
-        android:showAsAction="ifRoom|collapseActionView"
-        android:title="@string/gotoLine" />
-    <item
-        android:id="@+id/search"
-        android:showAsAction="ifRoom|collapseActionView"
-        android:title="@string/search" />
-    <item
-        android:id="@+id/view_result"
-        android:showAsAction="ifRoom|collapseActionView"
-        android:title="@string/view_result" />
+
+    <item android:id="@+id/run"
+          android:icon="@drawable/play"
+          android:showAsAction="always"
+          android:title="@string/run"/>
+    <item android:id="@+id/undo"
+          android:icon="@drawable/undo"
+          android:showAsAction="always"
+          android:title="@string/undo"/>
+    <item android:id="@+id/redo"
+          android:icon="@drawable/redo"
+          android:showAsAction="always"
+          android:title="@string/redo"/>
+    <item android:id="@+id/gotoLine"
+          android:showAsAction="ifRoom|collapseActionView"
+          android:title="@string/gotoLine"/>
+    <item android:id="@+id/search"
+          android:showAsAction="ifRoom|collapseActionView"
+          android:title="@string/search"/>
+    <item android:id="@+id/view_result"
+          android:showAsAction="ifRoom|collapseActionView"
+          android:title="@string/view_result"/>
+
+    <item android:id="@+id/open"
+          android:showAsAction="ifRoom|collapseActionView"
+          android:title="@string/open"/>
+    <item android:id="@+id/save"
+          android:showAsAction="ifRoom|collapseActionView"
+          android:title="@string/save"/>
 </menu>
