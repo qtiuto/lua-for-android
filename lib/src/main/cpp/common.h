@@ -50,12 +50,12 @@ std::string formMessage(T2 &&... args) {
 
 template<typename _Tp>
 inline void forceRelease(_Tp &t) {
-    _Tp(std::move(t));
+    t.~_Tp();
 };
 
 template<typename _Tp, typename ...Args>
 inline void forceRelease(_Tp &t, Args &&... args) {
-    _Tp(std::move(t));
+    t.~_Tp();
     forceRelease(std::forward<Args>(args)...);
 }
 

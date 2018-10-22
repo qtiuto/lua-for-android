@@ -194,6 +194,29 @@ public:
         return boxed->typeID != BOX_SHORT;
     }
 
+    JavaType* toBoxedType(){
+        switch (typeID){
+            case CHAR:
+                return context->CharacterClass;
+            case INT:
+                return context->IntegerClass;
+            case LONG:
+                return context->LongClass;
+            case BOOLEAN:
+                return context->BooleanClass;
+            case FLOAT:
+                return context->FloatClass;
+            case DOUBLE:
+                return context->DoubleClass;
+            case BYTE:
+                return context->ByteClass;
+            case SHORT:
+                return context->ShortClass;
+            default:
+                return nullptr;
+        }
+    }
+
     jmethodID getBoxMethodForBoxType(TJNIEnv *env){
         if(!_isBox) return nullptr;
         if(boxMethod)

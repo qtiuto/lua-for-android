@@ -166,17 +166,15 @@ public:
 
 };
 
-
-inline int tkill(int tid, int sig){
-    return tgkill(getpid(),tid,sig);
-}
 class ScriptContext {
     static jmethodID sMapPut;
     static thread_local ThreadContext threadContext;
     static jmethodID sWriteBytes;
+    static int (*sThreadTest)(intptr_t tid);
+    static intptr_t (*sThreadID)();
     friend class ThreadContext;
     typedef Map<jclass, JavaType *> TypeMap;
-    typedef Map<int, lua_State *> StateMap;
+    typedef Map<intptr_t , lua_State *> StateMap;
     typedef Map<String, CrossThreadLuaObject> CrossThreadMap;
     typedef Map<String, std::pair<String, jobject>> AddedMap;
     const bool importAll;
@@ -202,6 +200,8 @@ class ScriptContext {
     JavaType *const charClass;
     JavaType *const floatClass;
     JavaType *const doubleClass;
+    JavaType *const voidClass;
+public:
     JavaType *const ByteClass;
     JavaType *const ShortClass;
     JavaType *const IntegerClass;
@@ -210,8 +210,6 @@ class ScriptContext {
     JavaType *const CharacterClass;
     JavaType *const FloatClass;
     JavaType *const DoubleClass;
-    JavaType *const voidClass;
-public:
     Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
     jobject const javaRef;
     JavaType *const ObjectClass;
@@ -230,7 +228,7 @@ public:
     void clean() {
         ScopeLock sentry(lock);
         for (auto&& pair = stateMap.begin(); pair != stateMap.end();) {
-            int status = tkill(pair->first, 0);
+            int status = sThreadTest(pair->first);
             if (status == 0) {
                 ++pair;
                 continue;

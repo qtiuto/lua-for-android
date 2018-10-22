@@ -183,8 +183,7 @@ Module app is a lua editor for running test in android.
   
       Converts a lua object to java object,if no type provided, it works according to
       the following mapping,or it will works according to **Automatic Conversion** section
-      The type is passed in like a general java method call.Don't pass in a primitive type,
-      or nil will be return.
+      The type is passed in like a general java method call. Primitive type is treated as its box type.
       
       * number ->java.lang.Long or java.lang.Double,according to the value
       * string ->java.lang.String

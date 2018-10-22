@@ -3,12 +3,14 @@
 #include "jtype.h"
 #include "java_type.h"
 #include "utf8.h"
-#include <grp.h>
+#include <sys/system_properties.h>
 
 bool changeClassName(String &className) noexcept;
 thread_local ThreadContext ScriptContext::threadContext ;
-jmethodID ScriptContext::sMapPut = nullptr;
+jmethodID ScriptContext::sMapPut;
 jmethodID ScriptContext::sWriteBytes;
+int (*ScriptContext::sThreadTest)(intptr_t) ;
+intptr_t (*ScriptContext::sThreadID)() ;
 static jmethodID sProxy;
 TJNIEnv* _GCEnv;
 jmethodID charValue;
@@ -103,6 +105,8 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
         BOX_INIT(Short),BOX_INIT(Float), BOX_INIT(Double){
     JavaType* StringClass=ensureType(env,stringType);
     StringClass->_isString=true;
+    booleanClass->primitive=true;
+    charClass->primitive=true;
     byteClass->_isInteger = true;
     byteClass->primitive = true;
     shortClass->_isInteger = true;
@@ -147,6 +151,22 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
     DoubleClass->typeID=JavaType::BOX_DOUBLE;
     CharacterClass->typeID=JavaType::BOX_CHAR;
     BooleanClass->typeID=JavaType::BOX_BOOLEAN;
+}
+
+static intptr_t pThreadID(){
+    return pthread_self();
+}
+
+static int pThreadTest(intptr_t t){
+    return pthread_kill(t,0);
+}
+
+static intptr_t tThreadID(){
+    return gettid();
+}
+
+static int tThreadTest(intptr_t t){
+    return tgkill(getpid(),(int)t,0);
 }
 
 void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
@@ -197,11 +217,27 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
         objectHash = env->GetMethodID(cObject, "hashCode", "()I");
         objectToString = env->GetMethodID(cObject, "toString", "()Ljava/lang/String;");
     }
+
+    if(sThreadTest== nullptr){
+        int sdk;
+        {
+            char s[6];
+            __system_property_get("ro.build.version.sdk",s);
+            sdk=atoi(s);
+        }
+        if(sdk<26){
+            sThreadTest=pThreadTest;
+            sThreadID=pThreadID;
+        } else{
+            sThreadTest=tThreadTest;
+            sThreadID=tThreadID;
+        }
+    }
 }
 
 lua_State *ScriptContext::getLua() {
     ScopeLock sentry(lock);
-    int tid = gettid();
+    auto tid = sThreadID();
     const auto &iter = stateMap.find(tid);
     lua_State *state;
     if (iter == stateMap.end()) {
@@ -509,11 +545,11 @@ jobject ThreadContext::luaObjectToJObject(ValidLuaObject &luaObject) {
         }
         case T_BOOLEAN: {
             return env->CallStaticObjectMethod(scriptContext->BooleanClass->getType(), scriptContext->BooleanClass->
-                    getBoxMethodForBoxType(env), luaObject.integer).invalidate();
+                    getBoxMethodForBoxType(env), luaObject.isTrue).invalidate();
         }
         case T_FLOAT: {
             return env->CallStaticObjectMethod(scriptContext->DoubleClass->getType(), scriptContext->DoubleClass->
-                    getBoxMethodForBoxType(env), luaObject.integer).invalidate();
+                    getBoxMethodForBoxType(env), luaObject.number).invalidate();
         }
         case T_OBJECT: {
             jvalue v = luaObjectToJValue(luaObject,HashMapType());

@@ -1078,6 +1078,7 @@ public class ScriptContext implements GCTracker {
                 ProxyBuilder<?> builder = ProxyBuilder.forClass(main);
                 if (leftInterfaces != null) builder.implementing(leftInterfaces);
                 if (shared) builder.withSharedClassLoader();
+                builder.parentClassLoader(main.getClassLoader());
                 Class proxyClass = builder.onlyMethods(methodList.keySet().toArray(new Method[0])).buildProxyClass();
                 Object ret =superObject==null?constructChild(nativePtr, proxyClass, nativeInfo)
                         :ClassBuilder.cloneFromSuper(proxyClass,superObject);

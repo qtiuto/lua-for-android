@@ -24,9 +24,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 
-/**
- * Created by Karven on 2018/2/11.
- */
 
 public class MainActivity extends Activity {
 

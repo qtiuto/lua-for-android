@@ -1770,7 +1770,10 @@ int javaToJavaObject(lua_State *L) {
             if(likely(obj!=INVALID_OBJECT))
                 pushJavaObject(L,context,JObject(env,obj));
             continue;
-        } else if(!type->isPrimitive()){
+        } else {
+            if(type->isPrimitive()){
+                type=type->toBoxedType();
+            }
             jvalue v=context->luaObjectToJValue(luaObjects[i],type);
             if(likely(v.l!=INVALID_OBJECT)){
                 pushJavaObject(L,context,v.l);
