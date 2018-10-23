@@ -2,9 +2,9 @@
 #ifndef LUADROID_COMMON_H
 #define LUADROID_COMMON_H
 
-#include <sstream>
 #include <jni.h>
 #include <string>
+#include <time.h>
 #include <unordered_map>
 #include "lua.hpp"
 #include "jtype.h"
@@ -31,22 +31,6 @@ typedef std::string String;
 template<class _Key, typename _Value,
         class _Hash=std::hash <_Key>, class _Equal=std::equal_to <_Key>>
 using Map=std::unordered_map<_Key, _Value, _Hash, _Equal>;
-
-inline void __doNotCall(std::stringstream &sstream) {};
-
-template<typename T1, typename ...T2>
-inline void __doNotCall(std::stringstream &sstream, T1 &&arg, T2 &&...args) {
-    sstream << arg;
-    __doNotCall(sstream, std::forward<T2>(args)...);
-};
-//#pragma clang diagnostic pop
-
-template<typename... T2>
-std::string formMessage(T2 &&... args) {
-    std::stringstream sstream;
-    __doNotCall(sstream, std::forward<T2>(args)...);
-    return sstream.str();
-}
 
 template<typename _Tp>
 inline void forceRelease(_Tp &t) {
