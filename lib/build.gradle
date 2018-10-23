@@ -33,7 +33,7 @@ android {
                     cppFlags '-ffunction-sections' ,'-fdata-sections', '-fvisibility=hidden'
                 }
             }
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

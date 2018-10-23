@@ -7,7 +7,7 @@ import java.util.Map;
  * For converting a table to given type
  * @param <T> given type
  */
-interface TableConverter<T>  {
+public interface TableConverter<T>  {
     /**
      * @return the type you expect the the sub table in the key
      * of the the table to be,null default

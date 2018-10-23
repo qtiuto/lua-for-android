@@ -16,18 +16,7 @@
 
 package com.android.dx;
 
-import android.os.Build;
-import android.os.Environment;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Message;
-import android.text.TextUtils;
-
 import java.io.File;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Uses heuristics to guess the application's private data directory.
@@ -41,30 +30,30 @@ class AppDataDirGuesser {
      * earlier versions, the last nested array ('[' ... ']') is enclosing the string we are
      * interested in.
      */
-    static String processClassLoaderString(String input) {
+    /*static String processClassLoaderString(String input) {
         if (input.contains("DexPathList")) {
             return processClassLoaderString43OrLater(input);
         } else {
             return processClassLoaderString42OrEarlier(input);
         }
-    }
-
+    }*/
+/*
     private static String processClassLoaderString42OrEarlier(String input) {
         /* The toString output looks like this:
          * dalvik.system.PathClassLoader[dexPath=path/to/apk,libraryPath=path/to/libs]
          */
-        int index = input.lastIndexOf('[');
+        /*int index = input.lastIndexOf('[');
         input = (index == -1) ? input : input.substring(index + 1);
         index = input.indexOf(']');
         input = (index == -1) ? input : input.substring(0, index);
         return input;
-    }
+    }*/
 
-    private static String processClassLoaderString43OrLater(String input) {
+   // private static String processClassLoaderString43OrLater(String input) {
         /* The toString output looks like this:
          * dalvik.system.PathClassLoader[DexPathList[[zip file "/data/app/{NAME}", ...], nativeLibraryDirectories=[...]]]
          */
-        int start = input.indexOf("DexPathList") + "DexPathList".length();
+        /*int start = input.indexOf("DexPathList") + "DexPathList".length();
         if (input.length() > start + 4) {  // [[ + ]]
             String trimmed = input.substring(start);
             int end = trimmed.indexOf(']');
@@ -98,9 +87,9 @@ class AppDataDirGuesser {
         // This is technically a parsing failure. Return the original string, maybe a later
         // stage can still salvage this.
         return input;
-    }
+    }*/
 
-    static String[] splitPathList(String input) {
+    /*static String[] splitPathList(String input) {
         String trimmed = input;
         if (input.startsWith("dexPath=")) {
             int start = "dexPath=".length();
@@ -110,7 +99,7 @@ class AppDataDirGuesser {
         }
 
         return trimmed.split(":");
-    }
+    }*/
 
     public File guess() {
         /*try {
@@ -128,9 +117,9 @@ class AppDataDirGuesser {
         } catch (ClassNotFoundException ignored) {
         }*/
 
-        return   new File(System.getProperty("java.io.tmpdir", "."));
+        return new File(System.getProperty("java.io.tmpdir", "."));
     }
-
+/*
     private ClassLoader guessSuitableClassLoader() {
         return AppDataDirGuesser.class.getClassLoader();
     }
@@ -180,7 +169,7 @@ class AppDataDirGuesser {
             }
         }
         return results.toArray(new File[results.size()]);
-    }
+    }*/
 
     boolean fileOrDirExists(File file) {
         return file.exists();

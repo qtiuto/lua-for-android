@@ -19,3 +19,19 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+-keep class com.myopicmobile.textwarrior.**
+-keepattributes Signature
+-keep public interface com.oslorde.luadroid.*{
+   public <methods>;
+}
+
+-keep public !synthetic class com.oslorde.luadroid.*{
+   public !synthetic <methods>;
+}
+-keep public class com.oslorde.luadroid.ScriptContext{
+   !synthetic !static <methods>;
+   private static *** getSingleInterface(...);
+   private static *** weightObject(...);
+   private static *** findMembers(...);
+}
+-dontnote

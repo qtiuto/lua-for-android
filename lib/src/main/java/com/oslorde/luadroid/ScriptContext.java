@@ -188,12 +188,6 @@ public class ScriptContext implements GCTracker {
         return null;
     }
 
-    private static Class[] getParameterTypes(Object ob) {
-        if (ob instanceof Method) return ((Method) ob).getParameterTypes();
-        else if (ob instanceof Constructor) return ((Constructor) ob).getParameterTypes();
-        return null;
-    }
-
     private static int[] generateParamTypes(Class<?>[] paramTypes) {
         int len = paramTypes.length;
         int[] ret = new int[len];
