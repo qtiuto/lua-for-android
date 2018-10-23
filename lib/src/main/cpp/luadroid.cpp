@@ -2583,7 +2583,7 @@ static void registerNativeMethods(JNIEnv *env) {
     env->DeleteLocalRef(scriptClass);
 }
 
-jint JNI_OnLoad(JavaVM *vm, void *) {
+JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
     ::vm = vm;
     JNIEnv *env;
     if (vm->GetEnv((void **) &env, JNI_VERSION_1_4) != JNI_OK) {
@@ -2852,15 +2852,6 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
     lua_pcall(L, 0, 0, 0);
     context->restore(oldScriptContext,oldImport);
     return ret;
-}
-
-bool validJavaName(const char *s) noexcept {
-    if ((int8_t) *s >= 0 && !isalpha(*s) && *s != '$' && *s != '_') return false;//check for the
-    while (*++s != 0) {
-        if ((int8_t) *s < 0) continue;
-        if (!isalnum(*s) && *s != '$' && *s != '_') return false;
-    }
-    return true;
 }
 
 

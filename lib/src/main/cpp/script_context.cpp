@@ -4,6 +4,7 @@
 #include "java_type.h"
 #include "utf8.h"
 #include <sys/system_properties.h>
+#include <dlfcn.h>
 
 bool changeClassName(String &className) noexcept;
 thread_local ThreadContext ScriptContext::threadContext ;
@@ -17,6 +18,7 @@ jmethodID charValue;
 jmethodID booleanValue;
 jmethodID longValue;
 jmethodID doubleValue;
+static int (*_tgkill)(int,int,int);
 static struct {
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
@@ -166,7 +168,7 @@ static intptr_t tThreadID(){
 }
 
 static int tThreadTest(intptr_t t){
-    return tgkill(getpid(),(int)t,0);
+    return _tgkill(getpid(),(int)t,0);
 }
 
 void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
@@ -229,6 +231,8 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
             sThreadTest=pThreadTest;
             sThreadID=pThreadID;
         } else{
+            auto handle=dlopen("libc.so",RTLD_NOW);
+            _tgkill=decltype(_tgkill)(dlsym(handle,"tgkill"));
             sThreadTest=tThreadTest;
             sThreadID=tThreadID;
         }
@@ -381,8 +385,7 @@ void ThreadContext::setPendingException(const String &msg) {
     static jfieldID id = env->GetFieldID(throwableType, "detailMessage", "Ljava/lang/String;");
     JString oldMsg = (JString) env->GetObjectField(pendingJavaError, id);
     JString jmsg = env->NewStringUTF(
-            oldMsg.str() != nullptr && strlen(oldMsg) > 0 ? formMessage(oldMsg.str(), "\n\t",
-                                                                        msg).data() : msg.c_str());
+            oldMsg.str() != nullptr && strlen(oldMsg) > 0 ? (String(oldMsg.str())+ "\n\t"+msg).data() : msg.data());
     env->SetObjectField(pendingJavaError, id, jmsg.get());
 }
 
