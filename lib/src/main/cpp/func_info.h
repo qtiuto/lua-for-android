@@ -32,6 +32,12 @@ struct Import {
     }
 
     Import(const Import &other) : packages(other.packages), stubbed(other.stubbed) {
+        if(externalLoaders.size()>0){
+            AutoJNIEnv env;
+            for(auto iter=externalLoaders.begin();iter!=externalLoaders.end();++iter){
+                *iter=env->NewGlobalRef(*iter);
+            }
+        }
     }
 
     ~Import(){
