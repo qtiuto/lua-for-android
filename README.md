@@ -72,7 +72,8 @@ Module app is a lua editor for running test in android.
       **"android.widget.\*"**, and **"android.app.\*"** are imported,but only
       **"java.lang.\*"** is allowed to be overwritten.
       
-  * **using**
+  * **using**:
+  
       Import all of the classes under the specified package, or add a external class loader.
       See **import** for the import way.
       
@@ -104,7 +105,8 @@ Module app is a lua editor for running test in android.
       
       If you add a external class loader, then any class inside it is available for **type** or **import**.
 
-  * **new**:  
+  * **new**: 
+   
       Constructs a new instance.
       
       Usage: `new(type,args...)`
@@ -228,8 +230,10 @@ Module app is a lua editor for running test in android.
       
       Usage:`charValue(on-character string)`
       
-  * **try**:  
-      Starts java try,both lua error and java exception are caught
+  * **try**:
+    
+      Starts java try,both lua error and java exception are caught.
+      
       Usage:
       
       ```lua
@@ -300,13 +304,12 @@ Module app is a lua editor for running test in android.
       
       ```lua
       proxy([class to extend or object of class to extend],
-      [interfaces to implement]..., [method name,parameter types...,
-      handler function]..., [shared classloader],--for extension type only
-      [initial args for constructor])--for extension type only
+       [interfaces to implement]..., 
+       [method name,parameter types...,handler function]..., 
+       [shared classloader],--for extension type only
+       [initial args for constructor])--for extension type only
       ```
-      
       or 
-      
       ```lua
       proxy{
        --auto dectect,nilable
@@ -317,9 +320,9 @@ Module app is a lua editor for running test in android.
        --super and interfaces can't be nil at the same time
        
        methods=function (...) end,--function to handle the only method of a functional interface
-       or {
+       --or 
         methodName=function(...) end,--function to handle all method with the same name
-        or
+        --or
         {
          [param types...,function (...) end]...--handle specific method
         },
@@ -331,7 +334,7 @@ Module app is a lua editor for running test in android.
        --alternative for extension type only,constrctor args
        args={...}
       }
-      ```
+     ```
       
       e.g.
       
@@ -354,7 +357,7 @@ Module app is a lua editor for running test in android.
       }
       ```
       
-      ##### Note:
+    ##### Note:
       
        If you passed an object to extend,then the proxy object is 
        directly allocated and have all fields from the object to be
