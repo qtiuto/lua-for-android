@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.org/qtiuto/lua-for-android.svg?branch=master)](https://travis-ci.org/qtiuto/lua-for-android)
 [![Download](https://api.bintray.com/packages/karven/maven/luadroid/images/download.svg) ](https://bintray.com/karven/maven/luadroid/_latestVersion)
-
+<br>
 
 ## General
 
@@ -39,6 +39,7 @@ Module app is a lua editor for running test in android.
      
     If you import a package then you can call `Type('shortName')` to get
     a type.  For example，
+    
      ```lua
          import "android.os.*"
          local p=Type('Process')
@@ -47,6 +48,7 @@ Module app is a lua editor for running test in android.
          local pr=Type('android.os.Process')
          pr.myPid()
      ```
+     
     If you import a Type then the returned value is the type and a
     global value named the short name is set.If the short name contains
     the character **'$'**  which is used by inner class name,
@@ -54,6 +56,7 @@ Module app is a lua editor for running test in android.
     **non-ascii** characters, the global value won't be set, but you can still
     use the return value to get it;
     For example，
+    
      ```lua
         local p=import "android.os.Process"
         p.myPid() 
@@ -64,6 +67,7 @@ Module app is a lua editor for running test in android.
         import "android.view.View$OnClickListener"
         print(View_OnClickListener.onClick)
      ```
+     
       By default,**"java.lang.\*"**, **"java.util.\*"**, **"android.view.\*"**,
       **"android.widget.\*"**, and **"android.app.\*"** are imported,but only
       **"java.lang.\*"** is allowed to be overwritten.
@@ -75,6 +79,7 @@ Module app is a lua editor for running test in android.
       Usage:  `using  'java.lang'`or using(externalClassLoader)
       
       For example:
+      
       ```lua
           using "android.os"
           Process.myPid()
@@ -84,6 +89,7 @@ Module app is a lua editor for running test in android.
           --for xposed environment only
           using "de.robv.android.xposed"
       ``` 
+      
       Note:
       The call is pretty time-consuming (about 1s at first call)and will hold a large memory
       to store all loaded class names.On the other hand,it can't make sure that all classes 
@@ -139,6 +145,7 @@ Module app is a lua editor for running test in android.
       Returns a type by give className,shortName or class
       
       Usage:`Type(full name)` or `Type(short name)` or` Type(Class Object)`
+      
       ```lua
          Type('java.lang.Object')
          --or
@@ -164,6 +171,7 @@ Module app is a lua editor for running test in android.
       
       You can put in multiple args actually, and the return value is according to
       the args number. e.g.
+      
       ```lua
          ob,str=Type('Object','String') 
       ```
@@ -176,7 +184,7 @@ Module app is a lua editor for running test in android.
       
   * **sync**:  
   
-      Equals to **sychronized(object){...}**
+      Equals to **synchronized(object){...}**
       
       Usage:`sync(object,function()... end)`
       
@@ -223,6 +231,7 @@ Module app is a lua editor for running test in android.
   * **try**:  
       Starts java try,both lua error and java exception are caught
       Usage:
+      
       ```lua
        try(body function,[exception type,ecpection handler function]...
            ,["all",all exception handler function],[finally function])
@@ -239,6 +248,7 @@ Module app is a lua editor for running test in android.
               finally=function () end--alternative
           }
        ```   
+       
        e.g.
        ```lua
        try{
@@ -261,6 +271,7 @@ Module app is a lua editor for running test in android.
           finally=function print "JJ" end
        }
        ```
+       
        The handler order and re-throw is according to java specifications
        However, you can just try without finally or catch, which means nothing
        
@@ -286,13 +297,16 @@ Module app is a lua editor for running test in android.
       To implement interfaces ,alternatively plus with extending a class
       
       Usage:
+      
       ```lua
       proxy([class to extend or object of class to extend],
       [interfaces to implement]..., [method name,parameter types...,
       handler function]..., [shared classloader],--for extension type only
       [initial args for constructor])--for extension type only
       ```
+      
       or 
+      
       ```lua
       proxy{
        --auto dectect,nilable
@@ -318,7 +332,9 @@ Module app is a lua editor for running test in android.
        args={...}
       }
       ```
+      
       e.g.
+      
       ```lua
       proxy(Type('Runanble'),function() print 'ty' end).run()
       --or
@@ -337,6 +353,7 @@ Module app is a lua editor for running test in android.
        args={5}
       }
       ```
+      
       ##### Note:
       
        If you passed an object to extend,then the proxy object is 
@@ -423,11 +440,11 @@ Module app is a lua editor for running test in android.
 ## Method Deduction
    If type is supplied,the closet type is considered first.
      
-   For integer value,if it's in int32 range,then it's aussumed to be 
+   For integer value,if it's in int32 range,then it's assumed to be 
    int.The rank is according to which range is closer to the value.
-   Float type can accpet integer value if no integer type found and 
+   Float type can accept integer value if no integer type found and 
    float is considered before double.For long type below lua 5.3,a 
-   library call 'i64' is imported to reprsent value can't be represent
+   library call 'i64' is imported to represent value can't be represent
    by double,so long type accept i64 value also.Boxed type will be used
    if no primitive type found.
      
@@ -452,6 +469,7 @@ Module app is a lua editor for running test in android.
    ```lua
       {methodName=function() end...}
    ```
+   
    and the type is interface,
    then it's considered as an implementation for the interface.
    
@@ -529,6 +547,7 @@ Module app is a lua editor for running test in android.
     ScriptContext context=new ScriptContext();
     Object[] results = context.run("print 'Hello World'");
    ```
+   
 ## ClassBuilder Api
    Class Builder is imported default to support dynamic class generation
    Lua function callback rule is the same as proxy.
@@ -538,6 +557,7 @@ Module app is a lua editor for running test in android.
     ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
    .newInstance(Type("Object")()).run()
    ```
+   
 ## More     
    For more information,see java doc in **doc** directory
      
