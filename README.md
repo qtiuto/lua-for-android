@@ -30,6 +30,7 @@ Module app is a lua editor for running test in android.
   The below are functions exported as global values in lua.**'...'** means
   repeating the previous one if following some code or means any if it's 
   inside a body.
+  
   * **import**:
   
     Imports a package or a class. 
