@@ -1,4 +1,6 @@
 [![Build Status](https://travis-ci.org/qtiuto/lua-for-android.svg?branch=master)](https://travis-ci.org/qtiuto/lua-for-android)
+[![Download](https://api.bintray.com/packages/karven/maven/luadroid/images/download.svg) ](https://bintray.com/karven/maven/luadroid/_latestVersion)
+
 
 ## General
 
