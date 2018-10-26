@@ -58,6 +58,8 @@ static int javaThrow(lua_State *L)noexcept;
 
 static int javaTry(lua_State *L)noexcept;
 
+static int javaUnBox(lua_State *L)noexcept;
+
 static int javaPut(lua_State *L)noexcept;
 
 static int javaGet(lua_State *L)noexcept;
@@ -168,6 +170,7 @@ static const luaL_Reg javaInterfaces[] =
          {"charValue",  javaCharValue},
          {"throw",      javaThrow},
          {"try",        javaTry},
+         {"unbox",      javaUnBox},
          {nullptr,      nullptr}};
 
 static const JNINativeMethod nativeMethods[] =
@@ -1687,19 +1690,51 @@ int javaNew(lua_State *L) {
     auto component = type->getComponentType(env);
     if (component != nullptr) {
         return newArray(L, 2, context, component);
-    } else {
+    } else if(!type->isPrimitive()){
         Vector<JavaType *> types;
         Vector<ValidLuaObject> objects;
         readArguments(L, context, types, objects, 2);
         JObject obj = JObject(env, type->newObject(context,types, objects));
         if (context->hasErrorPending()) {
-            forceRelease(types, objects);
+            forceRelease(types, objects,obj);
             luaL_error(L, "");
         }
         pushJavaObject(L, env, context->scriptContext, obj.get(), type);
+    } else
+        luaL_error(L,"Primitive type can't make a new instance");
+    return 1;
+}
+
+static int javaUnBox(lua_State* L){
+    ThreadContext *context = getContext(L);
+    JavaObject* object= checkJavaObject(L,1);
+    switch (object->type->getTypeID()){
+        case JavaType::BOX_BOOLEAN:
+            lua_pushboolean(L,context->env->CallBooleanMethod(object->object,booleanValue));
+            break;
+        case JavaType::BOX_BYTE:
+        case JavaType::BOX_SHORT:
+        case JavaType::BOX_INT:
+        case JavaType::BOX_LONG:
+            lua_pushinteger(L,context->env->CallLongMethod(object->object,longValue));
+            break;
+        case JavaType::BOX_FLOAT:
+        case JavaType::BOX_DOUBLE:
+            lua_pushnumber(L,context->env->CallDoubleMethod(object->object,doubleValue));
+            break;
+        case JavaType::BOX_CHAR: {
+            jchar c = context->env->CallCharMethod(object->object, charValue);
+            char s[4]={0} ;
+            strncpy16to8(s,(const char16_t *) &c, 1);
+            lua_pushstring(L, s);
+            break;
+        }
+        default:
+            break;
     }
     return 1;
 }
+
 static int javaNext(lua_State* L){
     ThreadContext *context = getContext(L);
     JavaObject* object= static_cast<JavaObject *>(lua_touserdata(L, 1));
@@ -1725,7 +1760,7 @@ static int javaNext(lua_State* L){
         JObject key=env->GetObjectArrayElement(next,0);
         JObject value=env->GetObjectArrayElement(next,1);
         if(key== nullptr)
-            lua_pushinteger(L,0);
+            lua_pushboolean(L,0);
         else pushJavaObject(L,context,key);
         if(value== nullptr)lua_pushnil(L);
         else pushJavaObject(L,context,value);
@@ -2108,9 +2143,15 @@ int getFieldOrMethod(lua_State *L) {
     FakeString name(lua_tostring(L, 2));
 
     /*if(!validJavaName(name))luaL_error(L,"The name is invalid for java use:%s",name);*/
-    auto fieldArr = type->ensureField(env,name, isStatic);
-    bool isMethod = type->ensureMethod(env,name, isStatic) != nullptr;
-    int fieldCount=fieldArr== nullptr?0:fieldArr->size();
+    auto member=type->ensureMember(env,name,isStatic);
+    JavaType::FieldArray* fieldArr=nullptr;
+    bool isMethod= false;
+    int fieldCount=0;
+    if(member){
+        fieldArr = &member->fields ;
+        isMethod =member->methods.size() != 0 ;
+        fieldCount = fieldArr->size();
+    }
     if (fieldCount == 1 && !isMethod) {
         auto&& info = fieldArr->at(0);
         JavaType *fieldType = info.type.rawType;
@@ -2118,6 +2159,7 @@ int getFieldOrMethod(lua_State *L) {
         case JavaType::typeID:{\
             lua_push##TYPE(L,isStatic?env->GetStatic##jname##Field(type->getType()\
                     ,info.id):env->Get##jname##Field(obj->object,info.id));\
+            break;\
         }
 #define GetIntegerField(typeID,jtype, jname) GetField(typeID,jtype,jname,integer)
 #define GetFloatField(typeID,jtype, jname) GetField(typeID,jtype,jname,number)
@@ -2157,7 +2199,7 @@ int getFieldOrMethod(lua_State *L) {
         PushField();
     } else {
         if (!isMethod && unlikely(fieldCount == 0)) {
-            if(isStatic&&strcmp(name,"class")==0){
+            if(strcmp(name,"class")==0){
                 pushJavaObject(L,context,type->getType());
                 return 1;
             }
@@ -2165,7 +2207,15 @@ int getFieldOrMethod(lua_State *L) {
                 luaL_error(L, "No static member is named %s in class %s", name.data(),
                             type->name(env).str());
             else{
-                return pushMapValue(L,context,env,obj->object);
+                auto getter=type->findMockName(env,name, true);
+                if(getter){
+                    lua_pushstring(L,getter);
+                    lua_replace(L,2);
+                    pushMember(context,L,false,0,true);
+                    lua_call(L,0,1);
+                    return 1;
+                } else
+                    return pushMapValue(L,context,env,obj->object);
             }
             return 0;
         }
@@ -2244,6 +2294,7 @@ int setField(lua_State *L) {
 #define SetField(typeID,jtype, jname, NAME)\
     case JavaType::typeID:{\
         RawSetField(jname,(luaObject.NAME));\
+        break;\
     }
 #define SetIntegerField(typeID,jtype, jname) SetField(typeID,jtype,jname,integer)
 #define SetFloatField(typeID,jtype, jname) SetField(typeID,jtype,jname,number)
@@ -2329,6 +2380,15 @@ int setFieldOrArray(lua_State *L) {
     auto arr=type->ensureField(env,name, isStatic);
     if (arr== nullptr){
         if(!isStatic){
+            auto setter=type->findMockName(env,name, false);
+            if(setter){
+                lua_pushvalue(L,1);
+                lua_pushstring(L,setter);
+                pushMember(context,L,false,0,true);
+                lua_pushvalue(L,3);
+                lua_call(L,1,0);
+                return 0;
+            }
             setMapValue(L,context,env,objRef->object);
             return 0;
         }

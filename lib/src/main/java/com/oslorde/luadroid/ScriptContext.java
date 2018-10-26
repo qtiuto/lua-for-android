@@ -45,8 +45,24 @@ public class ScriptContext implements GCTracker {
     private static final int CLASS_B_DOUBLE=14;
     private static final int CLASS_B_CHAR=15;
     private static final int CLASS_B_BOOLEAN=16;
+    //Optimize  for the redundant call in new Class Api
+    private static  Method sUnchecked;
+    private static final Method[] EMPTY_METHODS= new Method[0];
+    private static boolean sUseList;
 
     static {
+            try {
+                if(Build.VERSION.SDK_INT>=23)
+                    sUnchecked=Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked",boolean.class);
+                else if(Build.VERSION.SDK_INT>=21){
+                    sUseList=true;
+                    sUnchecked=Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked",boolean.class,List.class);
+                }
+            } catch (NoSuchMethodException e) {
+                e.printStackTrace();
+            }
+
+
     }
 
     private final Object importLock=new Object();
@@ -132,17 +148,34 @@ public class ScriptContext implements GCTracker {
         return null;
     }
 
+    private static boolean hasMethod(Class origClass,String name,boolean isStatic){
+        for (Class<?> clazz=origClass; clazz != null; clazz = clazz
+                .getSuperclass()) {
+                Method[] methods = getDeclaredMethods(clazz);
+                for (Method m:methods){
+                    if(isStatic==Modifier.isStatic(m.getModifiers())&&m.getName().equals(name))
+                        return true;
+                }
+        }
+        return false;
+    }
+
     private static Method findIndexerMethod(Class<?> origClazz, String name,Class keyType,int argLen){
         for (Class<?> clazz=origClazz; clazz != null; clazz = clazz
                 .getSuperclass()) {
-            Method[] methods = clazz.getDeclaredMethods();
+            Method[] methods = getDeclaredMethods(clazz);
             Method best=null;
             int score=-1;
             for (Method method:
                     methods) {
                 if(!method.getName().equals(name))
                     continue;
-                Class<?>[] parameterTypes = method.getParameterTypes();
+                Class<?>[] parameterTypes;
+                try {
+                    parameterTypes = method.getParameterTypes();
+                }catch (Throwable e){
+                    continue;
+                }
                 if(parameterTypes.length!=argLen||!parameterTypes[0].isAssignableFrom(keyType)){
                     if(keyType!=Long.class||(parameterTypes[0]!=int.class&&parameterTypes[0]!=long.class))
                     continue;
@@ -198,32 +231,162 @@ public class ScriptContext implements GCTracker {
         return ret;
     }
 
+    //Optimize for android only, cause dex file use binary order to store members
+    //Only receive members from declare call;
+    private static long binarySearchMember(Member[] members,String name,boolean isStatic){
+
+        //index = Arrays.binarySearch(members, name, (value, key) ->((String)key ).compareTo(((Member)value).getName()));
+        int low = 0;
+        int high = members.length - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            Member midVal = members[mid];
+            boolean  realState=Modifier.isStatic(midVal.getModifiers());
+            if(realState!=isStatic){
+                if(isStatic)
+                    low=mid+1;
+                else high=mid-1;
+            }else {
+                int cmp = midVal.getName().compareTo(name);
+                if (cmp < 0)
+                    low = mid + 1;
+                else if (cmp > 0)
+                    high = mid - 1;
+                else {
+                    low=mid-1;
+                    while (low >=0&&members[low].getName().equals(name) ){
+                        --low;
+                    }
+                    high=mid+1;
+                    //noinspection StatementWithEmptyBody
+                    for (int len=members.length; high <len&&members[high].getName().equals(name); ++high);
+                    return ((long)(low+1)<<32)|high;
+                }// key found
+            }
+
+        }
+        return -1;
+    }
+
+    private static String binarySearchMockName(Member[] members,String name){
+        int low = 0;
+        int high = members.length - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            Member midVal = members[mid];
+            boolean  isStatic=Modifier.isStatic(midVal.getModifiers());
+            if(isStatic){
+                 high=mid-1;
+            }else {
+                int cmp = midVal.getName().compareTo(name);
+                if (cmp < 0)
+                    low = mid + 1;
+                else if (cmp > 0)
+                    high = mid - 1;
+                else {
+                    return midVal.getName();
+                }// key found
+            }
+
+        }
+        return null;
+    }
+
+    private static Method[] getDeclaredMethods(Class c){
+        if(sUnchecked==null)
+            return c.getDeclaredMethods();
+        else {
+            try {
+                if(sUseList){
+                    List<Method> methods=new ArrayList<>();
+                    sUnchecked.invoke(c,false,methods);
+                    return methods.toArray(EMPTY_METHODS);
+                } else return  (Method[]) sUnchecked.invoke(c,false);
+            } catch (Exception e) {
+                Method [] ret = c.getDeclaredMethods();
+                return ret==null?EMPTY_METHODS:ret;
+            }
+        }
+    }
+
+    private static boolean findMockNameRecursive(Class c, String[] names, String[] out) {
+        Method[] methods = getDeclaredMethods(c);
+        if (methods.length == 0) return false;
+        if (out[0] == null) {
+            for (int i = 0; i < 4; i++) {
+                String name = names[i];
+                out[0] = binarySearchMockName(methods, name);
+                if (out[0] != null)
+                    break;
+            }
+            if (out[0] != null && out[1] != null)
+                return true;
+        }
+        if (out[1] == null) {
+            for (int i = 4; i < 6; i++) {
+                String name = names[i];
+                out[1] = binarySearchMockName(methods, name);
+                if (out[1] != null)
+                    break;
+            }
+            if (out[0] != null && out[1] != null)
+                return true;
+        }
+        for (Class inter : c.getInterfaces()) {
+            if (findMockNameRecursive(inter, names, out))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static String[] findMockName(Class c,String name){
+        char [] buff=new char[name.length()+3];
+        name.getChars(1,name.length(),buff,4);
+        char first=name.charAt(0);
+        char upper=Character.toUpperCase(first);
+        String[] out=new String[2];
+        String[] names=new String[6];
+        buff[0]='g';
+        buff[1]='e';
+        buff[2]='t';
+        buff[3]=upper;
+        names[0]=new String(buff);
+        buff[3]=first;
+        names[1]=new String(buff);
+        buff[0]='s';
+        names[5]=new String(buff);
+        buff[3]=upper;
+        names[4]=new String(buff);
+        buff[1]='i';
+        buff[2]='s';
+        names[2]=new String(buff,1,buff.length-1);
+        buff[3]=first;
+        names[3]=new String(buff,1,buff.length-1);
+        do{
+            findMockNameRecursive(c,names,out);
+        }while ((c=c.getSuperclass())!=null);
+        return out;
+    }
+
     private static Object[] findMembers(Class cl, String name, boolean isField, boolean isStatic) {
         if (isField) {
             ArrayList<Object> retList = new ArrayList<>();
             Set<Class> fieldSet = new HashSet<>();
-            checkAndAddFields(name, isStatic, retList, fieldSet, cl.getFields());
-            do {
-                checkAndAddFields(name, isStatic, retList, fieldSet, cl.getDeclaredFields());
-                cl = cl.getSuperclass();
-            } while (cl != null);
+            checkAndAddFields(cl,name, isStatic, retList, fieldSet);
             return retList.toArray();
         }
         if (name.equals("<init>")&&!isStatic) {
             return convertConstructors(cl.getDeclaredConstructors());
         }
         ArrayList<Object> retList = new ArrayList<>();
-        Set<MethodSetEntry> methodSet = new HashSet<>();
-        checkAndAddMethods(name, isStatic, retList, methodSet, cl.getMethods());
+        Set<SameMethodEntry> methodSet = new HashSet<>();
         if (!isStatic) {
             if (cl.isInterface() || cl.isArray()) {
-                checkAndAddMethods(name, false, retList, methodSet, Object.class.getMethods());
+                checkAndAddMethods(Object.class,name, false, retList, methodSet);
             }
         }
-        do {
-            checkAndAddMethods(name, isStatic, retList, methodSet, cl.getDeclaredMethods());
-            cl = cl.getSuperclass();
-        } while (cl != null);
+        checkAndAddMethods(cl,name, isStatic, retList, methodSet);
 
         return retList.isEmpty() ? null : retList.toArray();
     }
@@ -232,10 +395,13 @@ public class ScriptContext implements GCTracker {
         Object[] ret=new Object[constructors.length*5];
         int i=0;
         for (Constructor m : constructors) {
+            Class[] parameterTypes;
+            try {
+                parameterTypes = m.getParameterTypes();
+            }catch (Throwable e){ continue;}
             ret[i++]=m;
             ret[i++]=void.class;
             ret[i++]=null;
-            Class[] parameterTypes = m.getParameterTypes();
             ret[i++]= parameterTypes;
             Type[] genericParameterTypes = m.getGenericParameterTypes();
             for (int j=genericParameterTypes.length-1;j>=0;--j){
@@ -247,47 +413,77 @@ public class ScriptContext implements GCTracker {
         return ret;
     }
 
-    private static void checkAndAddMethods(
+    private static void checkAndAddMethods(Class c,
             String name, boolean isStatic, ArrayList<Object> retList,
-            Set<MethodSetEntry> methodSet, Method[] methods) {
-        for (Method m : methods) {
-            if (isStatic != Modifier.isStatic(m.getModifiers()))
-                continue;
-            if (!name.equals(m.getName())) continue;
-            if (methodSet.add(new MethodSetEntry(m))) {
-                retList.add(m);
-                Class<?> returnType = m.getReturnType();
-                retList.add(returnType);
-                Type genericReturnType = m.getGenericReturnType();
-                retList.add(genericReturnType==returnType?null:returnType);
-                Class<?>[] parameterTypes = m.getParameterTypes();
-                retList.add(parameterTypes);
-                Type[] genericParameterTypes = m.getGenericParameterTypes();
-                for (int i=genericParameterTypes.length-1;i>=0;--i){
-                    if(genericParameterTypes[i]==parameterTypes[i])
-                        genericParameterTypes[i]=null;
+            Set<SameMethodEntry> methodSet) {
+            do{
+                Method[] methods=getDeclaredMethods(c);
+                long index=binarySearchMember(methods,name,isStatic);
+                if(index>=0) {
+                    int end=(int) index;
+                    for (int i=(int) (index>>>32);i<end;++i) {
+                        Method m=methods[i];
+                        SameMethodEntry entry =  SameMethodEntry.from(m);
+                        if(entry==null) continue;
+                        if (methodSet.add(entry)) {
+                            retList.add(m);
+                            Class<?> returnType = entry.returnType;
+                            retList.add(returnType);
+                            Type genericReturnType = m.getGenericReturnType();
+                            retList.add(genericReturnType==returnType?null:returnType);
+                            Class<?>[] parameterTypes = entry.paramTypes;
+                            retList.add(parameterTypes);
+                            Type[] genericParameterTypes = m.getGenericParameterTypes();
+                            for (int j=genericParameterTypes.length-1;j>=0;--j){
+                                if(genericParameterTypes[j]==parameterTypes[j])
+                                    genericParameterTypes[j]=null;
+                            }
+                            retList.add(genericParameterTypes);
+                        }
+                    }
                 }
-                retList.add(genericParameterTypes);
-            }
-        }
+                for (Class inter : c.getInterfaces()) {
+                    checkAndAddMethods(inter, name, isStatic, retList, methodSet);
+                }
+            }while ((c=c.getSuperclass())!=null);
     }
 
-    private static void checkAndAddFields(
+    private static void checkAndAddFields(Class c,
             String name, boolean isStatic, ArrayList<Object> retList,
-            Set<Class> fieldSet, Field[] fields) {
-        for (Field f : fields) {
-            if (isStatic != Modifier.isStatic(f.getModifiers()))
-                continue;
-            if (!name.equals(f.getName())) continue;
-            Class<?> type = f.getType();
-            if (!fieldSet.contains(type)) {
-                retList.add(f);
-                retList.add(type);
-                Type genericType = f.getGenericType();
-                retList.add(genericType==type?null:genericType);
-                fieldSet.add(type);
+            Set<Class> fieldSet) {
+        do{
+            Field[] fields=c.getDeclaredFields();
+            long index=-1;
+            if(fields==null){
+                try {
+                    fields=new Field[]{c.getDeclaredField(name)};
+                    index=1;
+                } catch (NoSuchFieldException e) {
+                    e.printStackTrace();
+                }
+            }else index = binarySearchMember(fields,name,isStatic);
+            if(index>=0) {
+                int end=(int) index;
+                for (int i=(int) (index>>>32);i<end;++i) {
+                    Field f = fields[i];
+                    Class<?> type = f.getType();
+                    if (!fieldSet.contains(type)) {
+                        retList.add(f);
+                        retList.add(type);
+                        Type genericType = f.getGenericType();
+                        retList.add(genericType==type?null:genericType);
+                        fieldSet.add(type);
+                    }
+                }
             }
-        }
+
+            if(isStatic){
+                for (Class inter : c.getInterfaces()) {
+                    checkAndAddFields(inter, name, true, retList, fieldSet);
+                }
+            }
+        }while ((c=c.getSuperclass())!=null);
+
     }
 
     private static String getPackage(String cl){
@@ -348,13 +544,14 @@ public class ScriptContext implements GCTracker {
         List<Method> methods = new ArrayList<>(Arrays.asList(cl.getMethods()));
         Class thizClass = cl;
         do {
-            methods.addAll(Arrays.asList(cl.getDeclaredMethods()));
+            methods.addAll(Arrays.asList(getDeclaredMethods(cl)));
             thizClass = thizClass.getSuperclass();
         } while (thizClass != Object.class && thizClass != null);
 
         for (Method method : methods)
             if (Modifier.isAbstract(method.getModifiers())){
-                MethodSetEntry key = new MethodSetEntry(method);
+                MethodSetEntry key =  MethodSetEntry.from(method);
+                if(key==null) continue;
                 MethodSetEntry old=methodSet.get(key);
                 if (old==null)
                     throw new LuaException("The class:" + cl.getName() + " has unimplemented method:" + method);
@@ -542,19 +739,22 @@ public class ScriptContext implements GCTracker {
 
     private void set(Object obj,Object key,Object v) throws Throwable{
         Indexer indexer=resolveIndexer(obj,key.getClass());
+        if(indexer==null&&key instanceof String){
+            throw new LuaException("No non-static member is named "+key+" in class "+obj.getClass().getName());
+        }
         if(indexer==null||!indexer.supportsKey(key))
             throw new LuaException(obj+" doesn't have a member with key:"+key);
         indexer.set(obj,key,v);
     }
 
-    private  Object at(Object v,Object key) throws Throwable{
-        Indexer indexer=resolveIndexer(v,key.getClass());
+    private  Object at(Object obj,Object key) throws Throwable{
+        Indexer indexer=resolveIndexer(obj,key.getClass());
         if(indexer==null&&key instanceof String){
-            throw new LuaException("No non-static member is named "+key+" in class "+v.getClass().getName());
+            throw new LuaException("No non-static member is named "+key+" in class "+obj.getClass().getName());
         }
         if(indexer==null||!indexer.supportsKey(key))
-            throw new LuaException(v+" doesn't have a member with key:"+key);
-        return indexer.at(v,key);
+            throw new LuaException(obj+" doesn't have a member with key:"+key);
+        return indexer.at(obj,key);
     }
 
     private HashMap<Class,IteratorFactory> lazyIteratorFactories(){
@@ -977,6 +1177,13 @@ public class ScriptContext implements GCTracker {
                 break;
             case CLASS_VOID:
                 return null;
+            case CLASS_B_DOUBLE:
+            case CLASS_B_LONG:
+            case CLASS_B_BOOLEAN:
+            case CLASS_BOOLEAN:
+            case CLASS_DOUBLE:
+            case CLASS_LONG:
+                return from;
             default:
                 if(from instanceof Map&&shouldFixTable)
                     return convertTable((Map<Object, Object>) from
@@ -1049,7 +1256,8 @@ public class ScriptContext implements GCTracker {
             Method m = methods[i];
             if (m == null) throw new IllegalArgumentException("Method can't be null");
             if(methodList.containsKey(m))  throw new IllegalArgumentException("Duplicate method passed in");
-            MethodSetEntry entry = new MethodSetEntry(m);
+            MethodSetEntry entry =  MethodSetEntry.from(m);
+            if(entry==null) continue;
             methodSet.put(entry,entry);
             methodList.put(m, values[i]);
         }
@@ -1225,7 +1433,7 @@ public class ScriptContext implements GCTracker {
     public ScriptContext addToLua(String luaName, String methodName, Object instOrType, boolean local) throws NoSuchMethodException {
         if (instOrType == null) throw new IllegalArgumentException("No permitted:null");
         boolean isStatic = instOrType instanceof Class;
-        if (findMembers(isStatic ? (Class) instOrType : instOrType.getClass(), methodName, false, isStatic) == null) {
+        if (!hasMethod(isStatic?(Class) instOrType:instOrType.getClass(),methodName,isStatic)) {
             throw new NoSuchMethodException(methodName);
         }
         addMethod(nativePtr, luaName, methodName, instOrType, local);
@@ -1287,6 +1495,44 @@ public class ScriptContext implements GCTracker {
                 releaseFunc(luaFuncInfo);
         }
     }
+    static class SameMethodEntry{
+        private final Class<?>[] paramTypes;
+        private final Class<?> returnType;
+        private SameMethodEntry(Method m){
+            paramTypes = m.getParameterTypes();
+            returnType = m.getReturnType();
+        }
+        //For method using the api in new api only
+        static SameMethodEntry from(Method m) {
+            try {
+                return new SameMethodEntry(m);
+            }catch (Throwable e){
+                return null;
+            }
+        }
+        @Override
+        public int hashCode() {
+            return  returnType.hashCode()^paramTypes.length^(paramTypes.length>0?paramTypes[paramTypes.length-1].hashCode():0);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            MethodSetEntry other= (MethodSetEntry) obj;
+            if (returnType!=other.returnType)
+                return false;
+            /* Avoid unnecessary cloning */
+            Class<?>[] params1 = paramTypes;
+            Class<?>[] params2 = other.paramTypes;
+            if (params1.length == params2.length) {
+                for (int i = 0; i < params1.length; i++) {
+                    if (params1[i] != params2[i])
+                        return false;
+                }
+                return true;
+            }
+            return false;
+        }
+    }
 
     static class MethodSetEntry {
         final Method m;
@@ -1301,19 +1547,24 @@ public class ScriptContext implements GCTracker {
             paramTypes = m.getParameterTypes();
             returnType = m.getReturnType();
         }
-
+        static MethodSetEntry from(Method m) {
+            try {
+                return new MethodSetEntry(m);
+            }catch (Throwable e){
+                return null;
+            }
+        }
         @Override
         public int hashCode() {
-            return name.hashCode() ^ returnType.hashCode() ^ Arrays.hashCode(paramTypes);
+            return name.hashCode() ^ returnType.hashCode() ;
         }
 
         @Override
         public boolean equals(Object obj) {
-            if (obj != null && obj instanceof MethodSetEntry) {
-
+            if (obj instanceof MethodSetEntry) {
                 MethodSetEntry other = ((MethodSetEntry) obj);
                 if (name.equals(other.name)) {
-                    if (!returnType.equals(other.returnType))
+                    if (returnType!=other.returnType)
                         return false;
                     /* Avoid unnecessary cloning */
                     Class<?>[] params1 = paramTypes;

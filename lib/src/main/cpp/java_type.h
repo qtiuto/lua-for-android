@@ -40,6 +40,19 @@ public:
         ParameterizedType returnType;
         Array<ParameterizedType> params;
     };
+
+    struct MockField{
+        const char* getter;
+        const char* setter;
+    };
+
+    typedef Array<MethodInfo> MethodArray;
+    typedef Array<FieldInfo> FieldArray;
+    struct Member{
+        MethodArray methods;
+        FieldArray fields;
+        Member(){}
+    };
     enum TYPE_ID{
         BYTE,
         SHORT,
@@ -67,17 +80,15 @@ private:
         J_INT,
         J_LONG,
     };
-    typedef Array<MethodInfo> MethodArray;
-    typedef Array<FieldInfo> FieldArray;
-    typedef Map<String, MethodArray> MethodMap;
-    typedef Map<String, FieldArray> FieldMap;
-    typedef Map<String, bool> InvalidMap;
+    typedef Map<String, Member> MemberMap;
+
 
     friend class ScriptContext;
     friend class ThreadContext;
 
     static jmethodID sGetComponentType;
     static jmethodID sFindMembers;
+    static jmethodID sFindMockName;
     static jmethodID sWeightObject;
     static jmethodID sGetSingleInterface;
     static jmethodID sIsInterface;
@@ -94,12 +105,9 @@ private:
     bool _isStringAssignable = false;
     TYPE_ID typeID=OBJECT;
 
-    MethodMap staticMethods;
-    MethodMap objectMethods;
-    FieldMap staticFields;
-    FieldMap objectFields;
-    InvalidMap invalidFields;
-    InvalidMap invalidMethods;
+    MemberMap staticMembers;
+    MemberMap objectMembers;
+    Map<String,MockField> mockFields;
     jmethodID singleInterface = invalid<jmethodID>();
     JavaType *componentType = invalid<JavaType *>();
     jmethodID boxMethod= nullptr;
@@ -114,18 +122,37 @@ private:
     }
 
     uint weightObject(TJNIEnv* env,JavaType *target, JavaType *from);
+
+
 public:
     jobject newObject(ThreadContext *context, Vector<JavaType *> &types, Vector<ValidLuaObject> &params);
 
     jarray newArray(ThreadContext *context,jint size, Vector<ValidLuaObject> &params);
+    Member* ensureMember(TJNIEnv *env, const String &name, bool isStatic);
+
+    const MethodInfo *findMethod(TJNIEnv* env,const String &name, bool isStatic, Vector<JavaType *> &types,
+                                 Vector<ValidLuaObject> *arguments);
+    const char* findMockName(TJNIEnv* env,const String& name, bool getter);
+    const FieldInfo *findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type);
+    MethodArray *ensureMethod(TJNIEnv* env,const String &s, bool isStatic){
+        auto members= ensureMember(env, s, isStatic);
+        if(members&&members->methods.size())
+            return &members->methods;
+        return nullptr;
+    }
+
+    FieldArray *ensureField(TJNIEnv* env,const String &s, bool isStatic){
+        auto members= ensureMember(env, s, isStatic);
+        if(members&&members->fields.size())
+            return &members->fields;
+        return nullptr;
+    }
+
 
     jclass getType() const { return type; }
 
     JString name(TJNIEnv* env) { return (JString) env->CallObjectMethod(type, classGetName); }
 
-    MethodArray *ensureMethod(TJNIEnv* env,const String &s, bool isStatic);
-
-    FieldArray *ensureField(TJNIEnv* env,const String &s, bool isStatic);
 
     bool isTableType(TJNIEnv* env) {
         return env->CallBooleanMethod(context->javaRef, sIsTableType, type);
@@ -250,8 +277,7 @@ public:
 
     inline TYPE_ID  getTypeID(){ return typeID;}
 
-    const MethodInfo *findMethod(TJNIEnv* env,const String &name, bool isStatic, Vector<JavaType *> &types,
-                                 Vector<ValidLuaObject> *arguments);
+
 
     const Array<MethodInfo> *findAllObjectMethod(TJNIEnv* env,const String &name) {
         return ensureMethod(env,name, false);
@@ -267,13 +293,6 @@ public:
             else singleInterface = nullptr;
         }
         return singleInterface != nullptr;
-    }
-
-    const FieldInfo *findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type);
-
-    int getFieldCount(TJNIEnv* env,const String &name, bool isStatic) {
-        auto &&array = ensureField(env,name, isStatic);
-        return array ? array->size() : 0;
     }
 
     const bool isInterface(TJNIEnv* env) {

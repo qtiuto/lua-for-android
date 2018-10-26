@@ -33,5 +33,6 @@
    private static *** getSingleInterface(...);
    private static *** weightObject(...);
    private static *** findMembers(...);
+   private static *** findMockName(...);
 }
 -dontnote

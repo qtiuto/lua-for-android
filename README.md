@@ -215,6 +215,13 @@ Module app is a lua editor for running test in android.
       i,k=object("Yu",Integer,1)
       --then i is a String object and k is an Integer object 
       ```
+  
+  * **unbox**
+      UnBox a boxed value,e.g. java.lang.Integer-> int
+      Object will not be changed when unboxing.This method
+      is designed for map operation for type like SparseArray.
+      
+      Usage: 'unbox(boxedValue)'
       
   * **charString**:  
   
@@ -375,6 +382,11 @@ Module app is a lua editor for running test in android.
       
        Whether the object is multi-thread supported is determined by
        whether localFunction is set in the constructor of ScriptContext
+       
+       When the object is multi-thread supported, then when function is
+       saved, its upvalues will be copied in. However, since the global
+       values it refers to can't be determined, make sure the function
+       doesn't refers to any value it can't access in another thread.
     
 ## Multi-thread Support
 
@@ -386,7 +398,8 @@ Module app is a lua editor for running test in android.
    metamethod,error will be raised, since it may induce memory corrupt
    ion.Corutine can't be shared also since it has it's own lua state,
    and a lua state can't be shared cross thread.Take care that all key 
-   will be converted to string.
+   will be converted to string.Never put a value has references to the 
+   global table, or a stack overflow error may occur. 
      
 ## Member Access
      
@@ -411,8 +424,8 @@ Module app is a lua editor for running test in android.
    operator to get the length of an array object also.'#' operator also
    works for any object with **length()** or **size()** method declared.
       
-   The lua method **'tostring'** works for any java object,and toString method
-   will be invoked.
+   The lua method **'tostring'** works for any java object and java type,and **toString()** 
+   method will be invoked.
       
    **'=='** operator for java object will always return true if the two object
    is the same java object
@@ -421,19 +434,47 @@ Module app is a lua editor for running test in android.
    to be called,and return a lua string.
    
    The lua method **'pairs'** works for any java object work **Collection** or **Map**
-   or **SparseArray** or **Array**, or you can add custom iterator.
+   or **SparseArray** or **Array**, or you can add custom iterator,**false** is return 
+   for **null** key or value. Though I don't add a function to convert a map to lua table,
+   you can use iteration to work on it like the below
+   ```lua
+   function toTable(map)
+      local t={}
+      for k,v in ipairs(map) do
+          t[k]=v
+      end
+      return t
+   end
+   ```
    
    You can index any java object with **set/put**,**get/at** methods.When you index or add an 
    index these two method will be invoked,or you can add custom indexer.
+   For example,
    
    ```lua
       using "java.util"
       local arr=HashMap({a=5,b=6})
       arr.c='kkk'
       arr[2]=8
-      print(#arr,arr[])
+      print(#arr,arr[2])
+      for k,v in ipairs(arr) do
+         print(k,v)
+      end
    ```
-     
+   
+   If an object has **getter/setter** method for an non-static property without associated field, 
+   then you can operator on the property like a true field. However If the property has only getter method,
+   then set operation will raise an error,and vise versa.
+   For Example,
+   
+   ```lua
+      using "android.view"
+      using "android.widget"
+      view=TextView(context)
+      view.visibilty=View.GONE.
+      print(view.visibilty)
+   ```
+   
 ## Type Specification
    You can add a type before the arg in method call,new(),newArray
    or the args in proxy(),so as to indicate the type you wish the

@@ -2,17 +2,22 @@
 #include "java_type.h"
 #include "utf8.h"
 
-jmethodID JavaType::sGetComponentType = nullptr;
-jmethodID JavaType::sFindMembers = nullptr;
-jmethodID JavaType::sWeightObject = nullptr;
-jmethodID JavaType::sGetSingleInterface = nullptr;
-jmethodID JavaType::sIsTableType = nullptr;
-jmethodID JavaType::sTableConvert = nullptr;
-jmethodID JavaType::sIsInterface = nullptr;
+jmethodID JavaType::sGetComponentType;
+jmethodID JavaType::sFindMembers;
+jmethodID JavaType::sFindMockName;
+jmethodID JavaType::sWeightObject ;
+jmethodID JavaType::sGetSingleInterface ;
+jmethodID JavaType::sIsTableType;
+jmethodID JavaType::sTableConvert;
+jmethodID JavaType::sIsInterface;
 
 jobject JavaType::newObject(ThreadContext *context, Vector<JavaType *> &types, Vector<ValidLuaObject> &params) {
     TJNIEnv *env = context->env;
     const MethodInfo *info = findMethod(env, FakeString("<init>"), false, types, &params);
+    if(unlikely(info== nullptr)){
+        context->setPendingException("No matched constructor found");
+        return nullptr;
+    }
     uint32_t size = (uint32_t) types.size();
     jvalue argList[size];
     for (int i = size-1; i !=-1; --i) {
@@ -86,82 +91,75 @@ switch (typeID){
         return ret;
     }
 }
-
-    return nullptr;//unreachable statement;
-
+return nullptr;//unreachable statement;
 }
 
-JavaType::MethodArray *JavaType::ensureMethod(TJNIEnv* env,const String &s, bool isStatic) {
-    auto &&map = isStatic ? staticMethods : objectMethods;
-    auto &&iter = map.find(s);
-    if (iter != map.end())
-        return &iter->second;
-    auto &&invalidMember = invalidMethods.find(s);
-    if (likely(invalidMember != invalidMethods.end()) && invalidMember->second == isStatic)
-        return nullptr;
-    JString str = env->NewStringUTF(&s[0]);
-    JObjectArray methodInfoArray = (JObjectArray) env->CallStaticObjectMethod(
-            contextClass, sFindMembers, type, str.get(), false, isStatic);
-    int count = methodInfoArray != nullptr ? env->GetArrayLength(methodInfoArray) : 0;
-    if (count == 0) {
-        invalidMethods.emplace(s, isStatic);
-        return nullptr;
-    }
 
-    MethodArray methodArray((uint32_t) (count /5));
-    for (int i = 0; i < count; i += 5) {
-        MethodInfo &info = methodArray[i/5];
-        JObject method = env->GetObjectArrayElement(methodInfoArray, i);
-        info.id = env->FromReflectedMethod(method);
-        info.returnType.rawType =  context->ensureType(
-                env, (JClass) env->GetObjectArrayElement(methodInfoArray, i + 1));
-        auto realRetType = env->GetObjectArrayElement(methodInfoArray, i + 2);
-        info.returnType.realType= realRetType== nullptr? nullptr: env->NewGlobalRef (realRetType);                          
-        JObjectArray params =env->GetObjectArrayElement(methodInfoArray, i + 3);
-        JObjectArray genericParams =env->GetObjectArrayElement(methodInfoArray, i + 4);
-        int paramLen = env->GetArrayLength(params);
-        Array<ParameterizedType> paramArray((uint32_t) paramLen);
-        for (int j = 0; j < paramLen; ++j) {
-            paramArray[j].rawType = context->ensureType(
-                    env, (JClass) env->GetObjectArrayElement(params, j));
-            auto obj = env->GetObjectArrayElement(genericParams, j);
-            paramArray[j].realType = obj== nullptr? nullptr: env->NewGlobalRef(obj);
+JavaType::Member* JavaType::ensureMember(TJNIEnv *env, const String &name, bool isStatic) {
+    auto &&map = isStatic ? staticMembers : objectMembers;
+    auto &&iter = map.find(name);
+    if (iter != map.end()){
+        return &iter->second;
+    }
+    JString str = env->NewStringUTF(&name[0]);
+    Member member;
+    if(name!="<init>"){
+        JObjectArray fieldInfos = (JObjectArray) env->CallStaticObjectMethod(contextClass, sFindMembers,
+                                                                             type, str.get(), true,
+                                                                             isStatic);
+        int count = fieldInfos == nullptr ? 0 : env->GetArrayLength(fieldInfos);
+        if (count == 0) {
+            goto FILL_METHOD;
         }
-        info.params = std::move(paramArray);
+        FieldArray fieldArray((uint32_t) (count /3));
+        for (int i = 0; i < count; i += 3) {
+            FieldInfo &info = fieldArray[i /3];
+            JObject&& field = env->GetObjectArrayElement(fieldInfos, i);
+            info.id = env->FromReflectedField(field);
+            info.type.rawType= context->ensureType(
+                    env, (JClass) env->GetObjectArrayElement(fieldInfos, i + 1));
+            auto&& realType = env->GetObjectArrayElement(fieldInfos, i + 2);
+            info.type.realType= realType== nullptr? nullptr:env->NewGlobalRef (realType);
+        }
+        member.fields=std::move(fieldArray);
     }
-    return &map.emplace(s, std::move(methodArray)).first->second;
-
+    FILL_METHOD:
+    {
+        JObjectArray methodInfoArray = (JObjectArray) env->CallStaticObjectMethod(
+                contextClass, sFindMembers, type, str.get(), false, isStatic);
+        int count = methodInfoArray != nullptr ? env->GetArrayLength(methodInfoArray) : 0;
+        if (count == 0) {
+            goto END;
+        }
+        MethodArray methodArray((uint32_t) (count /5));
+        for (int i = 0; i < count; i += 5) {
+            MethodInfo &info = methodArray[i/5];
+            JObject&& method = env->GetObjectArrayElement(methodInfoArray, i);
+            info.id = env->FromReflectedMethod(method);
+            info.returnType.rawType =  context->ensureType(
+                    env, (JClass) env->GetObjectArrayElement(methodInfoArray, i + 1));
+            auto&& realRetType = env->GetObjectArrayElement(methodInfoArray, i + 2);
+            info.returnType.realType= realRetType== nullptr? nullptr: env->NewGlobalRef (realRetType);
+            JObjectArray&& params =env->GetObjectArrayElement(methodInfoArray, i + 3);
+            JObjectArray&& genericParams =env->GetObjectArrayElement(methodInfoArray, i + 4);
+            int paramLen = env->GetArrayLength(params);
+            Array<ParameterizedType> paramArray((uint32_t) paramLen);
+            for (int j = 0; j < paramLen; ++j) {
+                paramArray[j].rawType = context->ensureType(
+                        env, (JClass) env->GetObjectArrayElement(params, j));
+                auto&& obj = env->GetObjectArrayElement(genericParams, j);
+                paramArray[j].realType = obj== nullptr? nullptr: env->NewGlobalRef(obj);
+            }
+            info.params = std::move(paramArray);
+        }
+        member.methods=std::move(methodArray);
+    }
+    END:
+    if(member.fields.size()||member.methods.size())
+    return &map.emplace(name, std::move(member)).first->second;
+    else return nullptr;
 }
 
-JavaType::FieldArray *JavaType::ensureField(TJNIEnv* env,const String &s, bool isStatic) {
-    auto &&map = isStatic ? staticFields : objectFields;
-    auto &&iter = map.find(s);
-    if (iter != map.end())
-        return &iter->second;
-    auto &&invalidMember = invalidFields.find(s);
-    if (invalidMember != invalidFields.end() && invalidMember->second == isStatic)
-        return nullptr;
-    JString str = env->NewStringUTF(&s[0]);
-    JObjectArray fieldInfos = (JObjectArray) env->CallStaticObjectMethod(contextClass, sFindMembers,
-                                                                         type, str.get(), true,
-                                                                         isStatic);
-    int count = fieldInfos == nullptr ? 0 : env->GetArrayLength(fieldInfos);
-    if (count == 0) {
-        invalidFields.emplace(s, isStatic);
-        return nullptr;
-    }
-    FieldArray fieldArray((uint32_t) (count /3));
-    for (int i = 0; i < count; i += 3) {
-        FieldInfo &info = fieldArray[i /3];
-        JObject field = env->GetObjectArrayElement(fieldInfos, i);
-        info.id = env->FromReflectedField(field);
-        info.type.rawType= context->ensureType(
-                env, (JClass) env->GetObjectArrayElement(fieldInfos, i + 1));
-        auto realType = env->GetObjectArrayElement(fieldInfos, i + 2);
-        info.type.realType= realType== nullptr? nullptr:env->NewGlobalRef (realType);
-    }
-    return &map.emplace(s, std::move(fieldArray)).first->second;
-}
 
 const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
         const String &name, bool isStatic,
@@ -527,6 +525,34 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
     return select;
 }
 
+const char* JavaType::findMockName(TJNIEnv* env,const String& name, bool get){
+    auto && iter=mockFields.find(name);
+    if(iter==mockFields.end())
+    {
+        JString jname(env->NewStringUTF(name.data()));
+        JObjectArray names(env->CallStaticObjectMethod(contextClass,sFindMockName,type,jname.get()));
+        JString getter(env->GetObjectArrayElement(names,0));
+        JString setter(env->GetObjectArrayElement(names,1));
+        if(getter.get()== nullptr&&setter.get()== nullptr)
+            return nullptr;
+        const char* gett=getter.get()== nullptr? nullptr:getter.str();
+        const char* sett=setter.get()== nullptr? nullptr:setter.str();
+        if(gett){
+            FakeString tmp(gett);
+            ensureMember(env,tmp,false);
+            gett=objectMembers.find(tmp)->first.data();
+        }
+        if(sett){
+            FakeString tmp(sett);
+            ensureMember(env,tmp,false);
+            sett=objectMembers.find(tmp)->first.data();
+        }
+        mockFields.emplace(name,MockField{gett,sett});
+        return get?gett:sett;
+    } else{
+        return get?iter->second.getter:iter->second.setter;
+    }
+}
 const JavaType::FieldInfo *JavaType::findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type) {
     auto &&array = ensureField(env,name, isStatic);
     if (unlikely(array == nullptr))

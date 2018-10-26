@@ -195,6 +195,10 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
                 "[Ljava/lang/reflect/Method;[JZJLjava/lang/Object;)Ljava/lang/Object;");
         JavaType::sFindMembers = env->GetStaticMethodID(cl, "findMembers"
                 , "(Ljava/lang/Class;Ljava/lang/String;ZZ)[Ljava/lang/Object;");
+
+        JavaType::sFindMockName = env->GetStaticMethodID(cl, "findMockName"
+                , "(Ljava/lang/Class;Ljava/lang/String;)[Ljava/lang/String;");
+
         JavaType::sWeightObject = env->GetStaticMethodID(cl, "weightObject",
                                                          "(Ljava/lang/Class;Ljava/lang/Class;)I");
         JavaType::sGetSingleInterface = env->GetStaticMethodID(cl, "getSingleInterface"
