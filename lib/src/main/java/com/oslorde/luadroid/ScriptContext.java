@@ -293,20 +293,18 @@ public class ScriptContext implements GCTracker {
     }
 
     private static Method[] getDeclaredMethods(Class c){
-        if(sUnchecked==null)
-            return c.getDeclaredMethods();
-        else {
+        if(sUnchecked!=null){
             try {
                 if(sUseList){
                     List<Method> methods=new ArrayList<>();
                     sUnchecked.invoke(c,false,methods);
                     return methods.toArray(EMPTY_METHODS);
                 } else return  (Method[]) sUnchecked.invoke(c,false);
-            } catch (Exception e) {
-                Method [] ret = c.getDeclaredMethods();
-                return ret==null?EMPTY_METHODS:ret;
+            } catch (Throwable ignored) {
             }
         }
+        Method [] ret = c.getDeclaredMethods();
+        return ret==null?EMPTY_METHODS:ret;
     }
 
     private static boolean findMockNameRecursive(Class c, String[] names, String[] out) {
