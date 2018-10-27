@@ -26,6 +26,14 @@ public:
         ParameterizedType(ParameterizedType&& o):rawType(o.rawType),realType(o.realType){
             o.realType= nullptr;
         }
+
+        ParameterizedType& operator=(ParameterizedType&& o){
+            this->~ParameterizedType();
+            rawType=o.rawType;
+            realType=o.realType;;
+            o.realType= nullptr;
+            return *this;
+        }
         ~ParameterizedType(){
             if(realType)
                 _GCEnv->DeleteGlobalRef(realType);
@@ -34,11 +42,28 @@ public:
     struct FieldInfo {
         jfieldID id;
         ParameterizedType type;
+        FieldInfo()= default;
+        FieldInfo(FieldInfo&& other):id(other.id),type(std::move(other.type)){};
+        FieldInfo& operator=(FieldInfo&& other){
+            this->~FieldInfo();
+            id=other.id;
+            type=std::move(other.type);
+            return *this;
+        };
     };
     struct MethodInfo {
         jmethodID id;
         ParameterizedType returnType;
         Array<ParameterizedType> params;
+        MethodInfo()= default;
+        MethodInfo(MethodInfo&& other):id(other.id),returnType(std::move(other.returnType)),params(std::move(other.params)){};
+        MethodInfo& operator=(MethodInfo&& other){
+            this->~MethodInfo();
+            id=other.id;
+            returnType=std::move(other.returnType);
+            params=std::move(other.params);
+            return *this;
+        };
     };
 
     struct MockField{
@@ -52,6 +77,13 @@ public:
         MethodArray methods;
         FieldArray fields;
         Member(){}
+        Member(Member&& other):methods(std::move(other.methods)),fields(std::move(other.fields)){};
+        Member& operator=(Member&& other){
+            this->~Member();
+            methods=std::move(other.methods);
+            fields=std::move(other.fields);
+            return *this;
+        };
     };
     enum TYPE_ID{
         BYTE,

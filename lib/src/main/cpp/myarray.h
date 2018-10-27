@@ -14,12 +14,13 @@ class Array {
     typedef const _Tp *const_iterator;
     _Tp *array = nullptr;
     size_type _size;
+    _Tp cache;
 public:
     Array() : _size(0) {}
 
     Array(size_type size) : _size(size) {
-        array = new _Tp[size];
-        //array=new _Tp[size];
+        if(size==1) array=&cache;
+        else array = new _Tp[size];
     }
 
     Array(Vector<_Tp> &&list):Array(list.size()) {
@@ -38,7 +39,10 @@ public:
         }
     }
 
-    Array(Array<_Tp> &&other) : array(other.array), _size(other._size) {
+    Array(Array<_Tp> &&other) : array(other.array), _size(other._size) ,cache(std::move(other.cache)){
+        if(other._size==1){
+            array=&cache;
+        }
         other.array = nullptr;
         other._size = 0;
     }
@@ -80,9 +84,13 @@ public:
     }
 
     Array &operator=(Array<_Tp> &&other) {
-        release();
+        this->~Array();
         _size = other._size;
-        array = other.array;
+        if(other._size==1){
+            cache=std::move(other.cache);
+            array=&cache;
+        } else
+            array = other.array;
         other.array = nullptr;
         other._size = 0;
         return *this;
@@ -102,14 +110,9 @@ public:
         return _size;
     }
 
-private:
-    inline void release() {
-        delete[] array;
-    }
-
 public:
     ~Array() {
-        release();
+        if(_size!=1) delete[] array;
     }
 };
 
