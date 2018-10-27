@@ -73,6 +73,7 @@ public:
 
     typedef Array<MethodInfo> MethodArray;
     typedef Array<FieldInfo> FieldArray;
+    //Should I optimize for field of length 1, it seems failed
     struct Member{
         MethodArray methods;
         FieldArray fields;

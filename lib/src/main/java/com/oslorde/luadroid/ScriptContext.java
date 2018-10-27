@@ -236,14 +236,16 @@ public class ScriptContext implements GCTracker {
     private static long binarySearchMember(Member[] members,String name,boolean isStatic){
 
         //index = Arrays.binarySearch(members, name, (value, key) ->((String)key ).compareTo(((Member)value).getName()));
+        if(members.length==0) return -1;
         int low = 0;
         int high = members.length - 1;
+        boolean staticFirst=Modifier.isStatic(members[0].getModifiers());
         while (low <= high) {
             int mid = (low + high) >>> 1;
             Member midVal = members[mid];
             boolean  realState=Modifier.isStatic(midVal.getModifiers());
             if(realState!=isStatic){
-                if(isStatic)
+                if(realState==staticFirst)
                     low=mid+1;
                 else high=mid-1;
             }else {
@@ -276,7 +278,7 @@ public class ScriptContext implements GCTracker {
             Member midVal = members[mid];
             boolean  isStatic=Modifier.isStatic(midVal.getModifiers());
             if(isStatic){
-                 high=mid-1;
+                 low=mid+1;
             }else {
                 int cmp = midVal.getName().compareTo(name);
                 if (cmp < 0)
@@ -291,20 +293,52 @@ public class ScriptContext implements GCTracker {
         }
         return null;
     }
+    private static final Map<Class,Method[]> sMethodCache =new LinkedHashMap<Class,Method[]>(20,0.75f,true){
+        @Override
+        protected boolean removeEldestEntry(Entry<Class, Method[]> eldest) {
+            return true;
+        }
+    };
+    private static final Map<Class,Field[]> sFieldCache =new LinkedHashMap<Class,Field[]>(20,0.75f,true){
+        @Override
+        protected boolean removeEldestEntry(Entry<Class, Field[]> eldest) {
+            return true;
+        }
+    };
+    private static Field[] getDeclaredFields(Class c){
+        synchronized (sFieldCache){
+            if(sFieldCache.containsKey(c)){
+                return sFieldCache.get(c);
+            }
+            Field [] ret = c.getDeclaredFields();
+            sFieldCache.put(c,ret);
+            return ret;
+        }
+    }
 
     private static Method[] getDeclaredMethods(Class c){
-        if(sUnchecked!=null){
-            try {
-                if(sUseList){
-                    List<Method> methods=new ArrayList<>();
-                    sUnchecked.invoke(c,false,methods);
-                    return methods.toArray(EMPTY_METHODS);
-                } else return  (Method[]) sUnchecked.invoke(c,false);
-            } catch (Throwable ignored) {
+        synchronized (sMethodCache){
+            Method [] ret= sMethodCache.get(c);
+            if(ret!=null) return ret;
+            Out:{
+                if(sUnchecked!=null){
+                    try {
+                        if(sUseList){
+                            List<Method> methods=new ArrayList<>();
+                            sUnchecked.invoke(c,false,methods);
+                            ret= methods.toArray(EMPTY_METHODS);
+                        } else ret=  (Method[]) sUnchecked.invoke(c,false);
+                        break Out;
+                    } catch (Throwable ignored) {
+                    }
+                }
+                ret= c.getDeclaredMethods();
             }
+            ret= ret==null?EMPTY_METHODS:ret;
+            sMethodCache.put(c,ret);
+            return ret;
         }
-        Method [] ret = c.getDeclaredMethods();
-        return ret==null?EMPTY_METHODS:ret;
+
     }
 
     private static boolean findMockNameRecursive(Class c, String[] names, String[] out) {
@@ -450,7 +484,7 @@ public class ScriptContext implements GCTracker {
             String name, boolean isStatic, ArrayList<Object> retList,
             Set<Class> fieldSet) {
         do{
-            Field[] fields=c.getDeclaredFields();
+            Field[] fields=getDeclaredFields(c);
             long index=-1;
             if(fields==null){
                 try {
@@ -1515,7 +1549,7 @@ public class ScriptContext implements GCTracker {
 
         @Override
         public boolean equals(Object obj) {
-            MethodSetEntry other= (MethodSetEntry) obj;
+            SameMethodEntry other= (SameMethodEntry) obj;
             if (returnType!=other.returnType)
                 return false;
             /* Avoid unnecessary cloning */
