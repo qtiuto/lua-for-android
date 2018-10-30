@@ -225,12 +225,7 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
     }
 
     if(sThreadTest== nullptr){
-        int sdk;
-        {
-            char s[6];
-            __system_property_get("ro.build.version.sdk",s);
-            sdk=atoi(s);
-        }
+        int sdk = getSDK();
         if(sdk<26){
             sThreadTest=pThreadTest;
             sThreadID=pThreadID;
@@ -241,6 +236,16 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
             sThreadID=tThreadID;
         }
     }
+}
+
+int getSDK() {
+    static int sdk=0;
+    if(sdk!=0)
+        return sdk;
+    char s[6];
+    __system_property_get("ro.build.version.sdk",s);
+    sdk=atoi(s);
+    return sdk;
 }
 
 lua_State *ScriptContext::getLua() {

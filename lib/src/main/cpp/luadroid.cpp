@@ -15,6 +15,7 @@
 #include <cstring>
 #include <setjmp.h>
 #include <lua.h>
+#include <dex/BootDexResolver.h>
 
 #if LUA_VERSION_NUM < 503
 #include "int64_support.h"
@@ -2640,6 +2641,12 @@ static void registerNativeMethods(JNIEnv *env) {
     jclass scriptClass = env->FindClass("com/oslorde/luadroid/ScriptContext");
     env->RegisterNatives(scriptClass, nativeMethods,
                          sizeof(nativeMethods) / sizeof(JNINativeMethod));
+    int sdk=getSDK();
+    if(sdk>25){
+        DexResolver::init();
+        JNINativeMethod method[]={JNINativeMethod{"getBootClassList","()[Ljava/lang/String;",(void*)DexResolver::getAllBootClasses}};
+        env->RegisterNatives(scriptClass,method,1);
+    }
     env->DeleteLocalRef(scriptClass);
 }
 
@@ -2650,6 +2657,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
         return -1;
     }
     registerNativeMethods(env);
+
     return JNI_VERSION_1_4;
 }
 

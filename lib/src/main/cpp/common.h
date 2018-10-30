@@ -25,7 +25,7 @@ extern jmethodID charValue;
 extern jmethodID booleanValue;
 extern jmethodID longValue;
 extern jmethodID doubleValue;
-
+extern int getSDK();
 typedef std::string String;
 
 template<class _Key, typename _Value,

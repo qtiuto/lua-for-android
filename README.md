@@ -97,6 +97,10 @@ Module app is a lua editor for running test in android.
       can be found,cause some classloaders may use proxy classloader to loadClass.
       
       Internally,it use `dalvik.system.DexFile#entries` to get all classes.
+      For DexFile constructor has has been deprecated since Android O and unusable
+      for boot class loader since Android P, I turned to read boot dex files from ClassLinker
+      and return class list from classdefs. Hereby, the performance of **using** will be highly
+      improved since Android O(from 800 ms ->10 ms). (Don't ask me to fit in older version)
       
       For **non-ascii** characters or '$' or '-' in class name, see **import**
       
@@ -164,8 +168,8 @@ Module app is a lua editor for running test in android.
       To get a primitive type,pass it's name,e.g to get 'int',
       pass in 'int', rather than jni identifier 'I'.
       
-      The full name you pass in is the name from Class#getName,and the short Name is
-      from getSimpleName. 
+      The full name you pass in is the name from **Class#getName**,and the short Name is
+      from **Class#getSimpleName**. 
       
       Inner class must pass in qualified name like
       **'View$OnClickListener'** instead of **'View.OnClickListener'** or 
@@ -416,6 +420,10 @@ Module app is a lua editor for running test in android.
    different types,which is not allowed by the compiler but ok in jvm.
    To distinguish it,use **(Type or obj).name\[according type]** to operate
    on the field.
+   
+   Google ban access to some black list members and warn about gray list members since Android Pie.
+   However, it makes me feel sad cause logcat is performance killer, so I 
+   disable this feature once the lib is loaded. 
      
    ##### Note:  
    **Type.class** will return the class object represented by the type
@@ -448,7 +456,7 @@ Module app is a lua editor for running test in android.
    ```
    
    You can index any java object with **set/put**,**get/at** methods.When you index or add an 
-   index these two method will be invoked,or you can add custom indexer.
+   index, these two method will be invoked,or you can add custom indexer.
    For example,
    
    ```lua

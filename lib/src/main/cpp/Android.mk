@@ -6,10 +6,10 @@ LUA_LIB :=lua
 $(call import-add-path,$(LOCAL_PATH)/../externalLib)
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES  := java_type.cpp luadroid.cpp log_wrapper.cpp script_context.cpp utf8.cpp
+LOCAL_SRC_FILES  := java_type.cpp luadroid.cpp log_wrapper.cpp script_context.cpp utf8.cpp dex/fake_dlfcn.c dex/BootDexResolver.cpp
 LOCAL_C_INCLUDES := $(LOCAL_PATH)
 LOCAL_STATIC_LIBRARIES :=$(LUA_LIB)
-ifneq ( $(APP_OPTIM), debug)
+ifneq ($(APP_OPTIM),debug)
 LOCAL_LDFLAGS += -Wl,--gc-sections
 LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/sym.map
 endif

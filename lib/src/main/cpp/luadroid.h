@@ -267,13 +267,16 @@ public:
 
     ~ScriptContext();
 
+
 private:
     void config(lua_State *L);
 
     char *checkLineEndForLogcat(const char *data) const;
 
     static void init(TJNIEnv *env, jobject const javaObject);
+
 };
+
 
 
 #endif //LUADROID_LUADROID_H

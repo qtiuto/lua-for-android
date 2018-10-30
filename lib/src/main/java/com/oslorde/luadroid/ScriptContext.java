@@ -58,7 +58,7 @@ public class ScriptContext implements GCTracker {
                     sUseList=true;
                     sUnchecked=Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked",boolean.class,List.class);
                 }
-            } catch (NoSuchMethodException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
 
@@ -117,6 +117,8 @@ public class ScriptContext implements GCTracker {
     private native static void releaseFunc(long ptr);
 
     private static native int getClassType(long ptr,Class c);
+
+    private static native String[] getBootClassList();
 
     /**
      * change a lua function to a functional interface instance
@@ -521,7 +523,7 @@ public class ScriptContext implements GCTracker {
     private static String getPackage(String cl){
         int index=cl.lastIndexOf('.');
         if(index==-1) return "";
-        return cl.substring(0,index);
+        return cl.substring(0,index).intern();
     }
 
     /** 1-5 is left for box type,6 left for object,interfaces is always 7*/
@@ -966,42 +968,58 @@ public class ScriptContext implements GCTracker {
     }
 
     private void initLoader() throws Exception {
-        if(dexFiles==null){
-            dexFiles=new HashSet<>();
-            packages=new HashMap<>();
-            String[] bootJars=System.getenv("BOOTCLASSPATH").split(":");
-            for (String path : bootJars) {
-                DexFile dexFile = new DexFile(path);
-                addDexFile(dexFile);
+            if(dexFiles==null){
+                dexFiles=new HashSet<>();
+                packages=new HashMap<>();
+                String[] bootJars=System.getenv("BOOTCLASSPATH").split(":");
+                if(Build.VERSION.SDK_INT<=25){
+                for (String path : bootJars) {
+                    DexFile dexFile;
+                    dexFile=new DexFile(path);
+                    addDexFile(dexFile);
+                }
+                }else {
+                    long start=System.currentTimeMillis();
+                    String[] bootClassList = getBootClassList();
+                    start=System.currentTimeMillis();
+                    for (String cl: bootClassList) {
+                        addClassToPackageCache(cl);
+                    }
+                    dexFiles.addAll(Arrays.asList(bootJars));
+                }
+                loadClassLoader(ScriptContext.class.getClassLoader());
             }
-            loadClassLoader(ScriptContext.class.getClassLoader());
-        }
+
+
     }
 
     private void addDexFile(DexFile dexFile) {
         Enumeration<String> entries = dexFile.entries();
         while (entries.hasMoreElements()){
             String cl=entries.nextElement();
-            cl=cl.replace('/','.');
-            String pack=getPackage(cl);
-            Object names=packages.get(pack);
-            List<String> nameList;
-            if(names==null){
-                nameList=new ArrayList<>();
-                nameList.add(cl);
-                packages.put(pack,nameList);
-            }else if(names instanceof String[]){
-                nameList=new ArrayList<>(Arrays.asList((String[]) names));
-                nameList.add(cl);
-                packages.put(pack,nameList);
-            }
-            else{
-                nameList= (List<String>) names;
-                nameList.add(cl);
-            }
-
+            addClassToPackageCache(cl);
         }
         dexFiles.add(dexFile.getName());
+    }
+
+    private void addClassToPackageCache(String cl) {
+        //cl=cl.replace('/','.');
+        String pack=getPackage(cl);
+        Object names=packages.get(pack);
+        List<String> nameList;
+        if(names==null){
+            nameList=new ArrayList<>();
+            nameList.add(cl);
+            packages.put(pack,nameList);
+        }else if(names instanceof String[]){
+            nameList=new ArrayList<>(Arrays.asList((String[]) names));
+            nameList.add(cl);
+            packages.put(pack,nameList);
+        }
+        else{
+            nameList= (List<String>) names;
+            nameList.add(cl);
+        }
     }
 
     @Override
@@ -1099,7 +1117,6 @@ public class ScriptContext implements GCTracker {
                             }
                             return array;
                         });
-
                     }
                 } else {
                     sConverters.put(cls, table -> table.values().toArray((Object[])

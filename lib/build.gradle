@@ -1,13 +1,23 @@
 apply plugin: 'com.android.library'
+apply plugin: "guru.stefma.bintrayrelease"
 
+androidArtifact { // 2
+    artifactId = "luadroid"
+}
+publish {
+    version = "1.0.0"
+    group = "com.oslorde"
+    userOrg = 'karven'
+    desc = 'a high performance library for running lua in java'
+    website = 'https://github.com/qtiuto/lua-for-android'
+    bintrayUser ='karven'
+}
 android {
-    compileSdkVersion 27
-
-
+    compileSdkVersion 28
 
     defaultConfig {
         minSdkVersion 14
-        targetSdkVersion 27
+        targetSdkVersion 28
         versionCode 1
         versionName "1.0"
 
@@ -42,7 +52,6 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 }
-
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     testImplementation 'junit:junit:4.12'
