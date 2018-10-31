@@ -74,9 +74,6 @@ public class ScriptContext implements GCTracker {
     private OutputStream outLogger;
     private OutputStream errLogger;
     private WeakReference<GCListener> gcListener;
-    //Too many memory usages.
-    private Set<String> dexFiles;
-    private Map<String,Object> packages;
 
     public ScriptContext() {
         this(true, false);
@@ -119,8 +116,8 @@ public class ScriptContext implements GCTracker {
 
     private static native int getClassType(long ptr,Class c);
 
-    private static native String[] getBootClassList();
-    private static native String[] getClassList(Object cookie);
+    private static native String[][] getBootClassList();
+    private static native String[][] getClassList(Object cookie);
 
     /**
      * change a lua function to a functional interface instance
@@ -238,8 +235,6 @@ public class ScriptContext implements GCTracker {
     //Optimize for android only, cause dex file use binary order to store members
     //Only receive members from declare call;
     private static long binarySearchMember(Member[] members,String name,boolean isStatic){
-
-        //index = Arrays.binarySearch(members, name, (value, key) ->((String)key ).compareTo(((Member)value).getName()));
         if(members.length==0) return -1;
         int low = 0;
         int high = members.length - 1;
@@ -520,12 +515,6 @@ public class ScriptContext implements GCTracker {
             }
         }while ((c=c.getSuperclass())!=null);
 
-    }
-
-    private static String getPackage(String cl){
-        int index=cl.lastIndexOf('.');
-        if(index==-1) return "";
-        return cl.substring(0,index).intern();
     }
 
     /** 1-5 is left for box type,6 left for object,interfaces is always 7*/
@@ -918,21 +907,45 @@ public class ScriptContext implements GCTracker {
         return factory.generate(v);
     }
 
+    //Too many memory usages.
+    private Set<String> dexFiles;
+    private ArrayList<String[]> classes;
+
+    static Comparator<String> classPrefixComparator = (o1, o2) -> {
+        if (o1.startsWith(o2)) return 0;
+        return o1.compareTo(o2);
+    };
+
     private String[] importAll(String pack) throws Exception {
         synchronized (importLock){
             initLoader();
-            Object names = packages.get(pack);
-            if(names instanceof String[])
-                return (String[]) names;
-            List<String> nameList= (List<String>) names;
-            String[] ret = new String[0];
-            if(nameList==null)
-                return ret;
-            ret= nameList.toArray(ret);
-            packages.put(pack,ret);
-            return ret;
+                ArrayList<String> ret=new ArrayList<>();
+                int fromIndex = pack.length() + 1;
+                for (String[] dexSet :
+                        classes) {
+                    int mid=Arrays.binarySearch(dexSet,pack, classPrefixComparator);
+                    if(mid<0) continue;
+                    for (int j = mid; j!=-1; --j) {
+                        String cl=dexSet[j];
+                        if (cl.startsWith(pack) ){
+                            if(cl.indexOf('.', fromIndex) == -1)
+                                ret.add(cl);
+                        }else break;
+                    }
+                    if(mid!=dexSet.length-1)
+                        for (int j=mid+1,len=dexSet.length;j<len;++j) {
+                            String cl=dexSet[j];
+                            if (cl.startsWith(pack) ){
+                                if(cl.indexOf('.', fromIndex) == -1)
+                                    ret.add(cl);
+                            }else break;
+                        }
+                }
+                return ret.toArray(new String[ret.size()]);
         }
+
     }
+
 
     private void loadClassLoader(ClassLoader loader) throws Exception {
         synchronized (importLock){
@@ -972,7 +985,7 @@ public class ScriptContext implements GCTracker {
     private void initLoader() throws Exception {
             if(dexFiles==null){
                 dexFiles=new HashSet<>();
-                packages=new HashMap<>();
+                classes=new ArrayList<>();
                 String[] bootJars=System.getenv("BOOTCLASSPATH").split(":");
                 if(Build.VERSION.SDK_INT<=25){
                 for (String path : bootJars) {
@@ -981,11 +994,10 @@ public class ScriptContext implements GCTracker {
                     addDexFile(dexFile);
                 }
                 }else {
-                    String[] bootClassList = getBootClassList();
-                    if (bootClassList != null)
-                        for (String cl : bootClassList) {
-                            addClassToPackageCache(cl);
-                        }
+                    String[][] bootClassList = getBootClassList();
+                    if (bootClassList != null) {
+                        Collections.addAll(classes, bootClassList);
+                    }
                     dexFiles.addAll(Arrays.asList(bootJars));
                 }
                 loadClassLoader(ScriptContext.class.getClassLoader());
@@ -1006,41 +1018,23 @@ public class ScriptContext implements GCTracker {
         return null;
     }
 
-    private void addDexFile(DexFile dexFile) {
-        if(Build.VERSION.SDK_INT>=21&&Build.VERSION.SDK_INT<=28){
-            for (String cl:getClassList(getDexFileCookie(dexFile))){
-                addClassToPackageCache(cl);
-            }
-        }else {
+    //Classes in dex file are sorted internally, so no need to sort it
+    private void addDexFile(DexFile dexFile) throws Exception{
+        if(Build.VERSION.SDK_INT>=21){
+            String[][] list=getClassList(getDexFileCookie(dexFile));
+            Collections.addAll(classes, list);
+        }else {//generally dalvik only
             Enumeration<String> entries = dexFile.entries();
-            while (entries.hasMoreElements()){
-                String cl=entries.nextElement();
-                addClassToPackageCache(cl);
-            }
+            Field field=entries.getClass().getDeclaredField("mNameList");
+            field.setAccessible(true);
+            String[] list= (String[]) field.get(entries);
+            classes.add(list);
         }
 
         dexFiles.add(dexFile.getName());
     }
 
-    private void addClassToPackageCache(String cl) {
-        //cl=cl.replace('/','.');
-        String pack=getPackage(cl);
-        Object names=packages.get(pack);
-        List<String> nameList;
-        if(names==null){
-            nameList=new ArrayList<>();
-            nameList.add(cl);
-            packages.put(pack,nameList);
-        }else if(names instanceof String[]){
-            nameList=new ArrayList<>(Arrays.asList((String[]) names));
-            nameList.add(cl);
-            packages.put(pack,nameList);
-        }
-        else{
-            nameList= (List<String>) names;
-            nameList.add(cl);
-        }
-    }
+
 
     @Override
     public void onNewGC(WeakReference<GCTracker> reference) {

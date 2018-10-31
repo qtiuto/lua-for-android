@@ -32,9 +32,9 @@ struct ClassLinker_virtual {
 
     std::vector<const void *> boot_class_path_;
 };
-#define dexAccess(dex,member) (getSDK()<28?((art::DexFile*)dex)->member:((art::DexFile28*)dex)->member)
+#define dexAccess(dex,member) (sdk<28?((art::DexFile*)dex)->member:((art::DexFile28*)dex)->member)
 
-#define dexCall(dex,member, ...) (getSDK()<28?((art::DexFile*)dex)->member(__VA_ARGS__):((art::DexFile28*)dex)->member(__VA_ARGS__))
+#define dexCall(dex,member, ...) (sdk<28?((art::DexFile*)dex)->member(__VA_ARGS__):((art::DexFile28*)dex)->member(__VA_ARGS__))
 
 struct Runtime_26 {
     uint64_t callee_save_methods_[4];
@@ -284,23 +284,25 @@ void setCode(void* addr,const unsigned char* code,size_t len){
     }
 }
 static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *dexFiles) {
-    int size = 0;
-    for (auto &&dexFile:*dexFiles) {
-        size += dexAccess(dexFile,header_)->class_defs_size_;
-    }
-    jobjectArray ret = env->NewObjectArray(size, stringType, NULL);
+    jobjectArray ret = nullptr;
+    char *tmp = new char[256];
+    int sdk=getSDK();
+    int cacheLen = 256;
     int index = 0;
-    char *tmp = new char[512];
-    int cacheLen = 512;
     for (auto &&dexFile:*dexFiles) {
-        for (int i = 0; i < dexAccess(dexFile,header_)->class_defs_size_; ++i, ++index) {
+        int size = dexAccess(dexFile,header_)->class_defs_size_;
+        JObjectArray classes(env,env->NewObjectArray(size,stringType,NULL));
+        for (int i = 0; i <size; ++i ) {
             auto idx=dexAccess(dexFile,class_defs_)[i].class_idx_;
             const char *bytes = dexCall(dexFile,stringFromType,idx) + 1;
             int len = (int) strlen(bytes);
             bestCache(&tmp, &cacheLen, len);
             fixName(tmp, bytes, len - 1);
-            env->SetObjectArrayElement(ret, index, JString(env, env->NewStringUTF(tmp)));
+            env->SetObjectArrayElement(classes, i, JString(env, env->NewStringUTF(tmp)));
         }
+        if(!ret) ret=env->NewObjectArray(dexFiles->size(), env->GetObjectClass(classes), NULL);
+        env->SetObjectArrayElement(ret,index,classes);
+        ++index;
     }
     delete tmp;
     return ret;
@@ -312,9 +314,11 @@ namespace DexResolver {
         runtime = *(void**)fake_dlsym(handle, "_ZN3art7Runtime9instance_E");
         if (sdk >= 28) {
             void *fMember = fake_dlsym(handle,
-                                       "_ZN3art9hiddenapi6detail19GetMemberActionImplINS_8ArtFieldEEENS0_6ActionEPT_NS_20HiddenApiAccessFlags7ApiListES4_NS0_12AccessMethodE");
+                                       "_ZN3art9hiddenapi6detail19GetMemberActionImplINS_8ArtFieldEEENS0_"
+                                       "6ActionEPT_NS_20HiddenApiAccessFlags7ApiListES4_NS0_12AccessMethodE");
             void *mMember = fake_dlsym(handle,
-                                       "_ZN3art9hiddenapi6detail19GetMemberActionImplINS_9ArtMethodEEENS0_6ActionEPT_NS_20HiddenApiAccessFlags7ApiListES4_NS0_12AccessMethodE");
+                                       "_ZN3art9hiddenapi6detail19GetMemberActionImplINS_9ArtMethodEEENS0_"
+                                       "6ActionEPT_NS_20HiddenApiAccessFlags7ApiListES4_NS0_12AccessMethodE");
             if (fMember != nullptr)
                 setCode(fMember, (const unsigned char *) retZero, 16);
             if (mMember != nullptr)
@@ -407,7 +411,7 @@ namespace DexResolver {
 
     jobjectArray getClassList(JNIEnv *env, jclass, jobject cookie){
         int sdk=getSDK();
-        if(sdk<21||sdk>28) return nullptr;
+        if(sdk<21) return nullptr;
         std::vector<const void*> dexFiles;
         switch (sdk){
             case 21:

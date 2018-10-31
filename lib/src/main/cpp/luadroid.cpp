@@ -2644,11 +2644,11 @@ static void registerNativeMethods(JNIEnv *env) {
     int sdk=getSDK();
     if(sdk>25){
         DexResolver::init();
-        JNINativeMethod method[]={JNINativeMethod{"getBootClassList","()[Ljava/lang/String;",(void*)DexResolver::getAllBootClasses}};
+        JNINativeMethod method[]={JNINativeMethod{"getBootClassList","()[[Ljava/lang/String;",(void*)DexResolver::getAllBootClasses}};
         env->RegisterNatives(scriptClass,method,1);
     }
     if(sdk>=21){
-        JNINativeMethod method[]={JNINativeMethod{"getClassList","(Ljava/lang/Object;)[Ljava/lang/String;",(void*)DexResolver::getClassList}};
+        JNINativeMethod method[]={JNINativeMethod{"getClassList","(Ljava/lang/Object;)[[Ljava/lang/String;",(void*)DexResolver::getClassList}};
         env->RegisterNatives(scriptClass,method,1);
     }
     env->DeleteLocalRef(scriptClass);
