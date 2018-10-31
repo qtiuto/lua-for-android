@@ -253,11 +253,12 @@ static void fixName(char* tmp, const char* src,int len){
             tmp[i]='.';
     }
 }
-static inline void bestCache(char** orig,int* cacheLen,int len){
+template <typename T>
+static inline void bestCache(T** orig,int* cacheLen,int len){
     if(len>*cacheLen){
         delete [] *orig;
         len=len+(len>>1);
-        *orig=new char[len];
+        *orig=new T[len];
         *cacheLen=len;
     }
 }
@@ -286,15 +287,21 @@ void setCode(void* addr,const unsigned char* code,size_t len){
 static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *dexFiles) {
     jobjectArray ret = nullptr;
     char *tmp = new char[256];
-    int sdk=getSDK();
     int cacheLen = 256;
+    int sdk=getSDK();
+    int cacheIndexLen=dexAccess(((*dexFiles)[0]),header_)->class_defs_size_;
+    uint* idxes=new uint[cacheIndexLen];// for worst
     int index = 0;
     for (auto &&dexFile:*dexFiles) {
         int size = dexAccess(dexFile,header_)->class_defs_size_;
+        bestCache(&idxes, &cacheIndexLen, size);
+        for (int i = 0; i <size; ++i ) {
+            idxes[i]=dexAccess(dexFile,class_defs_)[i].class_idx_;
+        }
+        std::sort(idxes,idxes+size);
         JObjectArray classes(env,env->NewObjectArray(size,stringType,NULL));
         for (int i = 0; i <size; ++i ) {
-            auto idx=dexAccess(dexFile,class_defs_)[i].class_idx_;
-            const char *bytes = dexCall(dexFile,stringFromType,idx) + 1;
+            const char *bytes = dexCall(dexFile,stringFromType,idxes[i]) + 1;
             int len = (int) strlen(bytes);
             bestCache(&tmp, &cacheLen, len);
             fixName(tmp, bytes, len - 1);
@@ -304,6 +311,7 @@ static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *d
         env->SetObjectArrayElement(ret,index,classes);
         ++index;
     }
+    delete idxes;
     delete tmp;
     return ret;
 }

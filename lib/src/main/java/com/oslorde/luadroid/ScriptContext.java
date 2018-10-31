@@ -912,36 +912,36 @@ public class ScriptContext implements GCTracker {
     private ArrayList<String[]> classes;
 
     static Comparator<String> classPrefixComparator = (o1, o2) -> {
-        if (o1.startsWith(o2)) return 0;
+        if (o1.startsWith(o2)&&o1.indexOf('.',o2.length()+1)==-1) return 0;
         return o1.compareTo(o2);
     };
 
     private String[] importAll(String pack) throws Exception {
-        synchronized (importLock){
+        synchronized (importLock) {
             initLoader();
-                ArrayList<String> ret=new ArrayList<>();
-                int fromIndex = pack.length() + 1;
-                for (String[] dexSet :
-                        classes) {
-                    int mid=Arrays.binarySearch(dexSet,pack, classPrefixComparator);
-                    if(mid<0) continue;
-                    for (int j = mid; j!=-1; --j) {
-                        String cl=dexSet[j];
-                        if (cl.startsWith(pack) ){
-                            if(cl.indexOf('.', fromIndex) == -1)
-                                ret.add(cl);
-                        }else break;
-                    }
-                    if(mid!=dexSet.length-1)
-                        for (int j=mid+1,len=dexSet.length;j<len;++j) {
-                            String cl=dexSet[j];
-                            if (cl.startsWith(pack) ){
-                                if(cl.indexOf('.', fromIndex) == -1)
-                                    ret.add(cl);
-                            }else break;
-                        }
+            ArrayList<String> ret = new ArrayList<>(16);
+            int fromIndex = pack.length() + 1;
+            for (String[] dexSet :
+                    classes) {
+                int mid = Arrays.binarySearch(dexSet, pack, classPrefixComparator);
+                if (mid < 0) continue;
+                for (int j = mid; j != -1; --j) {
+                    String cl = dexSet[j];
+                    if (cl.startsWith(pack)) {
+                        if (cl.indexOf('.', fromIndex) == -1)
+                            ret.add(cl);
+                    } else break;
                 }
-                return ret.toArray(new String[ret.size()]);
+                if (mid != dexSet.length - 1)
+                    for (int j = mid + 1, len = dexSet.length; j < len; ++j) {
+                        String cl = dexSet[j];
+                        if (cl.startsWith(pack)) {
+                            if (cl.indexOf('.', fromIndex) == -1)
+                                ret.add(cl);
+                        } else break;
+                    }
+            }
+            return ret.toArray(new String[ret.size()]);
         }
 
     }
@@ -983,25 +983,25 @@ public class ScriptContext implements GCTracker {
     }
 
     private void initLoader() throws Exception {
-            if(dexFiles==null){
-                dexFiles=new HashSet<>();
-                classes=new ArrayList<>();
-                String[] bootJars=System.getenv("BOOTCLASSPATH").split(":");
-                if(Build.VERSION.SDK_INT<=25){
+        if (dexFiles == null) {
+            dexFiles = new HashSet<>();
+            classes = new ArrayList<>();
+            String[] bootJars = System.getenv("BOOTCLASSPATH").split(":");
+            if (Build.VERSION.SDK_INT <= 25) {
                 for (String path : bootJars) {
                     DexFile dexFile;
-                    dexFile=new DexFile(path);
+                    dexFile = new DexFile(path);
                     addDexFile(dexFile);
                 }
-                }else {
-                    String[][] bootClassList = getBootClassList();
-                    if (bootClassList != null) {
-                        Collections.addAll(classes, bootClassList);
-                    }
-                    dexFiles.addAll(Arrays.asList(bootJars));
+            } else {
+                String[][] bootClassList = getBootClassList();
+                if (bootClassList != null) {
+                    Collections.addAll(classes, bootClassList);
                 }
-                loadClassLoader(ScriptContext.class.getClassLoader());
+                dexFiles.addAll(Arrays.asList(bootJars));
             }
+            loadClassLoader(ScriptContext.class.getClassLoader());
+        }
 
 
     }
@@ -1018,7 +1018,7 @@ public class ScriptContext implements GCTracker {
         return null;
     }
 
-    //Classes in dex file are sorted internally, so no need to sort it
+    //Classes in dex file are sorted before return, so no need to sort it
     private void addDexFile(DexFile dexFile) throws Exception{
         if(Build.VERSION.SDK_INT>=21){
             String[][] list=getClassList(getDexFileCookie(dexFile));
