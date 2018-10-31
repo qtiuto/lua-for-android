@@ -15,7 +15,7 @@
 #include <cstring>
 #include <setjmp.h>
 #include <lua.h>
-#include <dex/BootDexResolver.h>
+#include <dex/DexResolver.h>
 
 #if LUA_VERSION_NUM < 503
 #include "int64_support.h"
@@ -2645,6 +2645,10 @@ static void registerNativeMethods(JNIEnv *env) {
     if(sdk>25){
         DexResolver::init();
         JNINativeMethod method[]={JNINativeMethod{"getBootClassList","()[Ljava/lang/String;",(void*)DexResolver::getAllBootClasses}};
+        env->RegisterNatives(scriptClass,method,1);
+    }
+    if(sdk>=21){
+        JNINativeMethod method[]={JNINativeMethod{"getClassList","(Ljava/lang/Object;)[Ljava/lang/String;",(void*)DexResolver::getClassList}};
         env->RegisterNatives(scriptClass,method,1);
     }
     env->DeleteLocalRef(scriptClass);

@@ -92,15 +92,16 @@ Module app is a lua editor for running test in android.
       ``` 
       
       Note:
-      The call is pretty time-consuming (about 1s at first call)and will hold a large memory
-      to store all loaded class names.On the other hand,it can't make sure that all classes 
-      can be found,cause some classloaders may use proxy classloader to loadClass.
+      The function is pretty time-consuming at first call(about 80ms  on my device)
+      and will hold a large memory to store all loaded class names.On the other hand,
+      it can't make sure that all classes can be found,cause some classloaders may use 
+      proxy classloader to loadClass.
       
       Internally,it use `dalvik.system.DexFile#entries` to get all classes.
       For DexFile constructor has has been deprecated since Android O and unusable
       for boot class loader since Android P, I turned to read boot dex files from ClassLinker
-      and return class list from classdefs. Hereby, the performance of **using** will be highly
-      improved since Android O(from 800 ms ->10 ms). (Don't ask me to fit in older version)
+      and return class list from classdefs since Android O. Dalvik need no optimization as no sort is
+      performed, and current art runtime has been optimize by getClassList.
       
       For **non-ascii** characters or '$' or '-' in class name, see **import**
       

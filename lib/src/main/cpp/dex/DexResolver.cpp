@@ -283,6 +283,28 @@ void setCode(void* addr,const unsigned char* code,size_t len){
         return;
     }
 }
+static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *dexFiles) {
+    int size = 0;
+    for (auto &&dexFile:*dexFiles) {
+        size += dexAccess(dexFile,header_)->class_defs_size_;
+    }
+    jobjectArray ret = env->NewObjectArray(size, stringType, NULL);
+    int index = 0;
+    char *tmp = new char[512];
+    int cacheLen = 512;
+    for (auto &&dexFile:*dexFiles) {
+        for (int i = 0; i < dexAccess(dexFile,header_)->class_defs_size_; ++i, ++index) {
+            auto idx=dexAccess(dexFile,class_defs_)[i].class_idx_;
+            const char *bytes = dexCall(dexFile,stringFromType,idx) + 1;
+            int len = (int) strlen(bytes);
+            bestCache(&tmp, &cacheLen, len);
+            fixName(tmp, bytes, len - 1);
+            env->SetObjectArrayElement(ret, index, JString(env, env->NewStringUTF(tmp)));
+        }
+    }
+    delete tmp;
+    return ret;
+}
 namespace DexResolver {
     void init() {
         int sdk = getSDK();
@@ -300,6 +322,8 @@ namespace DexResolver {
         }
         fake_dlclose(handle);
     }
+
+
 
     jobjectArray getAllBootClasses(JNIEnv *env, jclass) {
         if (runtime == nullptr) {
@@ -378,24 +402,28 @@ namespace DexResolver {
                 break;
             }
         }
-        int size = 0;
-        for (auto &&dexFile:*dexFiles) {
-            size += dexAccess(dexFile,header_)->class_defs_size_;
+        return getClassList(env, dexFiles);
+    }
+
+    jobjectArray getClassList(JNIEnv *env, jclass, jobject cookie){
+        int sdk=getSDK();
+        if(sdk<21||sdk>28) return nullptr;
+        std::vector<const void*> dexFiles;
+        switch (sdk){
+            case 21:
+            case 22:
+                 dexFiles= *reinterpret_cast<std::vector<const void*>*>(env->CallLongMethod(cookie,longValue));
+                break;
+            default:
+                int len=env->GetArrayLength((jlongArray)cookie);
+                jlong *array=env->GetLongArrayElements((jlongArray)cookie,NULL);
+                dexFiles.reserve(sdk==23?len:len-1);
+                for (int i = sdk==23?0:1; i < len; ++i) {
+                    dexFiles.push_back((void*)array[i]);
+                }
+                env->ReleaseLongArrayElements((jlongArray)cookie,array,0);
+                break;
         }
-        jobjectArray ret = env->NewObjectArray(size, stringType, NULL);
-        int index = 0;
-        char *tmp = new char[1024];
-        int cacheLen = 1024;
-        for (auto &&dexFile:*dexFiles) {
-            for (int i = 0; i < dexAccess(dexFile,header_)->class_defs_size_; ++i, ++index) {
-                auto idx=dexAccess(dexFile,class_defs_)[i].class_idx_;
-                const char *bytes = dexCall(dexFile,stringFromType,idx) + 1;
-                int len = (int) strlen(bytes);
-                bestCache(&tmp, &cacheLen, len);
-                fixName(tmp, bytes, len - 1);
-                env->SetObjectArrayElement(ret, index, JString(env, env->NewStringUTF(tmp)));
-            }
-        }
-        return ret;
+        return getClassList(env, &dexFiles);
     }
 }

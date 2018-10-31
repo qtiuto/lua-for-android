@@ -48,6 +48,7 @@ public class ScriptContext implements GCTracker {
     //Optimize  for the redundant call in new Class Api
     private static  Method sUnchecked;
     private static final Method[] EMPTY_METHODS= new Method[0];
+    private static Field mDexCookie;
     private static boolean sUseList;
 
     static {
@@ -119,6 +120,7 @@ public class ScriptContext implements GCTracker {
     private static native int getClassType(long ptr,Class c);
 
     private static native String[] getBootClassList();
+    private static native String[] getClassList(Object cookie);
 
     /**
      * change a lua function to a functional interface instance
@@ -979,12 +981,11 @@ public class ScriptContext implements GCTracker {
                     addDexFile(dexFile);
                 }
                 }else {
-                    long start=System.currentTimeMillis();
                     String[] bootClassList = getBootClassList();
-                    start=System.currentTimeMillis();
-                    for (String cl: bootClassList) {
-                        addClassToPackageCache(cl);
-                    }
+                    if (bootClassList != null)
+                        for (String cl : bootClassList) {
+                            addClassToPackageCache(cl);
+                        }
                     dexFiles.addAll(Arrays.asList(bootJars));
                 }
                 loadClassLoader(ScriptContext.class.getClassLoader());
@@ -992,13 +993,32 @@ public class ScriptContext implements GCTracker {
 
 
     }
+    private static Object getDexFileCookie(DexFile dexFile){
+        try {
+            if(mDexCookie ==null){
+                mDexCookie =dexFile.getClass().getDeclaredField("mCookie");
+                mDexCookie.setAccessible(true);
+            }
+            return mDexCookie.get(dexFile);
+        }catch (Exception ignored){
+
+        }
+        return null;
+    }
 
     private void addDexFile(DexFile dexFile) {
-        Enumeration<String> entries = dexFile.entries();
-        while (entries.hasMoreElements()){
-            String cl=entries.nextElement();
-            addClassToPackageCache(cl);
+        if(Build.VERSION.SDK_INT>=21&&Build.VERSION.SDK_INT<=28){
+            for (String cl:getClassList(getDexFileCookie(dexFile))){
+                addClassToPackageCache(cl);
+            }
+        }else {
+            Enumeration<String> entries = dexFile.entries();
+            while (entries.hasMoreElements()){
+                String cl=entries.nextElement();
+                addClassToPackageCache(cl);
+            }
         }
+
         dexFiles.add(dexFile.getName());
     }
 
