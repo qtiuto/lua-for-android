@@ -311,8 +311,8 @@ static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *d
         env->SetObjectArrayElement(ret,index,classes);
         ++index;
     }
-    delete idxes;
-    delete tmp;
+    delete[] idxes;
+    delete[] tmp;
     return ret;
 }
 namespace DexResolver {
