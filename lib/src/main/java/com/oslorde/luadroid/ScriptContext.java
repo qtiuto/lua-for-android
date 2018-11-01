@@ -58,6 +58,7 @@ public class ScriptContext implements GCTracker {
                 else if(Build.VERSION.SDK_INT>=21){
                     sUseList=true;
                     sUnchecked=Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked",boolean.class,List.class);
+
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -1112,26 +1113,14 @@ public class ScriptContext implements GCTracker {
             Class<?> componentType = cls.getComponentType();
             if (componentType != null) {
                 if (componentType.isPrimitive()) {
-                    if (componentType == char.class) {
-                        sConverters.put(cls, table -> {
-                            char[] array = new char[table.size()];
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                array[i++] = ((String) v).charAt(0);
-                            }
-                            return array;
-                        });
-                    } else {
-                        int classType=getClassType(nativePtr,componentType);
-                        sConverters.put(cls, table -> {
-                            Object array = Array.newInstance(componentType,table.size());
-                            int i = 0;
-                            for (Object v : table.values()) {
-                                Array.set(array,i++,fixValue(v,classType,componentType,componentType,false));
-                            }
-                            return array;
-                        });
-                    }
+                    sConverters.put(cls, table -> {
+                        Object array = Array.newInstance(componentType,table.size());
+                        int i = 0;
+                        for (Object v : table.values()) {
+                            Array.set(array,i++,v);
+                        }
+                        return array;
+                    });
                 } else {
                     sConverters.put(cls, table -> table.values().toArray((Object[])
                             Array.newInstance(componentType, table.size())));
@@ -1141,17 +1130,6 @@ public class ScriptContext implements GCTracker {
         } catch (NoSuchMethodException ignored) {
         }
         return false;
-    }
-
-    private Object convertTable(Map<?, ?> table, Class target) throws Throwable {
-        TableConverter<?> converter = sConverters.get(target);
-        if (converter != null)
-            return converter.convert(table);
-        return null;
-    }
-
-    private Type checkTableType(Type type){
-        return isTableType(resolveType(type))?type:null;
     }
 
     private Type resolveKeyTableType(Type type){
