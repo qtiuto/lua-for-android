@@ -9,7 +9,7 @@
 #include <sys/mman.h>
 #include "fake_dlfcn.h"
 #include "dex_file.h"
-
+#include <errno.h>
 #ifdef __LP64__
 #define libPath "lib64"
 #else
