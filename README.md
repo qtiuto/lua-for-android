@@ -189,6 +189,8 @@ Module app is a lua editor for running test in android.
   
       To check whether the given object is an instance of the give type.
       
+      Equals to `object.instanceof(type)`
+      
       Usage: `instanceof(object,type)`
       
   * **sync**:  
