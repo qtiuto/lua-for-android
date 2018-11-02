@@ -277,8 +277,9 @@ JavaType *ScriptContext::getVoidClass(TJNIEnv *env) {
     JClass Void = env->FindClass("java/lang/Void");
     jfieldID mid = env->GetStaticFieldID(Void, "TYPE", "Ljava/lang/Class;");
     return ensureType(env, (JClass) env->GetStaticObjectField(Void, mid));
-
 }
+
+bool ThreadContext::isLocalFunction() { return scriptContext->localFunction; }
 
 inline JClass ThreadContext::getTypeNoCheck(const String &className) const {
     JClass type = env->FindClass(className.data());
@@ -394,7 +395,7 @@ void ThreadContext::setPendingException(const String &msg) {
     static jfieldID id = env->GetFieldID(throwableType, "detailMessage", "Ljava/lang/String;");
     JString oldMsg = (JString) env->GetObjectField(pendingJavaError, id);
     JString jmsg = env->NewStringUTF(
-            oldMsg.str() != nullptr && strlen(oldMsg) > 0 ? (String(oldMsg.str())+ "\n\t"+msg).data() : msg.data());
+            oldMsg.str() != nullptr && strlen(oldMsg) > 0 ? (oldMsg.str()+( '\t'+msg)).data() : msg.data());
     env->SetObjectField(pendingJavaError, id, jmsg.get());
 }
 
@@ -568,8 +569,11 @@ jobject ThreadContext::luaObjectToJObject(ValidLuaObject &luaObject) {
             v.l = env->NewLocalRef(v.l);
             return v.l;
         }
+        case T_TABLE:{
+            jvalue v = luaObjectToJValue(luaObject, HashMapType());
+            return v.l;
+        }
         case T_STRING:
-        case T_TABLE:
         case T_FUNCTION: {
             jvalue v = luaObjectToJValue(luaObject, FunctionType());
             return v.l;

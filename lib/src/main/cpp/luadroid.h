@@ -24,6 +24,7 @@ if(unlikely(env->ExceptionCheck())){\
     jthrowable t=env->ExceptionOccurred();\
     env->ExceptionClear();\
     context->setPendingException(t);\
+    env->DeleteLocalRef(t);\
     code\
 }})
 
@@ -93,15 +94,19 @@ public:
     }
 
     void setPendingException(jthrowable throwable) {
-        AutoJNIEnv env;
-        if (throwable == nullptr) pendingJavaError = nullptr;
-        else {
+        if (throwable != nullptr) {
             if (pendingJavaError != nullptr) {
                 if (env->IsSameObject(throwable, pendingJavaError)) return;
                 env->DeleteLocalRef(pendingJavaError);
             }
             pendingJavaError = (jthrowable) env->NewLocalRef(throwable);
         }
+    }
+
+    jthrowable transferJavaError(){
+        auto ret=pendingJavaError;
+        pendingJavaError= nullptr;
+        return ret;
     }
 
     void restore(ScriptContext* oldContext,Import* oldImport){
@@ -142,7 +147,6 @@ public:
     jthrowable getPendingJavaError() {
         return pendingJavaError;
     }
-
 
     JClass findClass(String&& str){
         return findClass(str);

@@ -289,24 +289,32 @@ Module app is a lua editor for running test in android.
        ```
        
        The handler order and re-throw is according to java specifications
-       However, you can just try without finally or catch, which means nothing
+       However, you can just try without finally or catch, which will return
+       the error code and the exception on error and nil on the other cases.
        
        Note:**yeild** is not supported inside any function you passed in,
-        cause it may have finally function un-called
+        cause it may have finally function un-called. If you really want to
+        use **pcall** to do catch the error, and handle it by your self.
+        Generally, try will append stacktrace info to the error but pcall won't. 
        
   * **throw**:  
   
-      Throws a java exception to the code,it will be caught by the above
-      try function or try catch in your java code.
+      Throws a java exception, which ,while not an exception, will be converted to an string and
+      wrapped as an **LuaException**, and finally, it will be caught by the above try function or 
+      try catch in your java code.
       
       Usage: `throw(exception object)`
       
       e.g.
       ```lua
          throw(Type('RuntimeException')("haha"))
+         throw "Ha Ha"
      ```
-      Notice: the exception must be a java object of type or sub-type of 
-      java.lang.Throwable
+      Notice:
+        If you use **pcall** you will receive a java exception object as error info,
+        and the exception won't be caught by upper try anymore.
+        The call **throw(java excption object)** has the close meaning as **error(java exception object)**
+        but differs by  throw adding stacktrace info to the exception while error won't
       
   * **proxy**:  
   
@@ -317,15 +325,16 @@ Module app is a lua editor for running test in android.
       ```lua
       proxy([class to extend or object of class to extend],
        [interfaces to implement]..., 
-       [method name,parameter types...,handler function]..., 
+       [method name,parameter types...,handler function]...,--or
+       [function] --for functional interface only
        [shared classloader],--for extension type only
-       [initial args for constructor])--for extension type only
+       [initial args for constructor]...)--for extension type only
       ```
       or 
       ```lua
       proxy{
-       --auto dectect,nilable
-       super=class to extends or implement or object of class to extend,
+       --auto detected,nilable
+       super=class to extend or implement, object of class to extend,
        
        interfaces={interfaces to implement},--nilable
        
