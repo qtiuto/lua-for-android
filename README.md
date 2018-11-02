@@ -116,7 +116,7 @@ Module app is a lua editor for running test in android.
       
       Usage: `new(type,args...)`
       
-      This is equal to call  `type(args...)`.
+      This is equal to call  `type(args...)` or `type.new(args...)`.
       
       e.g.
       ```lua
@@ -124,6 +124,8 @@ Module app is a lua editor for running test in android.
        new(StringBuilder,"haha") 
        --or 
        StringBuilder("haha")
+       --or
+       StringBuilder.new("haha")
       ```
       
   * **newArray**:  
@@ -277,11 +279,11 @@ Module app is a lua editor for running test in android.
        --or
        try{
           function() 
-             throw(Type('RuntimeException')("haha"))
+             throw "haha"
           end,
           catch={
           [Type('RuntimeException']=function (e) print(e) end,
-          [Type('Exception']=function (e) print(e) end,
+          Exception=function (e) print(e) end,
           all=function (e) throw e end
           },
           finally=function print "JJ" end
@@ -291,6 +293,7 @@ Module app is a lua editor for running test in android.
        The handler order and re-throw is according to java specifications
        However, you can just try without finally or catch, which will return
        the error code and the exception on error and nil on the other cases.
+       The type can be a type name string rather than a java type.
        
        Note:**yeild** is not supported inside any function you passed in,
         cause it may have finally function un-called. If you really want to
@@ -378,7 +381,7 @@ Module app is a lua editor for running test in android.
       }
       ```
       
-    ##### Note:
+     **Note:**
       
        If you passed an object to extend,then the proxy object is 
        directly allocated and have all fields from the object to be
@@ -402,7 +405,7 @@ Module app is a lua editor for running test in android.
        values it refers to can't be determined, make sure the function
        doesn't refers to any value it can't access in another thread.
     
-## Multi-thread Support
+### Multi-thread Support
 
    A userdata named 'cross' is imported to support cross-thread communication.
    It behaves like a table,so you can just put any lua object to 
@@ -415,7 +418,7 @@ Module app is a lua editor for running test in android.
    will be converted to string.Never put a value has references to the 
    global table, or a stack overflow error may occur. 
      
-## Member Access
+### Member Access
      
    Once you have a type from import or Type,you can access its  static 
    fields  like **Type.name** or  **Type\['name']** and its methods like 
@@ -435,9 +438,20 @@ Module app is a lua editor for running test in android.
    However, it makes me feel sad cause logcat is performance killer, so I 
    disable this feature once the lib is loaded. 
      
-   ##### Note:  
+   **Note:**
+     
    **Type.class** will return the class object represented by the type
    
+   **Type.new(args...)** will construct a new object like **new** does if no
+   static field or method named new in that type.This is syntax sugar for **new**. 
+   
+   **Type.assignableFrom(anotherType)** will return whether the object of this type can
+    be cast to the other type if no static field or method named assignableFrom in that type.
+     
+   **javaObject.instanceof(givenType)** will return whether the object  can
+   be cast to the given type if no non-static field or method named instanceof in that type.
+   This is a short way for the **instanceof** method.
+        
    **'.length'** of an array object will return its length,you can use **'#'** 
    operator to get the length of an array object also.'#' operator also
    works for any object with **length()** or **size()** method declared.
@@ -493,13 +507,13 @@ Module app is a lua editor for running test in android.
       print(view.visibilty)
    ```
    
-## Type Specification
+### Type Specification
    You can add a type before the arg in method call,new(),newArray
    or the args in proxy(),so as to indicate the type you wish the
    argument to be, and then  have the proper method or constructor to
    be called.
       
-## Method Deduction
+### Method Deduction
    If type is supplied,the closet type is considered first.
      
    For integer value,if it's in int32 range,then it's assumed to be 
@@ -538,7 +552,7 @@ Module app is a lua editor for running test in android.
    User date is treated as integer.
      
 
-## Automatic Conversion
+### Automatic Conversion
     
    For field set and method call or proxy return,lua object will be converted
    automatically according to the type.Type check ha thse same rule in 
@@ -566,7 +580,7 @@ Module app is a lua editor for running test in android.
    accept their primitive type.Autobox and auto-unbox will be performed
    if necessary.
           
-## Module name in lua
+### Module name in lua
      
    The module java is loaded once the lua state initialize with
    all its members exported to the global table if you specified
@@ -582,7 +596,7 @@ Module app is a lua editor for running test in android.
      print(java.new == new)--true
    ```
       
-## ScriptContext Api
+### ScriptContext Api
      
    * constructor:see Module name in lua and proxy
      
@@ -610,7 +624,7 @@ Module app is a lua editor for running test in android.
     Object[] results = context.run("print 'Hello World'");
    ```
    
-## ClassBuilder Api
+### ClassBuilder Api
    Class Builder is imported default to support dynamic class generation
    Lua function callback rule is the same as proxy.
    e.g.

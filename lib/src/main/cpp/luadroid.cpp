@@ -349,6 +349,12 @@ static bool newMetaTable(lua_State*L,const RegisterKey* key,const char* tname){
 }
 
 static JavaObject *pushJavaObject(lua_State *L, TJNIEnv *env, ScriptContext *context, jobject obj, JavaType *given) {
+#ifndef NDEBUG
+    if(obj== nullptr){
+        LOGE("Error put object");
+        return nullptr;
+    }
+#endif
     JavaObject *objectRef = (JavaObject *) lua_newuserdata(L, sizeof(JavaObject));
     objectRef->object = env->NewGlobalRef(obj);
     objectRef->type = given?given:context->ensureType(env, (JClass) env->GetObjectClass(obj));
@@ -1938,15 +1944,24 @@ int javaTry(lua_State *L) {
     } else {
         int i;
         for (i = 2; i <= top - 1; i += 2) {
-            //int type=lua_type(L,i);
             if (testType(L, i, TYPE_KEY)) {
                 catchFuncs.push_back(i);
-            } else if (luaL_isstring(L, i) && strcmp(lua_tostring(L, i), "all") == 0) {
-                if (catchAllIndex == 0) catchAllIndex = i;
-                else
-                    TopErrorHandle("More than one catch all functions");
+            } else if (luaL_isstring(L, i)) {
+                const char *thrType = lua_tostring(L, i);
+                if(strcmp(thrType, "all") == 0) {
+                    if (catchAllIndex == 0) catchAllIndex = i;
+                    else
+                        TopErrorHandle("More than one catch all functions");
+                }else{
+                    JavaType* type=context->ensureType(thrType);
+                    if(type== nullptr||!context->env->IsAssignableFrom(type->getType(),throwableType))
+                        TopErrorHandle("Not a catch type: %s",thrType);
+                    pushJavaType(L,type);
+                    lua_replace(L,i);
+                    catchFuncs.push_back(i);
+                }
             } else {
-                TopErrorHandle("Not a catch type");
+                TopErrorHandle("Not a catch type:%s",luaL_tolstring(L,i,NULL));
             }
         }
         if (i == top) finallyIndex = top;
@@ -1965,9 +1980,9 @@ int javaTry(lua_State *L) {
                 if (env->IsInstanceOf(error, type->getType())) {
 #define CALL_CATCH(index)\
                     lua_pushvalue(L,(index)+1);\
-                    pushJavaObject(L,context,error);\
+                    pushJavaObject(L,context,JObject(std::move(error)));\
                     int code=lua_pcall(L,1,0,handlerIndex);\
-                    forceRelease(catchFuncs,error);\
+                    forceRelease(catchFuncs);\
                     if(finallyIndex>0){lua_pushvalue(L,finallyIndex);lua_call(L,0,0);} \
                     if(code!=LUA_OK){\
                         goto __ErrorHandle;\
@@ -1981,13 +1996,19 @@ int javaTry(lua_State *L) {
             }
         }
         forceRelease(catchFuncs);
-        if (finallyIndex > 0) lua_call(L, 0, 0);
-        recordLuaError(context,L,ret);
-        lua_pushinteger(L,ret);
-        pushJavaObject(L,context,JObject(context->env,context->transferJavaError()));
-        return 2;//if no handler,return the error;
+        if (finallyIndex > 0) {
+            lua_pushvalue(L,finallyIndex);
+            lua_call(L, 0, 0);
+            goto __ErrorHandle;
 
+        }else{
+            recordLuaError(context,L,ret);
+            lua_pushinteger(L,ret);
+            pushJavaObject(L,context,JObject(context->env,context->transferJavaError()));
+            return 2;//if no handler,return the error;
+        }
     }
+    lua_pop(L,1);
     forceRelease(catchFuncs);
     if (finallyIndex > 0) lua_call(L, 0, 0);
     return 0;
@@ -2140,6 +2161,33 @@ static int setMapValue(lua_State *L,ThreadContext* context,TJNIEnv* env,jobject 
     });
     return 0;
 }
+
+static int isInstanceOfCall(lua_State* L){
+    ThreadContext* context=getContext(L);
+    JavaObject* object=(JavaObject*)lua_touserdata(L,lua_upvalueindex(2));
+    JavaType* type=checkJavaType(L,1);
+    lua_pushboolean(L,context->env->IsInstanceOf(object->object,type->getType()));
+    return 1;
+}
+
+static int isAssignableFromCall(lua_State* L){
+    ThreadContext* context=getContext(L);
+    JavaType* sub=(JavaType*)lua_touserdata(L,lua_upvalueindex(2));
+    JavaType* type=checkJavaType(L,1);
+    lua_pushboolean(L,context->env->IsAssignableFrom(sub->getType(),type->getType()));
+    return 1;
+}
+
+static int newCall(lua_State* L){
+    int len=lua_gettop(L);
+    lua_pushvalue(L,lua_upvalueindex(1));
+    luaL_getmetafield(L,-1,"__call");
+    lua_insert(L,1);
+    lua_insert(L,2);
+    lua_call(L,len+1,1);
+    return 1;
+}
+
 int getFieldOrMethod(lua_State *L) {
     bool isStatic = isJavaTypeOrObject(L,1);
     JavaObject *obj = isStatic ? nullptr : (JavaObject*) lua_touserdata(L,1);
@@ -2231,6 +2279,22 @@ int getFieldOrMethod(lua_State *L) {
             if(strcmp(name,"class")==0){
                 pushJavaObject(L,context,type->getType());
                 return 1;
+            }else if(!isStatic&&strcmp(name,"instanceof")==0){
+                lua_pushlightuserdata(L,context);
+                lua_pushvalue(L,1);
+                lua_pushcclosure(L,isInstanceOfCall,2);
+                return 1;
+            }else if(isStatic){
+                if(strcmp(name,"new")==0){
+                    lua_pushvalue(L,1);
+                    lua_pushcclosure(L,newCall,1);
+                    return 1;
+                }else if(strcmp(name,"assignableFrom")==0){
+                    lua_pushlightuserdata(L,context);
+                    lua_pushlightuserdata(L,type);
+                    lua_pushcclosure(L,isAssignableFromCall,2);
+                    return 1;
+                }
             }
             if(isStatic)
                 luaL_error(L, "No static member is named %s in class %s", name.data(),
