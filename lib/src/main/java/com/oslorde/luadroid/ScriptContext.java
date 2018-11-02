@@ -1475,7 +1475,7 @@ public class ScriptContext implements GCTracker {
         if (instOrType == null) throw new IllegalArgumentException("No permitted:null");
         boolean isStatic = instOrType instanceof Class;
         if (!hasMethod(isStatic?(Class) instOrType:instOrType.getClass(),methodName,isStatic)) {
-            throw new NoSuchMethodException(methodName);
+            throw new NoSuchMethodException((isStatic?instOrType:instOrType.getClass())+"->"+methodName);
         }
         addMethod(nativePtr, luaName, methodName, instOrType, local);
         return this;
