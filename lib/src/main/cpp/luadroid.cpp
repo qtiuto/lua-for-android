@@ -2247,7 +2247,7 @@ int getFieldOrMethod(lua_State *L) {
 #define GetInteger64Field()\
     case JavaType::LONG:{\
         jlong v=isStatic?env->GetStaticLongField(type->getType()\
-                    ,info->id):env->GetLongField(obj->object,info.id);\
+                    ,info.id):env->GetLongField(obj->object,info.id);\
         if(int64_t(double(v))!=v)\
             lua_pushnumber(L,v);\
         else Integer64::pushLong(L,v);\
