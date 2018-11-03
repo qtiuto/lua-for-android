@@ -505,7 +505,7 @@ Module app is a lua editor for running test in android.
       using "android.view"
       using "android.widget"
       view=TextView(context)
-      view.visibilty=View.GONE.
+      view.visibilty=View.GONE
       print(view.visibilty)
    ```
    
@@ -582,7 +582,7 @@ Module app is a lua editor for running test in android.
    accept their primitive type.Autobox and auto-unbox will be performed
    if necessary.
           
-### Module name in lua
+### Module Name in Lua
      
    The module java is loaded once the lua state initialize with
    all its members exported to the global table if you specified
