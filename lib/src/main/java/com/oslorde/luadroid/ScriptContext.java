@@ -912,8 +912,9 @@ public class ScriptContext implements GCTracker {
     private Set<String> dexFiles;
     private ArrayList<String[]> classes;
 
-    static Comparator<String> classPrefixComparator = (o1, o2) -> {
-        if (o1.startsWith(o2)&&o1.indexOf('.',o2.length()+1)==-1) return 0;
+    private static final Comparator<String> sClassPrefixComparator = (o1, o2) -> {
+        int length = o2.length();
+        if (o1.length()> length +1&&o1.charAt(length)=='.'&&o1.startsWith(o2)&&o1.indexOf('.', length +1)==-1) return 0;
         return o1.compareTo(o2);
     };
 
@@ -924,7 +925,7 @@ public class ScriptContext implements GCTracker {
             int fromIndex = pack.length() + 1;
             for (String[] dexSet :
                     classes) {
-                int mid = Arrays.binarySearch(dexSet, pack, classPrefixComparator);
+                int mid = Arrays.binarySearch(dexSet, pack, sClassPrefixComparator);
                 if (mid < 0) continue;
                 for (int j = mid; j != -1; --j) {
                     String cl = dexSet[j];
