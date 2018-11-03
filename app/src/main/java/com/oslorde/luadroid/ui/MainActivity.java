@@ -129,7 +129,7 @@ public class MainActivity extends Activity {
                         }
                     };
                     context.setLogger(out, err);
-                    Object[] results = context.run(context.compile(editor.getText().toString()));
+                    Object[] results = context.run(editor.getText().toString());
                     context.flushLog();
                     if (string.length() > 0 && string.charAt(string.length() - 1) != '\n')
                         string.append("\n");
