@@ -388,7 +388,7 @@ void ThreadContext::setPendingException(const String &msg) {
     if (pendingJavaError == nullptr) {
         static jclass luaExceptionType = (jclass) env->NewGlobalRef(
                 env->FindClass("com/oslorde/luadroid/LuaException"));
-        jmethodID con = env->GetMethodID(throwableType, "<init>", "()V");
+        static jmethodID con = env->GetMethodID(throwableType, "<init>", "()V");
         pendingJavaError = ((jthrowable) env->NewObject(luaExceptionType, con));
 
     }
