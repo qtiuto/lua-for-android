@@ -228,10 +228,10 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         }
                         if(scores[i]>1) continue;
                         if (toCheck->isString())cacheScores[i] = 1;
-                        else if(!toCheck->isStringAssignable()){
+                        else if(!toCheck->isStringAssignable(env)){
                             goto bail;
                         } else cacheScores[i]=0;
-                    } else if (provided->isString()||provided->isStringAssignable()) {
+                    } else if (provided->isString()||provided->isStringAssignable(env)) {
                         if (provided != toCheck) goto bail;
                     } else goto bail;
                     break;

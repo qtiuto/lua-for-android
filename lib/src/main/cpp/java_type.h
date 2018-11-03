@@ -135,7 +135,8 @@ private:
     bool _isFloat = false;
     bool _isBox = false;
     bool _isString = false;
-    bool _isStringAssignable = false;
+    int8_t _isStringAssignable = -1;
+    int8_t _isThrowableType=-1;
     TYPE_ID typeID=OBJECT;
 
     MemberMap staticMembers;
@@ -147,7 +148,6 @@ private:
 
     JavaType(JNIEnv *env, jclass type, ScriptContext *context) : context(context) {
         this->type = (jclass) env->NewGlobalRef(type);
-        _isStringAssignable = env->IsAssignableFrom(stringType, type);
     }
 
     inline static JClass getComponentType(TJNIEnv *env, jclass type) {
@@ -300,8 +300,16 @@ public:
         return typeID==VOID;
     }
 
-    bool isStringAssignable() {
+    bool isStringAssignable(TJNIEnv *env) {
+        if(_isStringAssignable==-1)
+            _isStringAssignable = env->IsAssignableFrom(stringType, type);
         return _isStringAssignable;
+    }
+
+    bool isThrowable(TJNIEnv *env) {
+        if(_isThrowableType==-1)
+            _isThrowableType = env->IsAssignableFrom(type, throwableType);
+        return _isThrowableType;
     }
 
     bool isString() {

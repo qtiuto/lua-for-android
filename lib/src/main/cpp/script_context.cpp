@@ -388,15 +388,16 @@ void ThreadContext::setPendingException(const String &msg) {
     if (pendingJavaError == nullptr) {
         static jclass luaExceptionType = (jclass) env->NewGlobalRef(
                 env->FindClass("com/oslorde/luadroid/LuaException"));
-        static jmethodID con = env->GetMethodID(luaExceptionType, "<init>", "()V");
-        pendingJavaError = ((jthrowable) env->NewObject(luaExceptionType, con));
-
+        static jmethodID con = env->GetMethodID(luaExceptionType, "<init>", "(Ljava/lang/String;)V");
+        pendingJavaError = (jthrowable) env->NewObject(luaExceptionType, con,env->NewStringUTF(msg.data()).get());
+    } else{
+        static jfieldID id = env->GetFieldID(throwableType, "detailMessage", "Ljava/lang/String;");
+        JString oldMsg = (JString) env->GetObjectField(pendingJavaError, id);
+        JString jmsg = env->NewStringUTF(
+                oldMsg.str() != nullptr && strlen(oldMsg) > 0 ? (oldMsg.str()+( '\t'+msg)).data() : msg.data());
+        env->SetObjectField(pendingJavaError, id, jmsg.get());
     }
-    static jfieldID id = env->GetFieldID(throwableType, "detailMessage", "Ljava/lang/String;");
-    JString oldMsg = (JString) env->GetObjectField(pendingJavaError, id);
-    JString jmsg = env->NewStringUTF(
-            oldMsg.str() != nullptr && strlen(oldMsg) > 0 ? (oldMsg.str()+( '\t'+msg)).data() : msg.data());
-    env->SetObjectField(pendingJavaError, id, jmsg.get());
+
 }
 
 jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *type,jobject real) {
