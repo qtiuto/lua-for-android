@@ -199,7 +199,7 @@ Module app is a lua editor for running test in android.
       
       Usage:`sync(object,function()... end)`
       
-      Note:yield is not supported cause it will break lock scope and have
+      Note: before lua 5.3, **yield** is not supported cause it will break lock scope and have
        object unlocked
       
   * **object**:  
@@ -298,9 +298,9 @@ Module app is a lua editor for running test in android.
        The type can be a type name string rather than a java type.
        
        Note:**yeild** is not supported inside any function you passed in,
-        cause it may have finally function un-called. If you really want to
-        use **pcall** to do catch the error, and handle it by your self.
-        Generally, try will append stacktrace info to the error but pcall won't. 
+        cause it may have finally function un-called. If you really want to yield,
+        use **pcall** to catch the error, and handle it by your self.
+        Generally, **try** will append stacktrace info to the error but **pcall** won't. 
        
   * **throw**:  
   
