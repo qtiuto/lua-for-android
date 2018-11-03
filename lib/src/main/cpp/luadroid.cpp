@@ -2278,8 +2278,6 @@ int getFieldOrMethod(lua_State *L) {
     }
 
     FakeString name(lua_tostring(L, 2));
-
-    /*if(!validJavaName(name))luaL_error(L,"The name is invalid for java use:%s",name);*/
     auto member=type->ensureMember(env,name,isStatic);
     JavaType::FieldArray* fieldArr=nullptr;
     bool isMethod= false;
@@ -2469,7 +2467,9 @@ int setField(lua_State *L) {
             jvalue v= context->luaObjectToJValue(luaObject,fieldType,info->type.realType);\
             RawSetField(Object,v.l);\
             if(luaObject.type==T_FUNCTION||luaObject.type==T_STRING) env->DeleteLocalRef(v.l);\
-        }}
+        }}/*\
+        HOLD_JAVA_EXCEPTION(context,{throwJavaError(L,context);});// jni doesn't seem to throw on mismatched type*/
+
     SET_FIELD()
     return 0;
 }
@@ -2517,6 +2517,7 @@ int setFieldOrArray(lua_State *L) {
                     cleanArg(env, v, luaObject.shouldRelease);
                 }
             }
+            HOLD_JAVA_EXCEPTION(context,{throwJavaError(L,context);});
             return 0;
         }
     }
