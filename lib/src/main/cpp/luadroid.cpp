@@ -1984,21 +1984,85 @@ void parseTryTable(lua_State *L) {
     lua_remove(L, 1);//remove table
 }
 
+struct TryInfo{
+    bool noCatch;
+    int finallyIndex;
+    int catchAllIndex;
+    int handlerIndex;
+    int top;
+    ThreadContext* context;
+};
+int finallyContinue(lua_State*L,int status,lua_KContext shouldTrow){
+    if(shouldTrow)
+        lua_error(L);
+    return 0;
+}
+int catchContinue(lua_State* L,int code,lua_KContext finallyIndex){
+    if(code==LUA_YIELD)
+        code=LUA_OK;
+    if(finallyIndex>0){
+        lua_pushvalue(L,(int)finallyIndex);
+        lua_callk(L,0,0,code,finallyContinue);
+    }
+    if(code!=LUA_OK){
+        lua_error(L);
+    }
+    return 0;
+}
+int javaTryContinue(lua_State*L,int status,lua_KContext tryInfo){
+    TryInfo* info=(TryInfo*) tryInfo;
+    int finallyIndex = info->finallyIndex;
+    if (status != LUA_OK&&status!=LUA_YIELD) {
+        auto context=info->context;
+        int catchAllIndex=info->catchAllIndex;
+        if (!info->noCatch) {
+            recordLuaError(context,L,status);
+            auto env=context->env;
+            JType<jthrowable> error(env,context->transferJavaError());
+            int end=catchAllIndex?catchAllIndex:finallyIndex?finallyIndex:info->top;
+            for (int idx = 2; idx < end; idx += 2) {
+                JavaType *type = *(JavaType **) lua_touserdata(L, idx);
+                if (env->IsInstanceOf(error, type->getType())) {
+#define CALL_CATCH_K(idx)\
+                    lua_pushvalue(L,(idx)+1);\
+                    pushJavaObject(L,context,JObject(std::move(error)));\
+                    return catchContinue(L,lua_pcallk(L,1,0,info->handlerIndex,finallyIndex,catchContinue),finallyIndex);
+
+                    CALL_CATCH_K(idx);
+                }
+            }
+            if (catchAllIndex ) {
+                CALL_CATCH_K(catchAllIndex);
+            }
+        }
+        if (finallyIndex) {
+            lua_pushvalue(L,finallyIndex);
+            lua_callk(L, 0, 0,1,finallyContinue);
+            lua_error(L);
+        }else{
+            recordLuaError(context,L,status);
+            lua_pushinteger(L,status);
+            pushJavaObject(L,context,JObject(context->env,context->transferJavaError()));
+            return 2;//if no handler,return the error;
+        }
+    }
+    if (finallyIndex){
+        lua_pushvalue(L, finallyIndex);
+        lua_callk(L, 0, 0,0,finallyContinue);
+    } 
+    return 0;
+};
+
 int javaTry(lua_State *L) {
     ThreadContext *context = getContext(L);
     int top = lua_gettop(L);
     if (top == 0) luaL_error(L, "No args");
     bool noCatch = false;
     int finallyIndex = 0;
-    if (top == 1) {
-        if (lua_istable(L, 1)) {
-            parseTryTable(L);
-        }
-    }
-    if (lua_isnil(L, 1)) {
+    if (top == 1&&lua_istable(L, 1))
+        parseTryTable(L);
+    if (lua_isnil(L, 1))
         luaL_error(L, "No try body");
-    }
-    SetErrorJMP();
     top = lua_gettop(L);
     int catchAllIndex = 0;
     if (top == 1) noCatch = true;
@@ -2015,22 +2079,33 @@ int javaTry(lua_State *L) {
                 if(strcmp(thrType, "all") == 0) {
                     if (catchAllIndex == 0) catchAllIndex = i;
                     else
-                        TopErrorHandle("More than one catch all functions");
+                        luaL_error(L,"More than one catch all functions");
                 }else{
                     JavaType* type=context->ensureType(thrType);
                     if(type== nullptr||!context->env->IsAssignableFrom(type->getType(),throwableType))
-                        TopErrorHandle("Not a catch type: %s",thrType);
+                        luaL_error(L,"Not a catch type: %s",thrType);
                     pushJavaType(L,type);
                     lua_replace(L,i);
                 }
             } else {
-                TopErrorHandle("Not a catch type:%s",luaL_tolstring(L,i,NULL));
+                luaL_error(L,"Not a catch type:%s",luaL_tolstring(L,i,NULL));
             }
         }
         if (i == top) finallyIndex = top;
     }
     pushErrorHandler(L,context);
     int handlerIndex = lua_gettop(L);
+#if LUA_VERSION_NUM >=503
+    TryInfo* info=(TryInfo*)lua_newuserdata(L, sizeof(TryInfo));
+    info->context=context;
+    info->catchAllIndex=catchAllIndex;
+    info->finallyIndex=finallyIndex;
+    info->handlerIndex=handlerIndex;
+    info->top=top;
+    info->noCatch=noCatch;
+    lua_pushvalue(L, 1);
+    return javaTryContinue(L,lua_pcallk(L,0,0,handlerIndex,(intptr_t)info,javaTryContinue),(intptr_t)info);
+#else 
     lua_pushvalue(L, 1);
     int ret = lua_pcall(L, 0, 0, handlerIndex);
     if (ret != LUA_OK) {
@@ -2048,7 +2123,7 @@ int javaTry(lua_State *L) {
                     int code=lua_pcall(L,1,0,handlerIndex);\
                     if(finallyIndex>0){lua_pushvalue(L,finallyIndex);lua_call(L,0,0);} \
                     if(code!=LUA_OK){\
-                        goto __ErrorHandle;\
+                        lua_error(L);\
                     }\
                     return 0;
                     CALL_CATCH(idx);
@@ -2061,7 +2136,7 @@ int javaTry(lua_State *L) {
         if (finallyIndex) {
             lua_pushvalue(L,finallyIndex);
             lua_call(L, 0, 0);
-            goto __ErrorHandle;
+           lua_error(L);
         }else{
             recordLuaError(context,L,ret);
             lua_pushinteger(L,ret);
@@ -2072,7 +2147,7 @@ int javaTry(lua_State *L) {
     lua_pop(L,1);
     if (finallyIndex) lua_call(L, 0, 0);
     return 0;
-
+#endif
 }
 
 int javaPut(lua_State *L) {

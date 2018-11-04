@@ -297,15 +297,15 @@ Module app is a lua editor for running test in android.
        the error code and the exception on error and nil on the other cases.
        The type can be a type name string rather than a java type.
        
-       Note:**yeild** is not supported inside any function you passed in,
-        cause it may have finally function un-called. If you really want to yield,
-        use **pcall** to catch the error, and handle it by your self.
-        Generally, **try** will append stacktrace info to the error but **pcall** won't. 
+       Note:**yeild** is supported inside any function you passed in since lua 5.3,
+        but finally function may be un-called if yield not return. 
+        Lua built-in function **pcall** can also catch the error,
+        while **try** will append stacktrace info to the error but **pcall** won't. 
        
   * **throw**:  
   
-      Throws a java exception, which ,while not an exception, will be converted to an string and
-      wrapped as an **LuaException**, and finally, it will be caught by the above try function or 
+      Throws a java exception, which ,while not an exception, will be converted to a string and
+      wrapped as a **LuaException**, and finally, it will be caught by the above try function or 
       try catch in your java code.
       
       Usage: `throw(exception object)`
@@ -317,7 +317,7 @@ Module app is a lua editor for running test in android.
      ```
       Notice:
         If you use **pcall** you will receive a java exception object as error info,
-        and the exception won't be caught by upper try anymore.
+        and the exception won't be caught by upper **try** anymore.
         The call **throw(java excption object)** has the close meaning as **error(java exception object)**
         but differs by  throw adding stacktrace info to the exception while error won't
       
