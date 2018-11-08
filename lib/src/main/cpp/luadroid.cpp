@@ -1992,7 +1992,7 @@ struct TryInfo{
     int top;
     ThreadContext* context;
 };
-int finallyContinue(lua_State*L,int status,lua_KContext shouldTrow){
+int finallyContinue(lua_State*L,int,lua_KContext shouldTrow){
     if(shouldTrow)
         lua_error(L);
     return 0;
