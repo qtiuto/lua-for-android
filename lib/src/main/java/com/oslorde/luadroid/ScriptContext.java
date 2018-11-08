@@ -240,15 +240,17 @@ public class ScriptContext implements GCTracker {
         int low = 0;
         int high = members.length - 1;
         boolean staticFirst=Modifier.isStatic(members[0].getModifiers());
+        boolean isIntoCompare=false;
         while (low <= high) {
             int mid = (low + high) >>> 1;
             Member midVal = members[mid];
             boolean  realState=Modifier.isStatic(midVal.getModifiers());
-            if(realState!=isStatic){
+            if(!isIntoCompare&&realState!=isStatic){
                 if(realState==staticFirst)
                     low=mid+1;
                 else high=mid-1;
             }else {
+                isIntoCompare=true;
                 int cmp = midVal.getName().compareTo(name);
                 if (cmp < 0)
                     low = mid + 1;
@@ -266,6 +268,20 @@ public class ScriptContext implements GCTracker {
                 }// key found
             }
 
+        }
+        if(members[0] instanceof Method){//Method is not arranged strictly
+            int len=members.length;
+            for(;low<len;++low){
+                if(members[low].getName().equals(name))
+                    break;
+            }
+            if(low==len) return -1;
+            high=low+1;
+            for (;high<len;++high){
+                if(!members[high].getName().equals(name))
+                    break;
+            }
+            return ((long)(low)<<32)|high;
         }
         return -1;
     }
