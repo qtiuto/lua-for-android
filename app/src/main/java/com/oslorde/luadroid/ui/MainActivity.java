@@ -201,7 +201,12 @@ public class MainActivity extends Activity {
                                     }
                                 }).show();
             }
-
+            break;
+            case R.id.help:
+                startActivity(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("https://github.com/qtiuto/lua-for-android")));
+                break;
+            case R.id.lua_doc:
+                startActivity(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("http://www.lua.org/manual/5.3/manual.html")));
 
         }
         return super.onOptionsItemSelected(item);

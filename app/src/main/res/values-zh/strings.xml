@@ -23,4 +23,6 @@
     <string name="library_hint">輸入類名</string>
     <string name="class_hint">輸入類成員名</string>
     <string name="doc">檔案</string>
+    <string name="helpordoc">幫助/檔案</string>
+    <string name="lua_doc">Lua檔案</string>
 </resources>

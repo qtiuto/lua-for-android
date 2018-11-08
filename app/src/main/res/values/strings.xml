@@ -17,4 +17,6 @@
     <string name="library_hint">Input Simple Name of A Class</string>
     <string name="class_hint">Input Name of A Class Member</string>
     <string name="doc">Doc</string>
+    <string name="helpordoc">Help/Doc</string>
+    <string name="lua_doc">Lua Doc</string>
 </resources>

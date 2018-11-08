@@ -17,4 +17,6 @@
     <string name="library_hint">输入类名</string>
     <string name="class_hint">输入类成员名</string>
     <string name="doc">文档</string>
+    <string name="helpordoc">帮助/文档</string>
+    <string name="lua_doc">Lua文档</string>
 </resources>
