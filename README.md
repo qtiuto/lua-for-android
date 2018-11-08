@@ -241,7 +241,7 @@ Module app is a lua editor for running test in android.
       
   * **charValue**:  
   
-      Convert one-character string to a an integer by its value,e.g.
+      Convert one-character string to an integer by its value,e.g.
       '\n'-> 10
       
       Usage:`charValue(on-character string)`
@@ -482,7 +482,7 @@ Module app is a lua editor for running test in android.
    ```
    
    You can index any java object with **set/put**,**get/at** methods.When you index or add an 
-   index, these two method will be invoked,or you can add custom indexer.
+   index, these two methods will be invoked,or you can add custom indexer.
    For example,
    
    ```lua
@@ -578,8 +578,8 @@ Module app is a lua editor for running test in android.
      
    User date is treated as integer.
       
-   Note: All primitive type accept their boxed type and all boxed type
-   accept their primitive type.Autobox and auto-unbox will be performed
+   Note: All primitive types accept their boxed types and all boxed types
+   accept their primitive types.Autobox and auto-unbox will be performed
    if necessary.
           
 ### Module Name in Lua
@@ -627,7 +627,7 @@ Module app is a lua editor for running test in android.
    ```
    
 ### ClassBuilder Api
-   Class Builder is imported default to support dynamic class generation
+   Class Builder is imported default to support dynamic class generation.
    Lua function callback rule is the same as proxy.
    e.g.
    

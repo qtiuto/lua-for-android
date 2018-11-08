@@ -272,13 +272,15 @@ public class ScriptContext implements GCTracker {
         if(members[0] instanceof Method){//Method is not arranged strictly
             int len=members.length;
             for(;low<len;++low){
-                if(members[low].getName().equals(name))
+                if(members[low].getName().equals(name)&&
+                        Modifier.isStatic(members[low].getModifiers())==isStatic)
                     break;
             }
             if(low==len) return -1;
             high=low+1;
             for (;high<len;++high){
-                if(!members[high].getName().equals(name))
+                if(!members[high].getName().equals(name)&&
+                        Modifier.isStatic(members[high].getModifiers())==isStatic)
                     break;
             }
             return ((long)(low)<<32)|high;
