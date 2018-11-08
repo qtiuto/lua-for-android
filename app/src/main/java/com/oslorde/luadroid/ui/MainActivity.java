@@ -17,11 +17,11 @@ import android.view.*;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
+import com.oslorde.luadroid.ClassList;
 import com.oslorde.luadroid.R;
 import com.oslorde.luadroid.ScriptContext;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.OutputStream;
 
 
@@ -35,11 +35,11 @@ public class MainActivity extends Activity {
 
     LuaEditor editor;
     ScriptContext context = new ScriptContext();
+    ClassList classList;
     LinearLayout psBar;
     String[] ps = {"(", ")", "[", "]", "{", "}", "\"", "=", ":", ".", ",", "_", "+", "-", "*", "/", "\\", "%", "#", "^", "$", "?", "<", ">", "~", ";", "'"};
     CharSequence result;
     private PopupWindow popupWindow;
-    private File file;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,34 +59,44 @@ public class MainActivity extends Activity {
                 int pd = 20;
                 btn.setPadding(pd, pd / 2, pd, pd / 4);
                 btn.setText(text);
-                btn.setBackground(sd);
+                btn.setBackgroundDrawable(sd);
                 btn.setOnClickListener(v -> {
                     editor.paste(text);
                 });
                 psBar.addView(btn);
             }
+            String[] primitiveTypes = {"int", "long", "short", "byte", "double", "float"};
+            editor.addNames(primitiveTypes);
             context.addToLua("context", this);
+            StringBuilder scriptBuilder=new StringBuilder();
+            for (String type:primitiveTypes){
+                scriptBuilder.append(type).append('=')
+                        .append(" Type '").append(type).append("'\n");
+            }
+            context.run(scriptBuilder.toString());
         }
 
         Intent intent=getIntent();
         Uri uri=intent.getData();
+        String file=null;
         if(uri!=null){
             if("file".equals(uri.getScheme())){
                 String path = uri.getPath();
                 if(path!=null){
-                    file=new File(path);
+                    file=new File(path).getAbsolutePath();
                 }
             }
-        }else if(file==null){
+        }else if(editor.lastFile()==null){
             file=new File(getPreferences(0).getString(LAST,
-                    new File(Environment.getExternalStorageDirectory().getPath(),"test.lua").getPath()));
+                    new File(Environment.getExternalStorageDirectory().getPath(),"test.lua").getPath())).getAbsolutePath();
         }
-        loadFile();
+        loadFile(file);
     }
 
-    private void loadFile() {
-        editor.open(file.getAbsolutePath());
-        getPreferences(0).edit().putString(LAST,file.getPath()).apply();
+    private void loadFile(String path) {
+        if(path==null) return;
+        editor.open(path);
+        getPreferences(0).edit().putString(LAST,path).apply();
     }
 
     @Override
@@ -167,6 +177,11 @@ public class MainActivity extends Activity {
             case R.id.search:
                 editor.startFindMode();
                 break;
+            case R.id.search_library:
+                if(classList==null)
+                    classList=new ClassList(context);
+                editor.startLibrarySearchMode(classList);
+                break;
             case R.id.view_result:
                 showResult();
                 break;
@@ -175,15 +190,14 @@ public class MainActivity extends Activity {
                 break;
             case R.id.open:{
                 save();
-                final FilePicker filePicker =new FilePicker(this, file,
+                final FilePicker filePicker =new FilePicker(this, new File(editor.lastFile()),
                         pathname -> pathname.isDirectory() || pathname.getName().matches(".+(.lua)$"));
                 filePicker.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 800));
                 new AlertDialog.Builder(this,android.R.style.Theme_DeviceDefault_Light_Dialog).setView(filePicker).setNegativeButton(R.string.cancel,null).
                                 setPositiveButton(R.string.confirm, (dialog2, which) -> {
                                     File f =filePicker.getSelectedFile();
                                     if(f!=null){
-                                        file=f;
-                                        loadFile();
+                                        loadFile(f.getAbsolutePath());
                                     }
                                 }).show();
             }
@@ -191,13 +205,6 @@ public class MainActivity extends Activity {
 
         }
         return super.onOptionsItemSelected(item);
-    }
-
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        //if(hasFocus){
-        //}
     }
 
     private void showResult() {
@@ -226,11 +233,6 @@ public class MainActivity extends Activity {
     }
 
     private void save() {
-        try {
-            FileOutputStream out = new FileOutputStream(file);
-            out.write(editor.getText().toString().getBytes());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        editor.save(editor.lastFile());
     }
 }

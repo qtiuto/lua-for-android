@@ -12,4 +12,9 @@
     <string name="open">Open</string>
     <string name="confirm">Confirm</string>
     <string name="cancel">Cancel</string>
+    <string name="search_library">Search Library</string>
+    <string name="next">Next</string>
+    <string name="library_hint">Input Simple Name of A Class</string>
+    <string name="class_hint">Input Name of A Class Member</string>
+    <string name="doc">Doc</string>
 </resources>

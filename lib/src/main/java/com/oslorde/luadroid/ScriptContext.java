@@ -918,6 +918,21 @@ public class ScriptContext implements GCTracker {
         return o1.compareTo(o2);
     };
 
+    List<String> getClasses(){
+        if(dexFiles==null) {
+            try {
+                initLoader();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        ArrayList<String> ret=new ArrayList<>();
+        for (String []dex: classes){
+            Collections.addAll(ret,dex);
+        }
+        return ret;
+    }
+
     private String[] importAll(String pack) throws Exception {
         synchronized (importLock) {
             initLoader();

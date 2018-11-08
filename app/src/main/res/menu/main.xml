@@ -20,6 +20,9 @@
     <item android:id="@+id/search"
           android:showAsAction="ifRoom|collapseActionView"
           android:title="@string/search"/>
+    <item android:id="@+id/search_library"
+          android:showAsAction="ifRoom|collapseActionView"
+          android:title="@string/search_library"/>
     <item android:id="@+id/view_result"
           android:showAsAction="ifRoom|collapseActionView"
           android:title="@string/view_result"/>
