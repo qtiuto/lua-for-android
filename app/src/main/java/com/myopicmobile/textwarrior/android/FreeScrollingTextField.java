@@ -62,24 +62,10 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.AnimationUtils;
-import android.view.inputmethod.BaseInputConnection;
-import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.*;
 import android.widget.Scroller;
-
-import com.myopicmobile.textwarrior.common.AutoIndent;
-import com.myopicmobile.textwarrior.common.ColorScheme;
+import com.myopicmobile.textwarrior.common.*;
 import com.myopicmobile.textwarrior.common.ColorScheme.Colorable;
-import com.myopicmobile.textwarrior.common.ColorSchemeLight;
-import com.myopicmobile.textwarrior.common.Document;
-import com.myopicmobile.textwarrior.common.DocumentProvider;
-import com.myopicmobile.textwarrior.common.Language;
-import com.myopicmobile.textwarrior.common.LanguageLua;
-import com.myopicmobile.textwarrior.common.Lexer;
-import com.myopicmobile.textwarrior.common.Pair;
-import com.myopicmobile.textwarrior.common.RowListener;
-import com.myopicmobile.textwarrior.common.TextWarriorException;
 
 import java.util.List;
 
@@ -1735,15 +1721,18 @@ public class FreeScrollingTextField extends View
     }
 
     public void selectAll() {
-        _fieldController.setSelectionRange(0, _hDoc.docLength() - 1, false, true);
+        _caretPosition=_selectionEdge;
+        _fieldController.setSelectionRange(0, _hDoc.docLength() - 1, false, true,true);
     }
 
     public void setSelection(int beginPosition, int numChars) {
-        _fieldController.setSelectionRange(beginPosition, numChars, true, false);
+        _caretPosition=_selectionEdge;
+        _fieldController.setSelectionRange(beginPosition, numChars, true, false,false);
     }
 
     public void setSelectionRange(int beginPosition, int numChars) {
-        _fieldController.setSelectionRange(beginPosition, numChars, true, true);
+        _caretPosition=_selectionEdge;
+        _fieldController.setSelectionRange(beginPosition, numChars, true, true,false);
     }
 
     public boolean inSelectionRange(int charOffset) {
@@ -2434,7 +2423,10 @@ public class FreeScrollingTextField extends View
             return indent;
         }
 
-        public void moveCaretDown() {
+        public void moveCaretDown(){
+            moveCaretDown(false);
+        }
+        public void moveCaretDown(boolean isTyping) {
             if (!caretOnLastRowOfFile()) {
                 int currCaret = _caretPosition;
                 int currRow = _caretRow;
@@ -2454,16 +2446,19 @@ public class FreeScrollingTextField extends View
                 }
                 ++_caretRow;
 
-                updateSelectionRange(currCaret, _caretPosition);
+                updateSelectionRange(currCaret, _caretPosition,false,isTyping);
                 if (!makeCharVisible(_caretPosition)) {
                     invalidateRows(currRow, newRow + 1);
                 }
                 _rowLis.onRowChange(newRow);
-                stopTextComposing();
+                if(!isTyping) stopTextComposing();
             }
         }
+        public void moveCaretUp(){
+            moveCaretUp(false);
+        }
 
-        public void moveCaretUp() {
+        public void moveCaretUp(boolean isTyping) {
             if (!caretOnFirstRowOfFile()) {
                 int currCaret = _caretPosition;
                 int currRow = _caretRow;
@@ -2481,12 +2476,13 @@ public class FreeScrollingTextField extends View
                 }
                 --_caretRow;
 
-                updateSelectionRange(currCaret, _caretPosition);
+                updateSelectionRange(currCaret, _caretPosition,true,isTyping);
                 if (!makeCharVisible(_caretPosition)) {
                     invalidateRows(newRow, currRow + 1);
                 }
                 _rowLis.onRowChange(newRow);
-                stopTextComposing();
+                if(!isTyping)
+                    stopTextComposing();
             }
         }
 
@@ -2499,7 +2495,7 @@ public class FreeScrollingTextField extends View
                 int originalRow = _caretRow;
                 ++_caretPosition;
                 updateCaretRow();
-                updateSelectionRange(_caretPosition - 1, _caretPosition);
+                updateSelectionRange(_caretPosition - 1, _caretPosition,false,isTyping);
                 if (!makeCharVisible(_caretPosition)) {
                     invalidateRows(originalRow, _caretRow + 1);
                 }
@@ -2519,7 +2515,7 @@ public class FreeScrollingTextField extends View
                 int originalRow = _caretRow;
                 --_caretPosition;
                 updateCaretRow();
-                updateSelectionRange(_caretPosition + 1, _caretPosition);
+                updateSelectionRange(_caretPosition + 1, _caretPosition,true,isTyping);
                 if (!makeCharVisible(_caretPosition)) {
                     invalidateRows(_caretRow, originalRow + 1);
                 }
@@ -2536,7 +2532,7 @@ public class FreeScrollingTextField extends View
                 return;
             }
 
-            updateSelectionRange(_caretPosition, i);
+            updateSelectionRange(_caretPosition, i,false,true);
             _caretPosition = i;
             updateAfterCaretJump();
         }
@@ -2629,7 +2625,7 @@ public class FreeScrollingTextField extends View
          *                      into view. Otherwise, the end of the selection will be scrolled.
          */
         public void setSelectionRange(int beginPosition, int numChars,
-                                      boolean scrollToStart, boolean mode) {
+                                      boolean scrollToStart, boolean mode,boolean isTyping) {
             TextWarriorException.assertVerbose(
                     (beginPosition >= 0) && numChars <= (_hDoc.docLength() - 1) && numChars >= 0,
                     "Invalid range to select");
@@ -2649,8 +2645,9 @@ public class FreeScrollingTextField extends View
             _selectionAnchor = beginPosition;
             _selectionEdge = _selectionAnchor + numChars;
 
-            _caretPosition = _selectionEdge;
-            stopTextComposing();
+            //_caretPosition = scrollToStart?_selectionAnchor:_selectionEdge;
+            if(!isTyping)
+                stopTextComposing();
             updateCaretRow();
             if (mode)
                 _selModeLis.onSelectionChanged(isSelectText(), _selectionAnchor, _selectionEdge);
@@ -2692,27 +2689,42 @@ public class FreeScrollingTextField extends View
          * caret position is set.
          * Does nothing if not in selection mode.
          */
-        private void updateSelectionRange(int oldCaretPosition, int newCaretPosition) {
+        private void updateSelectionRange(int oldCaretPosition, int newCaretPosition,boolean scrollToStart,boolean isTyping) {
             if (!_isInSelectionMode) {
                 return;
             }
-
-            if (oldCaretPosition < _selectionEdge) {
+            int selectionAnchor=_selectionAnchor;
+            int selectionEdge=_selectionEdge;
+            /*if (oldCaretPosition < _selectionEdge) {
                 if (newCaretPosition > _selectionEdge) {
-                    _selectionAnchor = _selectionEdge;
-                    _selectionEdge = newCaretPosition;
+                    selectionAnchor = _selectionEdge;
+                    selectionEdge = newCaretPosition;
                 } else {
-                    _selectionAnchor = newCaretPosition;
+                    selectionAnchor = newCaretPosition;
                 }
 
             } else {
                 if (newCaretPosition < _selectionAnchor) {
-                    _selectionEdge = _selectionAnchor;
-                    _selectionAnchor = newCaretPosition;
+                    selectionEdge = _selectionAnchor;
+                    selectionAnchor = newCaretPosition;
                 } else {
-                    _selectionEdge = newCaretPosition;
+                    selectionEdge = newCaretPosition;
                 }
+            }*/
+            if(newCaretPosition<selectionAnchor){
+                if(oldCaretPosition>selectionEdge)
+                    selectionEdge=selectionAnchor;
+                selectionAnchor=newCaretPosition;
+            }else if(newCaretPosition>selectionEdge){
+                if(oldCaretPosition<selectionEdge)
+                    selectionAnchor=selectionEdge;
+                selectionEdge=newCaretPosition;
+            }else {
+                if(oldCaretPosition>selectionAnchor){
+                    selectionEdge=newCaretPosition;
+                }else selectionAnchor=newCaretPosition;
             }
+            setSelectionRange(selectionAnchor,selectionEdge-selectionAnchor,scrollToStart,false,isTyping);
         }
 
 
@@ -3104,24 +3116,27 @@ public class FreeScrollingTextField extends View
 
 
         public boolean sendKeyEvent(KeyEvent event) {
+            if(event.getAction()==KeyEvent.ACTION_UP)
+                return super.sendKeyEvent(event);
             switch (event.getKeyCode()) {
                 case KeyEvent.KEYCODE_SHIFT_LEFT:
-                    if (isSelectText())
+                case KeyEvent.KEYCODE_SHIFT_RIGHT:
+                    /*if (isSelectText())
                         selectText(false);
-                    else
+                    else*/
                         selectText(true);
                     break;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    moveCaretLeft();
+                      _fieldController.moveCaretLeft(true);
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    moveCaretUp();
+                    _fieldController.moveCaretUp(true);
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    moveCaretRight();
+                    _fieldController.moveCaretRight(true);
                     break;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    moveCaretDown();
+                    _fieldController.moveCaretDown(true);
                     break;
                 case KeyEvent.KEYCODE_MOVE_HOME:
                     moveCaret(0);
@@ -3203,6 +3218,7 @@ public class FreeScrollingTextField extends View
             return true;
         }
 
+
         @Override
         public int getCursorCapsMode(int reqModes) {
             int capsMode = 0;
@@ -3278,7 +3294,7 @@ public class FreeScrollingTextField extends View
             if (start == end) {
                 _fieldController.moveCaret(start);
             } else {
-                _fieldController.setSelectionRange(start, end - start, false, true);
+                _fieldController.setSelectionRange(start, end - start, false, true,true);
             }
             return true;
         }
