@@ -49,7 +49,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.text.ClipboardManager;
+import android.content.ClipboardManager;
 import android.text.InputType;
 import android.text.Selection;
 import android.text.SpannableStringBuilder;
@@ -2695,22 +2695,7 @@ public class FreeScrollingTextField extends View
             }
             int selectionAnchor=_selectionAnchor;
             int selectionEdge=_selectionEdge;
-            /*if (oldCaretPosition < _selectionEdge) {
-                if (newCaretPosition > _selectionEdge) {
-                    selectionAnchor = _selectionEdge;
-                    selectionEdge = newCaretPosition;
-                } else {
-                    selectionAnchor = newCaretPosition;
-                }
 
-            } else {
-                if (newCaretPosition < _selectionAnchor) {
-                    selectionEdge = _selectionAnchor;
-                    selectionAnchor = newCaretPosition;
-                } else {
-                    selectionEdge = newCaretPosition;
-                }
-            }*/
             if(newCaretPosition<selectionAnchor){
                 if(oldCaretPosition>selectionEdge)
                     selectionEdge=selectionAnchor;
@@ -3114,6 +3099,17 @@ public class FreeScrollingTextField extends View
             return false;
         }
 
+        @Override
+        public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
+            ExtractedText text=new ExtractedText();
+            text.startOffset=0;
+            text.flags=0;
+            text.partialEndOffset=text.partialStartOffset=-1;
+            text.selectionStart=getSelectionStart();
+            text.selectionEnd=getSelectionEnd();
+            text.text=_hDoc.toString();
+            return text;
+        }
 
         public boolean sendKeyEvent(KeyEvent event) {
             if(event.getAction()==KeyEvent.ACTION_UP)
@@ -3298,6 +3294,5 @@ public class FreeScrollingTextField extends View
             }
             return true;
         }
-
     }// end inner class
 }
