@@ -11,7 +11,7 @@ to choose the proper version.
      
 Currently, lua 5.3.5 is in **lua** dir and luajit 2.1.0 beta-3 is in **luajit** dir.
 
-Load the lib by LibLoader.java in module app or add `System.loadLibrary("luadroid.so")`
+Load the lib by LibLoader.java in the module app or add `System.loadLibrary("luadroid.so")`
 to your code.
      
 Module lib is the true library that you can embedded into your code.
@@ -19,7 +19,7 @@ Module app is a lua editor for running test in android.
      
 ## Performance
 
-  Around 2000000 method call(Math.abs) per second on my Oneplus 5 device
+  Around 2000000 method call(Math.abs) per second on my Oneplus 5 device.
   Note that if you run it in debug mode,CheckJni mode is enabled by the
   vm,and it will take away more than half of the efficiency.
   

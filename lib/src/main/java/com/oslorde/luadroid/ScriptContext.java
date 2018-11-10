@@ -58,7 +58,6 @@ public class ScriptContext implements GCTracker {
                 else if(Build.VERSION.SDK_INT>=21){
                     sUseList=true;
                     sUnchecked=Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked",boolean.class,List.class);
-
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -235,22 +234,20 @@ public class ScriptContext implements GCTracker {
 
     //Optimize for android only, cause dex file use binary order to store members
     //Only receive members from declare call;
-    private static long binarySearchMember(Member[] members,String name,boolean isStatic){
+    private static long binarySearchMember(Member[] members,String name,boolean isStatic,boolean isMethod){
         if(members.length==0) return -1;
         int low = 0;
         int high = members.length - 1;
         boolean staticFirst=Modifier.isStatic(members[0].getModifiers());
-        boolean isIntoCompare=false;
         while (low <= high) {
             int mid = (low + high) >>> 1;
             Member midVal = members[mid];
             boolean  realState=Modifier.isStatic(midVal.getModifiers());
-            if(!isIntoCompare&&realState!=isStatic){
+            if(realState!=isStatic){
                 if(realState==staticFirst)
                     low=mid+1;
                 else high=mid-1;
             }else {
-                isIntoCompare=true;
                 int cmp = midVal.getName().compareTo(name);
                 if (cmp < 0)
                     low = mid + 1;
@@ -269,9 +266,9 @@ public class ScriptContext implements GCTracker {
             }
 
         }
-        if(members[0] instanceof Method){//Method is not arranged strictly
+        if(isMethod){//Method is not arranged strictly
             int len=members.length;
-            for(;low<len;++low){
+            for(low=0;low<len;++low){
                 if(members[low].getName().equals(name)&&
                         Modifier.isStatic(members[low].getModifiers())==isStatic)
                     break;
@@ -468,7 +465,7 @@ public class ScriptContext implements GCTracker {
             Set<SameMethodEntry> methodSet) {
             do{
                 Method[] methods=getDeclaredMethods(c);
-                long index=binarySearchMember(methods,name,isStatic);
+                long index=binarySearchMember(methods,name,isStatic,true);
                 if(index>=0) {
                     int end=(int) index;
                     for (int i=(int) (index>>>32);i<end;++i) {
@@ -511,7 +508,7 @@ public class ScriptContext implements GCTracker {
                 } catch (NoSuchFieldException e) {
                     e.printStackTrace();
                 }
-            }else index = binarySearchMember(fields,name,isStatic);
+            }else index = binarySearchMember(fields,name,isStatic,false);
             if(index>=0) {
                 int end=(int) index;
                 for (int i=(int) (index>>>32);i<end;++i) {
