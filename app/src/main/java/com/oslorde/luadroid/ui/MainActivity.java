@@ -74,6 +74,8 @@ public class MainActivity extends Activity {
                         .append(" Type '").append(type).append("'\n");
             }
             context.run(scriptBuilder.toString());
+            context.run("package.path='./?.lua;./?/init.lua;/sdcard/?.lua;/sdcard/?/init.lua'\n" +
+                    "package.cpath='./?.so'");
         }
 
         Intent intent=getIntent();
