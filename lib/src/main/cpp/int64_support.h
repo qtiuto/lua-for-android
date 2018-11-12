@@ -50,17 +50,12 @@ public:
         lua_pushstring(L, "__tostring");
         lua_pushcfunction(L, i64toString);
         lua_rawset(L, -3);
-
-#if LUA_VERSION_NUM >= 502
-        luaL_requiref(L, "i64", LibInit,/*glb*/true);
-#else
-        const struct luaL_Reg i64Lib[] = {
-            {"new", newI64},
-            {NULL, NULL},
-        };
-        luaL_register(L,"i64",i64Lib);
-#endif
         lua_pop(L, 1);
+
+        lua_createtable(L, 0, 1);
+        lua_pushstring(L,"new");
+        lua_pushcfunction(L,newI64);
+        lua_rawset(L,-3);
     }
 
     static void pushLong(lua_State *L, int64_t val) {
@@ -76,17 +71,6 @@ private:
         void *buf = lua_newuserdata(L, sizeof(Integer64));
         new(buf)Integer64(val);
         Integer64::setmetatable(L);
-        return 1;
-    }
-
-
-    static int LibInit(lua_State *L) {
-        const struct luaL_Reg i64Lib[] = {
-                {"new", newI64},
-                {NULL, NULL},
-        };
-        lua_createtable(L, 0, 1);
-        luaL_setfuncs(L, i64Lib, 0);
         return 1;
     }
 

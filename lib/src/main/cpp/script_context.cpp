@@ -256,7 +256,6 @@ lua_State *ScriptContext::getLua() {
     if (iter == stateMap.end()) {
         state = luaL_newstate();
         config(state);
-        luaL_openlibs(state);
         stateMap.emplace(tid, state);
     } else state = (*iter).second;
     return state;

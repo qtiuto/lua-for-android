@@ -7,6 +7,7 @@
 #include "java_member.h"
 #include "lua_object.h"
 #include "log_wrapper.h"
+#include "lfs.h"
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
@@ -226,6 +227,37 @@ static inline int64_t lua_tointegerx(lua_State* L,int index,int* isnum){
 }
 #endif
 #if LUA_VERSION_NUM < 502
+static void luaL_requiref(lua_State *L, const char *modname,
+                              lua_CFunction openf, int glb) {
+    luaL_getsubtable(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    lua_getfield(L, -1, modname);  /* LOADED[modname] */
+    if (!lua_toboolean(L, -1)) {  /* package not already loaded? */
+        lua_pop(L, 1);  /* remove field */
+        lua_pushcfunction(L, openf);
+        lua_pushstring(L, modname);  /* argument to open function */
+        lua_call(L, 1, 1);  /* call 'openf' to open module */
+        lua_pushvalue(L, -1);  /* make copy of module (call result) */
+        lua_setfield(L, -3, modname);  /* LOADED[modname] = module */
+    }
+    lua_remove(L, -2);  /* remove LOADED table */
+    if (glb) {
+        lua_pushvalue(L, -1);  /* copy of module */
+        lua_setglobal(L, modname);  /* _G[modname] = module */
+    }
+}
+
+static void luaL_setfuncs(lua_State *L, const luaL_Reg *l, int nup) {
+    luaL_checkstack(L, nup, "too many upvalues");
+    for (; l->name != NULL; l++) {  /* fill the table with given functions */
+        int i;
+        for (i = 0; i < nup; i++)  /* copy upvalues to the top */
+            lua_pushvalue(L, -nup);
+        lua_pushcclosure(L, l->func, nup);  /* closure with those upvalues */
+        lua_setfield(L, -(nup + 2), l->name);
+    }
+    lua_pop(L, nup);  /* remove upvalues */
+}
+
 static inline int lua_rawgetp(lua_State* L,int index,const void* p){
     lua_pushlightuserdata(L,(void*)p);
     lua_rawget(L,index);
@@ -451,6 +483,7 @@ static int luaPanic(lua_State *L) {
     return 0;
 }
 
+
 void ScriptContext::config(lua_State *L) {
     lua_atpanic(L, luaPanic);
     ThreadContext* context=getThreadContext();
@@ -458,15 +491,9 @@ void ScriptContext::config(lua_State *L) {
     lua_pushlightuserdata(L, context);//for panic and lib init
     lua_setfield(L, LUA_REGISTRYINDEX, JAVA_CONTEXT);
     int top = lua_gettop(L);
-#if LUA_VERSION_NUM >= 502
     luaL_requiref(L, "java", luaGetJava,/*glb*/true);
-#else
-    lua_pushlightuserdata(L, this);
-    luaL_openlib(L,"java",javaInterfaces,1);
-    lua_setglobal(L,"java");
-#endif
 #if LUA_VERSION_NUM < 503
-    Integer64::RegisterTo(L);
+    luaL_requiref(L, Integer64::LIB_NAME, Integer64::RegisterTo,/*glb*/true);
 #endif
     if (importAll) {
         const luaL_Reg *l = javaInterfaces;
@@ -546,6 +573,10 @@ void ScriptContext::config(lua_State *L) {
     lua_pushvalue(L, -1);
     lua_setglobal(L, "ClassBuilder");
     lua_settop(L, top);
+
+    luaL_openlibs(L);
+
+    luaL_requiref(L,LFS_LIBNAME,luaopen_lfs, true);
 }
 
 static inline void pushJavaType(lua_State *L,JavaType* type){

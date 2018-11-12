@@ -636,6 +636,11 @@ Module app is a lua editor for running test in android.
    .newInstance(Type("Object")()).run()
    ```
    
+ ###LUA FILE SYSTEM API
+   Module lfs is imported default to support chdir operation.
+   Check [here](http://keplerproject.github.io/luafilesystem/manual.html#reference)
+   for documenation
+   
 ## More     
    For more information,see java doc in **doc** directory
      
