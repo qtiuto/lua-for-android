@@ -399,30 +399,40 @@ static inline  JavaObject *pushJavaObject(lua_State *L, ThreadContext *context, 
     return pushJavaObject(L, context->env, context->scriptContext, obj, nullptr);
 }
 
-#include <sstream>
+static void appendInt(String& str,int i){
+    char tmp[8];
+    snprintf(tmp,7,"%d",i);
+    str.append(tmp);
+}
 
 static String traceback(lua_State *L, int level) {
     lua_Debug ar;
-    std::stringstream ret;
-    ret<< "\nstack traceback:";
+    String ret("\nstack traceback:");
     bool isOk= false;
     while (lua_getstack(L, level++, &ar)) {
         lua_getinfo(L, "Slnt", &ar);
         if (ar.currentline > 0){
-            ret<<"\n\tat line " <<ar.currentline/*<<':'*/;
+            ret.append("\n\tat line ");
+            appendInt(ret,ar.currentline)/*<<':'*/;
             if (*ar.namewhat != '\0')  /* is there a name from code? */
-                ret<<" in " << ar.namewhat<< ar.name;  /* use it */
+                ret.append(" in ").append( ar.namewhat).append(ar.name) ;  /* use it */
             else if (*ar.what == 'm')  /* main? */
-                ret<<" in main chunk";
-            else if (*ar.what != 'C')  /* for Lua functions, use <file:line> */
-                ret<<" in function <"<< ar.short_src<<':'<<ar.linedefined<<'>';
+                ret.append(" in main chunk");
+            else if (*ar.what != 'C') {
+                /* for Lua functions, use <file:line> */
+                ret.append(" in function <").append(ar.short_src).push_back(':');
+                appendInt(ret,ar.linedefined);
+                ret.push_back('-');
+                appendInt(ret,ar.lastlinedefined);
+                ret.push_back('>');
+            }
             if (ar.istailcall)
-                ret<< "\n\t(...tail calls...)";
+                ret.append("\n\t(...tail calls...)");
             isOk=true;
         }
     }
     if(isOk)
-    return ret.str();
+    return ret;
     return String();
 }
 static void pushJavaException(lua_State*L,ThreadContext* context){

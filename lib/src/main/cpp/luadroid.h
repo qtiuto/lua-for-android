@@ -1,6 +1,5 @@
 
 #include <jni.h>
-#include <sstream>
 #include <android/log.h>
 #include <unordered_set>
 #include <unordered_map>
@@ -129,7 +128,6 @@ public:
         return old;
     }
 
-
     Import *changeImport(Import *newImport) {
         Import *old = import;
         import = newImport;
@@ -142,10 +140,6 @@ public:
 
     bool hasErrorPending() {
         return pendingJavaError != nullptr;
-    }
-
-    jthrowable getPendingJavaError() {
-        return pendingJavaError;
     }
 
     JClass findClass(String&& str){
@@ -257,7 +251,6 @@ public:
     ThreadContext* getThreadContext(){
         return &threadContext;
     }
-
 
     void addJavaObject(const char *name, const char *methodName, jobject object,
                        bool currentOnly);
