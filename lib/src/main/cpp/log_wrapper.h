@@ -7,8 +7,8 @@
 
 #include <functional>
 
-extern void requireLogger(std::function<void(const char *, bool)> logger);
+void requireLogger(std::function<void(const char *, bool)> logger);
 
-extern void dropLogger();
+void dropLogger();
 
 #endif //LUADROID_LOGGERWRAPPER_H
