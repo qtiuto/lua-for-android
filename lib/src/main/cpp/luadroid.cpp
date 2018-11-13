@@ -214,7 +214,6 @@ static __thread jmp_buf errorJmp;
 class RegisterKey{};
 static const RegisterKey* OBJECT_KEY= reinterpret_cast<const RegisterKey *>(javaInterfaces);
 static const RegisterKey* TYPE_KEY=OBJECT_KEY+1;
-static const RegisterKey* RETHROW_KEY=TYPE_KEY+1;
 
 
 #if  LUA_VERSION_NUM == 502
@@ -565,7 +564,6 @@ void ScriptContext::config(lua_State *L) {
         lua_pushcfunction(L, JavaObject::objectGc);
         lua_setfield(L, index, "__gc");
     }
-    newMetaTable(L,RETHROW_KEY, nullptr);
     for (auto &pair:addedMap) {
         pushAddedObject(context->env, L, pair.first.data(), pair.second.first.data(), pair.second.second);
     }
@@ -2047,6 +2045,7 @@ int javaTryContinue(lua_State*L,int status,lua_KContext tryInfo){
         auto context=info->context;
         int catchAllIndex=info->catchAllIndex;
         if (!info->noCatch) {
+            lua_pushvalue(L,-1);
             recordLuaError(context,L,status);
             auto env=context->env;
             JType<jthrowable> error(env,context->transferJavaError());
@@ -2069,13 +2068,13 @@ int javaTryContinue(lua_State*L,int status,lua_KContext tryInfo){
         if (finallyIndex) {
             lua_pushvalue(L,finallyIndex);
             lua_callk(L, 0, 0,1,finallyContinue);
-            lua_error(L);
-        }else{
+        }else if(info->noCatch){
             recordLuaError(context,L,status);
             lua_pushinteger(L,status);
             pushJavaObject(L,context,JObject(context->env,context->transferJavaError()));
             return 2;//if no handler,return the error;
         }
+        lua_error(L);
     }
     if (finallyIndex){
         lua_pushvalue(L, finallyIndex);
@@ -2102,9 +2101,12 @@ int javaTry(lua_State *L) {
         finallyIndex = 2;
     } else {
         int i;
+        auto env=context->env;
         for (i = 2; i < top ; i += 2) {
-            if (testType(L, i, TYPE_KEY)) {
-                continue;
+            JavaType* type;
+            if ((type=*(JavaType**)testUData(L, i, TYPE_KEY))!= nullptr) {
+                if(type->isThrowable(env))
+                    continue;
             } else if (luaL_isstring(L, i)) {
                 const char *thrType = lua_tostring(L, i);
                 if(strcmp(thrType, "all") == 0) {
@@ -2112,14 +2114,14 @@ int javaTry(lua_State *L) {
                     else
                         luaL_error(L,"More than one catch all functions");
                 }else{
-                    JavaType* type=context->ensureType(thrType);
-                    if(type== nullptr||!context->env->IsAssignableFrom(type->getType(),throwableType))
-                        luaL_error(L,"Not a catch type: %s",thrType);
+                    type = context->ensureType(thrType);
+                    if(type== nullptr||!type->isThrowable(env))
+                        luaL_error(L,"Not a exception type: %s",thrType);
                     pushJavaType(L,type);
                     lua_replace(L,i);
                 }
             } else {
-                luaL_error(L,"Not a catch type:%s",luaL_tolstring(L,i,NULL));
+                luaL_error(L,"Not a exception type:%s",luaL_tolstring(L,i,NULL));
             }
         }
         if (i == top) finallyIndex = top;
@@ -2141,6 +2143,7 @@ int javaTry(lua_State *L) {
     int ret = lua_pcall(L, 0, 0, handlerIndex);
     if (ret != LUA_OK) {
         if (!noCatch) {
+            lua_pushvalue(L,-1);
             recordLuaError(context,L,ret);
             auto env=context->env;
             JType<jthrowable> error(env,context->transferJavaError());
@@ -2167,13 +2170,13 @@ int javaTry(lua_State *L) {
         if (finallyIndex) {
             lua_pushvalue(L,finallyIndex);
             lua_call(L, 0, 0);
-           lua_error(L);
-        }else{
+        }else if (noCatch){
             recordLuaError(context,L,ret);
             lua_pushinteger(L,ret);
             pushJavaObject(L,context,JObject(context->env,context->transferJavaError()));
             return 2;//if no handler,return the error;
         }
+        lua_error(L);
     }
     lua_pop(L,1);
     if (finallyIndex) lua_call(L, 0, 0);
