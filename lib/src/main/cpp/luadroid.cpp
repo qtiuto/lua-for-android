@@ -9,8 +9,8 @@
 #include "log_wrapper.h"
 #include "lfs.h"
 #include <unordered_map>
-#include <vector>
 #include <algorithm>
+#include <FakeVector.h>
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
@@ -114,8 +114,8 @@ pushArrayElement(lua_State *L, ThreadContext *context, const JavaObject *obj,
                  JavaType *component);
 
 static void
-readArguments(lua_State *L, ThreadContext *context, Vector<JavaType *> &types,
-              Vector<ValidLuaObject> &objects, int start);
+readArguments(lua_State *L, ThreadContext *context, FakeVector<JavaType *> &types, FakeVector<ValidLuaObject> &objects,
+              int start, int end);
 
 static void parseTryTable(lua_State *L);
 
@@ -772,17 +772,13 @@ void checkLuaType(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject
     }
 }
 
-void readArguments(lua_State *L, ThreadContext *context, Vector<JavaType *> &types,
-                   Vector<ValidLuaObject> &objects, int start) {
-    int top = lua_gettop(L);
-    auto expectedSize = top - (start - 1);
-    types.reserve(expectedSize);
-    objects.reserve(expectedSize);
-    for (int i = start; i <= top; ++i) {
+void readArguments(lua_State *L, ThreadContext *context, FakeVector<JavaType *> &types, FakeVector<ValidLuaObject> &objects,
+                   int start, int end) {
+    for (int i = start; i <= end; ++i) {
         JavaType **typeRef = (JavaType **) testUData(L, i, TYPE_KEY);
         bool noType = typeRef == nullptr;
         JavaType *paramType = noType ? nullptr : *typeRef;
-        types.push_back(paramType);
+        types.asVector().push_back(paramType);
         if (!noType) i++;
         ValidLuaObject luaObject;
         if (!parseLuaObject(L, context, i, luaObject)) {
@@ -790,10 +786,11 @@ void readArguments(lua_State *L, ThreadContext *context, Vector<JavaType *> &typ
             luaL_error(L, "Arg unexpected for array");
         }
         if (checkLuaTypeNoThrow(context->env, L, paramType, luaObject)) {
-            forceRelease(luaObject, types, objects);
+            forceRelease(luaObject);
+            objects.release();
             lua_error(L);
         }
-        objects.push_back(std::move(luaObject));
+        objects.asVector().push_back(std::move(luaObject));
     }
 }
 
@@ -807,7 +804,7 @@ void pushArrayElement(lua_State *L, ThreadContext *context, const JavaObject *ob
     auto  env=context->env;
     switch (componentType->getTypeID()){
 #define PushChar(c) ({ \
-        char s[4]={0};\
+        char s[4];\
         strncpy16to8(s,(const char16_t *) &c, 1);\
         lua_pushstring(L,s);\
         })
@@ -1729,9 +1726,9 @@ int javaCharString(lua_State *L) {
         luaL_error(L, "Not a integer");
     if (v > UINT16_MAX) luaL_error(L, "Not a char value");
     char16_t s = (char16_t) v;
-    char *ret = strndup16to8(&s, 1);
+    char ret[4];
+    strncpy16to8(ret,&s, 1);
     lua_pushstring(L, ret);
-    free(ret);
     return 1;
 }
 
@@ -1782,12 +1779,17 @@ int javaNew(lua_State *L) {
     if (component != nullptr) {
         return newArray(L, 2, context, component);
     } else if(!type->isPrimitive()){
-        Vector<JavaType *> types;
-        Vector<ValidLuaObject> objects;
-        readArguments(L, context, types, objects, 2);
+        int top=lua_gettop(L);
+        auto expectedSize = top - 1;
+        JavaType* arr1[expectedSize];
+        ValidLuaObject arr2[expectedSize];
+        FakeVector<JavaType *> types(arr1,expectedSize);
+        FakeVector<ValidLuaObject> objects(arr2,expectedSize);
+        readArguments(L, context, types, objects, 2, top);
         JObject obj = JObject(env, type->newObject(context,types, objects));
         if (context->hasErrorPending()) {
-            forceRelease(types, objects,obj);
+            forceRelease(obj);
+            types.release();
             throwJavaError(L,context);
         }
         pushJavaObject(L, env, context->scriptContext, obj.get(), type);
@@ -1815,7 +1817,7 @@ static int javaUnBox(lua_State* L){
             break;
         case JavaType::BOX_CHAR: {
             jchar c = context->env->CallCharMethod(object->object, charValue);
-            char s[4]={0} ;
+            char s[4] ;
             strncpy16to8(s,(const char16_t *) &c, 1);
             lua_pushstring(L, s);
             break;
@@ -1887,15 +1889,19 @@ int javaNewArray(lua_State *L) {
 int javaToJavaObject(lua_State *L) {
     ThreadContext *context = getContext(L);
     auto env=context->env;
-    Vector<JavaType*> types;
-    Vector<ValidLuaObject> luaObjects;
-    readArguments(L,context,types,luaObjects,1);
-    int len=luaObjects.size();
+    int top=lua_gettop(L);
+    auto expectedSize = top - 1;
+    JavaType* arr1[expectedSize];
+    ValidLuaObject arr2[expectedSize];
+    FakeVector<JavaType *> types(arr1,expectedSize);
+    FakeVector<ValidLuaObject> luaObjects(arr2,expectedSize);
+    readArguments(L, context, types, luaObjects, 1, 0);
+    int len=luaObjects.asVector().size();
     int i;
     for (i = 0; i < len; ++i) {
-        JavaType* type=types[i];
+        JavaType* type=types.asVector()[i];
         if(type== nullptr){
-            jobject obj=context->luaObjectToJObject(luaObjects[i]);
+            jobject obj=context->luaObjectToJObject(luaObjects.asVector()[i]);
             if(likely(obj!=INVALID_OBJECT))
                 pushJavaObject(L,context,JObject(env,obj));
             continue;
@@ -1903,10 +1909,10 @@ int javaToJavaObject(lua_State *L) {
             if(type->isPrimitive()){
                 type=type->toBoxedType();
             }
-            jvalue v=context->luaObjectToJValue(luaObjects[i],type);
+            jvalue v=context->luaObjectToJValue(luaObjects.asVector()[i],type);
             if(likely(v.l!=INVALID_OBJECT)){
                 pushJavaObject(L,context,v.l);
-                cleanArg(env,v.l,luaObjects[i].shouldRelease);
+                cleanArg(env,v.l,luaObjects.asVector()[i].shouldRelease);
             }
         }
     }
@@ -2219,18 +2225,23 @@ int callMethod(lua_State *L) {
     bool isStatic = flag->isStatic;
     JavaObject *objRef = isStatic ? nullptr : (JavaObject *) lua_touserdata(L, OBJ_INDEX);
     JavaType *type = isStatic ? *(JavaType **) lua_touserdata(L, OBJ_INDEX) : objRef->type;
-    Vector<JavaType *> types;
-    Vector<ValidLuaObject> objects;
-    readArguments(L, context, types, objects, 1 + flag->isNotOnlyMethod);
+    int start=1 + flag->isNotOnlyMethod;
+    int top=lua_gettop(L);
+    auto expectedSize = top - (flag->isNotOnlyMethod);
+    JavaType* arr1[expectedSize];
+    ValidLuaObject arr2[expectedSize];
+    FakeVector<JavaType *> types(arr1,expectedSize);
+    FakeVector<ValidLuaObject> objects(arr2,expectedSize);
+    readArguments(L, context, types, objects, start,top);
     auto env=context->env;
-    auto info = type->findMethod(env,FakeString(name), isStatic, types, &objects);
+    auto info = type->findMethod(env,FakeString(name), isStatic, types, &objects.asVector());
     if (unlikely(info == nullptr)) {
         TopErrorHandle("No matched found for the method %s;%s",type->name(env).str(), name);
     }
-    int argCount = objects.size();
+    int argCount = objects.asVector().size();
     jvalue args[argCount];
     for (int i = argCount - 1; i != -1; --i) {
-        ValidLuaObject &object = objects[i];
+        ValidLuaObject &object = objects.asVector()[i];
         JavaType::ParameterizedType &tp = info->params[i];
         args[i] = context->luaObjectToJValue(object, tp.rawType,tp.realType);
         if (!tp.rawType->isPrimitive() && args[i].l == INVALID_OBJECT) {
@@ -2276,7 +2287,7 @@ int callMethod(lua_State *L) {
             if (isStatic) buf = env->CallStaticCharMethodA(type->getType(), info->id, args);
             else
                 buf = env->CallNonvirtualCharMethodA(objRef->object, objRef->type->getType(), info->id, args);
-            char s[4]={0} ;
+            char s[4] ;
             strncpy16to8(s,(const char16_t *) &buf, 1);
             lua_pushstring(L, s);
             break;
@@ -3119,7 +3130,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
             case 0: {//char
                 JObject character = env->GetObjectArrayElement(args, i);
                 char16_t c = env->CallCharMethod(character, charValue);
-                char charStr[4]={0} ;
+                char charStr[4] ;
                 strncpy16to8(charStr,&c, 1);
                 lua_pushstring(L, charStr);
                 break;

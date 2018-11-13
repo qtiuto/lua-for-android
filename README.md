@@ -19,7 +19,7 @@ Module app is a lua editor for running test in android.
      
 ## Performance
 
-  Around 2000000 method call(Math.abs) per second on my Oneplus 5 device.
+  Around 2100000 method call(Math.abs) per second on my Oneplus 5 device.
   Note that if you run it in debug mode,CheckJni mode is enabled by the
   vm,and it will take away more than half of the efficiency.
   
