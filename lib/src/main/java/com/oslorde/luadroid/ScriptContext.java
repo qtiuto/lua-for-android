@@ -1807,12 +1807,12 @@ public class ScriptContext implements GCTracker {
                         returnClass = void.class;
                         break;
                     default: {
+                        name = (name.charAt(0) == '[' ? name :
+                                name.substring(1, name.length() - 1)).replace('/', '.');
+                        returnClass = thiz.getClass().getClassLoader().loadClass(name);
                         break;
                     }
                 }
-                name = (name.charAt(0) == '[' ? name :
-                        name.substring(1, name.length() - 1)).replace('/', '.');
-                returnClass = thiz.getClass().getClassLoader().loadClass(name);
                 classType=getClassType(nativePtr,returnClass);
             }
             return fixValue(invokeLuaFunction(nativePtr,false,funcRef,thiz,argTypes,args),classType,returnClass,returnClass);
