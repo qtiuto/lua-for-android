@@ -1744,11 +1744,11 @@ int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
     size = lua_tointegerx(L, index++, &isnum);
     if (!isnum) {
         luaL_error(L, "Type Error: not a integer but %s", luaL_typename(L, index));
-    } else if (size > INT32_MAX || size < 0) {
+    } else if (size > INT32_MAX || size < -1) {
         luaL_error(L, "integer overflowed");
     }
     int top = lua_gettop(L);
-    if (top - index > size) {
+    if (size!=-1&&top - index > size) {
         luaL_error(L, "%d elements is too many for an array of size %d", top - index, size);
     }
     Vector<ValidLuaObject> elements;
@@ -1765,6 +1765,7 @@ int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
         }
         elements.push_back(std::move(object));
     }
+    if(size==-1) size=elements.size();
     JArray ret(context->env, type->newArray(context,(jint) size, elements));
     if (ret == nullptr) {
         forceRelease(elements);

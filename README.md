@@ -134,7 +134,8 @@ Module app is a lua editor for running test in android.
        
       Usage: `newArray(ComponentType,length,initial args...) ` 
       
-      The length of initial args must be less than or equal to the length
+      The length of initial args must be less than or equal to the length. 
+      If the length==-1 then the length = the length of initial args
       
       Alternative: `new(ArrayType,length,initial args...)`
       ,but the previous one is more efficient.
@@ -143,7 +144,7 @@ Module app is a lua editor for running test in android.
       ```lua
         newArray(Type('String'),3,'hfh','hfht')
         --or
-        new(Type('int[]'),3,1,2,3)
+        new(Type('int[]'),-1,1,2,3)
       ```
       Note:Never pass a type into the initial args.Type cast won't be 
       accepted,since only one type is acceptable.Auto conversion will
@@ -636,6 +637,9 @@ Module app is a lua editor for running test in android.
    .newInstance(Type("Object")()).run()
    ```
    
+   It doesn't support generating static methods or constructors cause class object
+   won't be freed in dalvik. When the mini sdk version of this project turn to 21,
+   I will add support for them.
  ###LUA FILE SYSTEM API
    Module lfs is imported default to support chdir operation.
    Check [here](http://keplerproject.github.io/luafilesystem/manual.html#reference)
