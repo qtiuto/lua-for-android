@@ -318,8 +318,6 @@ public:
 
     inline TYPE_ID  getTypeID(){ return typeID;}
 
-
-
     const Array<MethodInfo> *findAllObjectMethod(TJNIEnv* env,const String &name) {
         return ensureMethod(env,name, false);
     }
