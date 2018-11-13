@@ -159,10 +159,11 @@ public:
 
 
 ValidLuaObject::~ValidLuaObject() {
-    if (type == T_FUNCTION)
+    if (type == T_FUNCTION){
         delete func;
-    else if (type == T_TABLE)
+    } else if (type == T_TABLE){
         delete lazyTable;
+    }
 }
 class UserData;
 struct CrossThreadLuaObject {

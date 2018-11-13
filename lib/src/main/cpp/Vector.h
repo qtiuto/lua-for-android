@@ -11,7 +11,9 @@
 
 template<typename _Tp,int cacheCount=4>
 class Vector {
+public:
     typedef int size_type;// int type is enough since the most usage is for arg passage
+private:
     typedef _Tp *iterator;
     _Tp *array = nullptr;
     size_type _size = 0;
