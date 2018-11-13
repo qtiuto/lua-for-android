@@ -45,7 +45,8 @@ void requireLogger(std::function<void(const char *, bool)> logger) {
             char *buffer = new char[1024];
             ssize_t nBytes;
             jclass c=env->FindClass("android/os/Process");
-            env->CallStaticVoidMethod(c,env->GetStaticMethodID(c,"setThreadPriority","(I)V"),-2);
+            static jmethodID mid=env->GetStaticMethodID(c,"setThreadPriority","(I)V");
+            env->CallStaticVoidMethod(c,mid,-2);
             env->DeleteLocalRef(c);
             while (refCount > 0) {
                 int nfds = poll(fds, 2, 100);
