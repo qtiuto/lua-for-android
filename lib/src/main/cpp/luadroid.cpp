@@ -24,6 +24,9 @@
 #define TopErrorHandle(fmt, ...)  \
     ({lua_pushfstring(L,fmt,##__VA_ARGS__);\
     goto __ErrorHandle;})
+#define ERROR(fmt, ...)  \
+    ({lua_pushfstring(L,fmt,##__VA_ARGS__);\
+    lua_error(L);})
 #define SetErrorJMP()({if(false){\
 __ErrorHandle:\
         lua_error(L);\
@@ -285,7 +288,7 @@ static inline int64_t lua_tointegerx(lua_State* L,int index,int* isnum){
 static const char *luaL_tolstring (lua_State *L, int idx, size_t *len) {
     if (luaL_callmeta(L, idx, "__tostring")) {  /* metafield? */
         if (!lua_isstring(L, -1))
-            luaL_error(L, "'__tostring' must return a string");
+            ERROR( "'__tostring' must return a string");
     }
     else {
         switch (lua_type(L, idx)) {
@@ -351,13 +354,13 @@ static bool isJavaTypeOrObject(lua_State*L,int index){
 static JavaObject* checkJavaObject(lua_State* L,int idx){
     JavaObject* ret= static_cast<JavaObject *>(testUData(L, idx, OBJECT_KEY));
     if(unlikely(ret== nullptr))
-        luaL_error(L,"Expected " JAVA_OBJECT ",but got %s",luaL_tolstring(L,idx,NULL));
+        ERROR("Expected " JAVA_OBJECT ",but got %s",luaL_tolstring(L,idx,NULL));
     return ret;
 }
 static JavaType* checkJavaType(lua_State* L,int idx){
     JavaType** ret= static_cast<JavaType **>(testUData(L, idx, TYPE_KEY));
     if(unlikely(ret== nullptr))
-        luaL_error(L,"Expected " JAVA_TYPE ",but got %s",luaL_tolstring(L,idx,NULL));
+        ERROR("Expected " JAVA_TYPE ",but got %s",luaL_tolstring(L,idx,NULL));
     return *ret;
 }
 static void setMetaTable(lua_State* L,const RegisterKey* key){
@@ -783,7 +786,7 @@ void readArguments(lua_State *L, ThreadContext *context, FakeVector<JavaType *> 
         ValidLuaObject luaObject;
         if (!parseLuaObject(L, context, i, luaObject)) {
             forceRelease(types, objects);
-            luaL_error(L, "Arg unexpected for array");
+            ERROR( "Arg unexpected for array");
         }
         if (checkLuaTypeNoThrow(context->env, L, paramType, luaObject)) {
             forceRelease(luaObject);
@@ -799,8 +802,8 @@ void pushArrayElement(lua_State *L, ThreadContext *context, const JavaObject *ob
                       JavaType *componentType) {
     int isnum;
     jlong index = lua_tointegerx(L, 2, &isnum);
-    if (unlikely(!isnum)) luaL_error(L, "Invalid index for an array");
-    if (unlikely(index > INT32_MAX))luaL_error(L, "Index out of range:%d", index);
+    if (unlikely(!isnum)) ERROR( "Invalid index for an array");
+    if (unlikely(index > INT32_MAX))ERROR( "Index out of range:%d", index);
     auto  env=context->env;
     switch (componentType->getTypeID()){
 #define PushChar(c) ({ \
@@ -1229,7 +1232,7 @@ int javaType(lua_State *L) {
         pushJavaType(L,type);
         continue;//never reach
         Error:
-        luaL_error(L, "Invalid type=%s", luaL_tolstring(L, i,NULL));
+        ERROR( "Invalid type=%s", luaL_tolstring(L, i,NULL));
     }
     return count;
 }
@@ -1657,7 +1660,7 @@ int javaImport(lua_State *L) {
     ThreadContext *context = getContext(L);
     SetErrorJMP();
     auto env=context->env;
-    if (!luaL_isstring(L, -1)) luaL_error(L, "Should pass a string for import");
+    if (!luaL_isstring(L, -1)) ERROR( "Should pass a string for import");
     auto&& s=lua_tostring(L, -1);
     Import *import = context->getImport();
     if(s[0]=='[') TopErrorHandle("Don't import array type!");
@@ -1708,14 +1711,14 @@ int javaImport(lua_State *L) {
 
 int javaCharValue(lua_State *L) {
     if (!luaL_isstring(L, -1)) {
-        luaL_error(L, "Not a string but %s", luaL_typename(L, lua_type(L, -1)));
+        ERROR( "Not a string but %s", luaL_typename(L, lua_type(L, -1)));
     }
     const char *s = lua_tostring(L, -1);
     if (strlen8to16(s) == 1) {
         char16_t ret;
         strcpy8to16(&ret, s, nullptr);
         lua_pushinteger(L, ret);
-    } else luaL_error(L, "the string has more than one char:%s", s);
+    } else ERROR( "the string has more than one char:%s", s);
     return 1;
 }
 
@@ -1723,8 +1726,8 @@ int javaCharString(lua_State *L) {
     int isnum;
     jlong v = lua_tointegerx(L, -1, &isnum);
     if (!isnum)
-        luaL_error(L, "Not a integer");
-    if (v > UINT16_MAX) luaL_error(L, "Not a char value");
+        ERROR( "Not a integer");
+    if (v > UINT16_MAX) ERROR( "Not a char value");
     char16_t s = (char16_t) v;
     char ret[4];
     strncpy16to8(ret,&s, 1);
@@ -1735,18 +1738,18 @@ int javaCharString(lua_State *L) {
 int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
     jlong size = 0;
     if (type->isVoid()) {
-        luaL_error(L, "Type Error:array for void.class can't be created");
+        ERROR( "Type Error:array for void.class can't be created");
     }
     int isnum;
     size = lua_tointegerx(L, index++, &isnum);
     if (!isnum) {
-        luaL_error(L, "Type Error: not a integer but %s", luaL_typename(L, index));
+        ERROR( "Type Error: not a integer but %s", luaL_typename(L, index));
     } else if (size > INT32_MAX || size < -1) {
-        luaL_error(L, "integer overflowed");
+        ERROR( "integer overflowed");
     }
     int top = lua_gettop(L);
     if (size!=-1&&top - index > size) {
-        luaL_error(L, "%d elements is too many for an array of size %d", top - index, size);
+        ERROR( "%d elements is too many for an array of size %d", top - index, size);
     }
     Vector<ValidLuaObject> elements;
     elements.reserve(top - index + 1);
@@ -1754,7 +1757,7 @@ int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
         ValidLuaObject object;
         if (!parseLuaObject( L, context, index, object)) {
             forceRelease(elements);
-            luaL_error(L, "Arg unexpected for array");
+            ERROR( "Arg unexpected for array");
         }
         if(checkLuaTypeNoThrow(context->env, L, type, object)){
             forceRelease(elements,object);
@@ -1794,7 +1797,7 @@ int javaNew(lua_State *L) {
         }
         pushJavaObject(L, env, context->scriptContext, obj.get(), type);
     } else
-        luaL_error(L,"Primitive type can't make a new instance");
+        ERROR("Primitive type can't make a new instance");
     return 1;
 }
 
@@ -1871,7 +1874,7 @@ int javaIterate(lua_State* L){
     JObject iterator=env->CallObjectMethod(context->scriptContext->javaRef,iterate,object->object);
     HOLD_JAVA_EXCEPTION(context,{});
     if(iterator==nullptr){
-        luaL_error(L,"Bad argument for iterator:%s",luaL_tolstring(L,1, nullptr));
+        ERROR("Bad argument for iterator:%s",luaL_tolstring(L,1, nullptr));
     }
     lua_pushlightuserdata(L,context);
     lua_pushcclosure(L,javaNext,1);
@@ -2093,13 +2096,13 @@ int javaTryContinue(lua_State*L,int status,lua_KContext tryInfo){
 int javaTry(lua_State *L) {
     ThreadContext *context = getContext(L);
     int top = lua_gettop(L);
-    if (top == 0) luaL_error(L, "No args");
+    if (top == 0) ERROR( "No args");
     bool noCatch = false;
     int finallyIndex = 0;
     if (top == 1&&lua_istable(L, 1))
         parseTryTable(L);
     if (lua_isnil(L, 1))
-        luaL_error(L, "No try body");
+        ERROR( "No try body");
     top = lua_gettop(L);
     int catchAllIndex = 0;
     if (top == 1) noCatch = true;
@@ -2109,26 +2112,25 @@ int javaTry(lua_State *L) {
     } else {
         int i;
         auto env=context->env;
+        JavaType** typeRef;
         for (i = 2; i < top ; i += 2) {
-            JavaType* type;
-            if ((type=*(JavaType**)testUData(L, i, TYPE_KEY))!= nullptr) {
-                if(type->isThrowable(env))
+            if ((typeRef=(JavaType**)testUData(L, i, TYPE_KEY))!= nullptr&&(*typeRef)->isThrowable(env)) {
                     continue;
             } else if (luaL_isstring(L, i)) {
                 const char *thrType = lua_tostring(L, i);
                 if(strcmp(thrType, "all") == 0) {
                     if (catchAllIndex == 0) catchAllIndex = i;
                     else
-                        luaL_error(L,"More than one catch all functions");
+                        ERROR("More than one catch all functions");
                 }else{
-                    type = context->ensureType(thrType);
+                    JavaType *type = context->ensureType(thrType);
                     if(type== nullptr||!type->isThrowable(env))
-                        luaL_error(L,"Not a exception type: %s",thrType);
+                        ERROR("Not an exception type: %s",thrType);
                     pushJavaType(L,type);
                     lua_replace(L,i);
                 }
             } else {
-                luaL_error(L,"Not a exception type:%s",luaL_tolstring(L,i,NULL));
+                ERROR("Not an exception type:%s",luaL_tolstring(L,i,NULL));
             }
         }
         if (i == top) finallyIndex = top;
@@ -2197,7 +2199,7 @@ int javaPut(lua_State *L) {
     CrossThreadLuaObject object;
     if (!parseCrossThreadLuaObject(L, context, 3, object)) {
         const char *s = luaL_tolstring(L, 3, nullptr);
-        luaL_error(L, "Invalid object %s with name %s to be pushed to cross thread table", s, name);
+        ERROR( "Invalid object %s with name %s to be pushed to cross thread table", s, name);
     }
     if(object.type==T_NIL){
         context->scriptContext->deleteLuaObject(name);
@@ -2334,7 +2336,7 @@ static int setMapValue(lua_State *L,ThreadContext* context,TJNIEnv* env,jobject 
     jobject  v=context->luaObjectToJObject(value);
     if(v==INVALID_OBJECT){
         forceRelease(key,value,k);
-        luaL_error(L,"invalid map value");
+        ERROR("invalid map value");
     }
     env->CallVoidMethod(context->scriptContext->javaRef,sSet,obj,k.get(),JObject(env,v).get());
     HOLD_JAVA_EXCEPTION(context,{
@@ -2381,7 +2383,7 @@ int getFieldOrMethod(lua_State *L) {
             if (luaL_isstring(L, 2)) {
                 const char *s = lua_tostring(L, 2);
                 if (unlikely(strcmp(s, "length") != 0)) {
-                    luaL_error(L, "Invalid member for an array:%s", s);
+                    ERROR( "Invalid member for an array:%s", s);
                 } else {
                     lua_pushinteger(L, env->GetArrayLength((jarray) obj->object));
                 }
@@ -2395,7 +2397,7 @@ int getFieldOrMethod(lua_State *L) {
         if(!isStatic&&(lua_isnumber(L,2)||testType(L,2,OBJECT_KEY))){
             return pushMapValue(L,context,env,obj->object);
         }
-        luaL_error(L, "Invaild type to get a field or method:%s", luaL_typename(L, 2));
+        ERROR( "Invaild type to get a field or method:%s", luaL_typename(L, 2));
     }
 
     FakeString name(lua_tostring(L, 2));
@@ -2476,7 +2478,7 @@ int getFieldOrMethod(lua_State *L) {
                 }
             }
             if(isStatic)
-                luaL_error(L, "No static member is named %s in class %s", name.data(),
+                ERROR( "No static member is named %s in class %s", name.data(),
                             type->name(env).str());
             else{
                 auto getter=type->findMockName(env,name, true);
@@ -2515,7 +2517,7 @@ int getField(lua_State *L) {
 
     const char *name = lua_tostring(L, NAME_INDEX);
     if (unlikely(!flag->isField)) {
-        luaL_error(L, "The member %s is not a field", name);
+        ERROR( "The member %s is not a field", name);
     }
     bool isStatic = flag->isStatic;
     JavaObject *obj = isStatic ? nullptr : (JavaObject *) lua_touserdata(L, OBJ_INDEX);
@@ -2524,7 +2526,7 @@ int getField(lua_State *L) {
     JavaType **fieldTypeRef;
     if (unlikely(flag->isDuplicatedField) && (fieldTypeRef = (JavaType **) testUData(L, 2, TYPE_KEY)) ==
                                    nullptr) {
-        luaL_error(L, "The class has duplicated field name %s", name);
+        ERROR( "The class has duplicated field name %s", name);
     }
     auto env=flag->context->env;
     auto&& info = *type->findField(env,FakeString(name), isStatic,
@@ -2540,7 +2542,7 @@ int setField(lua_State *L) {
 
     const char *name = lua_tostring(L, NAME_INDEX);
     if (unlikely(!flag->isField)) {
-        luaL_error(L, "The member %s is not a field", name);
+        ERROR( "The member %s is not a field", name);
     }
     bool isStatic = flag->isStatic;
     JavaObject *objRef = isStatic ? nullptr : (JavaObject *) lua_touserdata(L, OBJ_INDEX);
@@ -2549,7 +2551,7 @@ int setField(lua_State *L) {
     JavaType **fieldTypeRef;
     if (unlikely(flag->isDuplicatedField) && (fieldTypeRef = (JavaType **)
             testUData(L, 2, TYPE_KEY)) == nullptr) {
-        luaL_error(L, "The class has duplicated field name %s", name);
+        ERROR( "The class has duplicated field name %s", name);
     }
     auto env=context->env;
     auto info = type->findField(env,FakeString(name), isStatic,
@@ -2557,7 +2559,7 @@ int setField(lua_State *L) {
     JavaType *fieldType = info->type.rawType;
     ValidLuaObject luaObject;
     if (unlikely(!parseLuaObject(L, context, 3, luaObject))) {
-        luaL_error(L, "Invalid value passed to java as a field with type:%s", luaL_typename(L, 3));
+        ERROR( "Invalid value passed to java as a field with type:%s", luaL_typename(L, 3));
     }
     checkLuaType(env, L, fieldType, luaObject);
 #define RawSetField(jname, NAME)({\
@@ -2608,8 +2610,8 @@ int setFieldOrArray(lua_State *L) {
             int isnum;
             jlong index = lua_tointegerx(L, 2, &isnum);
             if (unlikely(!isnum))
-                luaL_error(L, "Invalid Value to set a array:%s", luaL_tolstring(L, 2, nullptr));
-            if (index < 0 || index > INT32_MAX) luaL_error(L, "Index out of range:%lld", index);
+                ERROR( "Invalid Value to set a array:%s", luaL_tolstring(L, 2, nullptr));
+            if (index < 0 || index > INT32_MAX) ERROR( "Index out of range:%lld", index);
             ValidLuaObject luaObject;
             parseLuaObject(L, context, 3, luaObject);
             checkLuaType(env, L, type, luaObject);
@@ -2647,7 +2649,7 @@ int setFieldOrArray(lua_State *L) {
             setMapValue(L,context,env,objRef->object);
             return 0;
         }
-        luaL_error(L, "Invalid index for a field member:%s",
+        ERROR( "Invalid index for a field member:%s",
                    luaL_tolstring(L, 2, NULL));
     }
 
@@ -2667,14 +2669,14 @@ int setFieldOrArray(lua_State *L) {
             setMapValue(L,context,env,objRef->object);
             return 0;
         }
-        luaL_error(L,"No such field");
+        ERROR("No such field");
     }
-    if (arr->size() > 1) luaL_error(L,"The name %s repsents not only one field", name.data());
+    if (arr->size() > 1) ERROR("The name %s repsents not only one field", name.data());
     auto &&info = arr->at(0);
     JavaType *fieldType = info.type.rawType;
     ValidLuaObject luaObject;
     if (unlikely(!parseLuaObject(L, context, 3, luaObject))) {
-        luaL_error(L,"Invalid value passed to java as a field with type:%s",
+        ERROR("Invalid value passed to java as a field with type:%s",
                        luaL_tolstring(L, 3, NULL));
     }
     checkLuaType(env, L, fieldType, luaObject);
