@@ -10,6 +10,7 @@ bool changeClassName(String &className) noexcept;
 thread_local ThreadContext ScriptContext::threadContext ;
 jmethodID ScriptContext::sMapPut;
 jmethodID ScriptContext::sWriteBytes;
+TJNIEnv* ScriptContext::sTypeEnv;
 int (*ScriptContext::sThreadTest)(intptr_t) ;
 intptr_t (*ScriptContext::sThreadID)() ;
 static jmethodID sProxy;
@@ -45,12 +46,12 @@ static void handleAdd(int, siginfo *, void *) {
 
 void ScriptContext::addJavaObject(const char *name, const char *methodName, jobject object,
                                   bool currentOnly) {
-    lock.lock();
+    addLock.lock();
     if (object == nullptr) {
         addedMap.erase(name);
     } else if(!currentOnly)
         addedMap[name]= std::make_pair(methodName == nullptr ? String() : methodName, object);
-    lock.unlock();
+    addLock.unlock();
     pthread_mutex_lock(&sAddInfo.mutex);
     struct sigaction sig, old;
     sigemptyset(&sig.sa_mask);
@@ -61,7 +62,7 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
     sAddInfo.name = name;
     sAddInfo.methodName = methodName;
     sAddInfo.object = object;
-    lock.lock();
+    addLock.lock();
     int self = gettid();
     if (currentOnly && (stateMap.find(self) != stateMap.end())) {
         pthread_mutex_unlock(&sAddInfo.mutex);
@@ -74,15 +75,15 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
                 handleAdd(ADD_SIG, nullptr, nullptr);
                 pthread_mutex_lock(&sAddInfo.mutex);
             } else {
-                lock.unlock();
+                addLock.unlock();
                 int status = pthread_kill(key.first, ADD_SIG);
                 if (status == 0)pthread_cond_wait(&sAddInfo.cond, &sAddInfo.mutex);
-                lock.lock();
+                addLock.lock();
             }
         }
     }
 
-    lock.unlock();
+    addLock.unlock();
     sigaction(ADD_SIG, &old, &sig);
     sAddInfo.name = sAddInfo.methodName = nullptr;
     sAddInfo.object = nullptr;
@@ -249,7 +250,7 @@ int getSDK() {
 }
 
 lua_State *ScriptContext::getLua() {
-    ScopeLock sentry(lock);
+    ScopeLock sentry(gcLock);
     auto tid = sThreadID();
     const auto &iter = stateMap.find(tid);
     lua_State *state;
@@ -263,6 +264,8 @@ lua_State *ScriptContext::getLua() {
 
 
 JavaType *ScriptContext::ensureType(TJNIEnv *env, jclass type) {
+    ScopeLock sentry(typeLock);
+    sTypeEnv=env;
     const auto &iter = typeMap.find(type);
     if (iter != typeMap.end()) {
         return (*iter).second;
@@ -592,7 +595,7 @@ ScriptContext::~ScriptContext() {
     for (auto &&pair :typeMap) {
         delete pair.second;
     }
-    ScopeLock sentry(lock);
+    ScopeLock sentry(gcLock);
     for (auto &&pair :stateMap)
         lua_close(pair.second);
     for (auto &&object:addedMap) {

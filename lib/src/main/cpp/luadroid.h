@@ -48,21 +48,7 @@ inline void cleanArg(JNIEnv *env, const jobject j, bool should) {
 
 
 namespace std {
-    template<>
-    struct hash<jclass> : public unary_function<jclass, int> {
-        int operator()(const jclass c) const noexcept {
-            return AutoJNIEnv()->CallIntMethod(c, objectHash);
-        }
-    };
 
-    template<>
-    struct equal_to<jclass> : public binary_function<jclass, jclass, bool> {
-        bool operator()(const jclass &c1, const jclass &c2) const noexcept {//must not null both
-            if (c1 == nullptr) return false;
-            if (c2 == nullptr) return false;
-            return c1 == c2 || AutoJNIEnv()->IsSameObject(c1, c2);
-        }
-    };
 
     template<>
     struct hash<std::pair<JavaType *, JavaType *>> {
@@ -165,13 +151,28 @@ public:
 };
 
 class ScriptContext {
+
+    struct hashJClass {
+        int operator()(const jclass c) const noexcept {
+            return ScriptContext::sTypeEnv->CallIntMethod(c, objectHash);
+        }
+    };
+
+    struct equalJClass{
+        bool operator()(const jclass &c1, const jclass &c2) const noexcept {//must not null both
+            if (c1 == nullptr) return false;
+            if (c2 == nullptr) return false;
+            return c1 == c2 || ScriptContext::sTypeEnv->IsSameObject(c1, c2);
+        }
+    };
     static jmethodID sMapPut;
     static thread_local ThreadContext threadContext;
     static jmethodID sWriteBytes;
     static int (*sThreadTest)(intptr_t tid);
     static intptr_t (*sThreadID)();
+    static TJNIEnv* sTypeEnv;
     friend class ThreadContext;
-    typedef Map<jclass, JavaType *> TypeMap;
+    typedef Map<jclass, JavaType *,hashJClass,equalJClass> TypeMap;
     typedef Map<intptr_t , lua_State *> StateMap;
     typedef Map<String, CrossThreadLuaObject> CrossThreadMap;
     typedef Map<String, std::pair<String, jobject>> AddedMap;
@@ -180,8 +181,10 @@ class ScriptContext {
     TypeMap typeMap;
     StateMap stateMap;
     AddedMap addedMap;
-    SpinLock lock;
-    SpinLock mapLock;
+    SpinLock typeLock;
+    SpinLock gcLock;
+    SpinLock crossLock;
+    SpinLock addLock;
     CrossThreadMap crossThreadMap;
 
     JavaType *HashMapClass = nullptr;
@@ -209,6 +212,7 @@ public:
     JavaType *const FloatClass;
     JavaType *const DoubleClass;
     Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
+    SpinLock weightLock;
     jobject const javaRef;
     JavaType *const ObjectClass;
 
@@ -219,12 +223,12 @@ public:
     lua_State *getLua();
 
     void saveLuaObject(CrossThreadLuaObject &object, const char *name) {
-        ScopeLock sentry(mapLock);
+        ScopeLock sentry(crossLock);
         crossThreadMap[name]=std::move(object);
     }
 
     void clean() {
-        ScopeLock sentry(lock);
+        ScopeLock sentry(gcLock);
         for (auto&& pair = stateMap.begin(); pair != stateMap.end();) {
             int status = sThreadTest(pair->first);
             if (status == 0) {
@@ -238,14 +242,14 @@ public:
 
 
     CrossThreadLuaObject *getLuaObject(const char *name) {
-        ScopeLock sentry(mapLock);
+        ScopeLock sentry(crossLock);
          auto &&iter = crossThreadMap.find(String(name));
         if (iter == crossThreadMap.end()) return nullptr;
         else return &(iter->second);
     }
 
     void deleteLuaObject(const char *name) {
-        ScopeLock sentry(mapLock);
+        ScopeLock sentry(crossLock);
         crossThreadMap.erase(String(name));
     }
     ThreadContext* getThreadContext(){

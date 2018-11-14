@@ -7,15 +7,21 @@
 #include <mutex>
 
 
-class SpinLock {
+class ReSpinLock {
     std::atomic_flag locked = ATOMIC_FLAG_INIT;
     int count = 0;
     pthread_t holder = 0;
 public:
     volatile void lock() {
-        if (pthread_self() != holder) {
-            while (locked.test_and_set(std::memory_order_acquire)) { ; }
-            holder = pthread_self();
+      pthread_t self=  pthread_self();
+        if (self != holder) {
+            while (locked.test_and_set(std::memory_order_acquire)) {
+                struct ::timespec req;
+                req.tv_sec = 0;
+                req.tv_nsec = 1000;
+                nanosleep(&req,NULL);
+            }
+            holder = self;
         }
         ++count;
     }
@@ -31,6 +37,23 @@ public:
 
     }
 };
+class SpinLock {
+    std::atomic_flag locked = ATOMIC_FLAG_INIT;
+public:
+    volatile void lock() {
+            while (locked.test_and_set(std::memory_order_acquire)) {
+                struct ::timespec req;
+                req.tv_sec = 0;
+                req.tv_nsec = 1000;
+                nanosleep(&req,NULL);
+            }
 
+    }
+
+    volatile void unlock() {
+        locked.clear(std::memory_order_release);
+    }
+};
 typedef std::lock_guard<SpinLock> ScopeLock;
+typedef  std::lock_guard<ReSpinLock> ReScopeLock;
 #endif //LUADROID_SPINLOCK_H

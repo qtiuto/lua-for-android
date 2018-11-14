@@ -23,7 +23,7 @@ public:
     }
 
     void release(){
-        for (int i = 0; i < _size; ++i) {
+        for (int i = _size-1; i !=-1 ; --i) {
             forceRelease(array[i]);
         }
     }

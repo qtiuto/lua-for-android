@@ -571,12 +571,16 @@ const JavaType::FieldInfo *JavaType::findField(TJNIEnv* env,const String &name, 
 uint JavaType::weightObject(TJNIEnv* env,JavaType *target, JavaType *from) {
     auto key = std::make_pair<>(target, from);
     auto weightMap = context->weightMap;
+    context->weightLock.lock();
     auto iter = weightMap.find(key);
+    context->weightLock.unlock();
     if (iter != weightMap.end()) {
         return iter->second;
     }
     uint ret = uint(env->CallStaticIntMethod(contextClass, sWeightObject, target->type, from->type));
+    context->weightLock.lock();
     weightMap.emplace(key, ret);
+    context->weightLock.unlock();
     return ret;
 }
 

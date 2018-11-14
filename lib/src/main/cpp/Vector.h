@@ -12,7 +12,7 @@
 template<typename _Tp,int cacheCount=4>
 class Vector {
 public:
-    typedef int size_type;// int type is enough since the most usage is for arg passage
+    typedef uint size_type;// int type is enough since the most usage is for arg passage
 private:
     typedef _Tp *iterator;
     _Tp *array = nullptr;
@@ -30,7 +30,7 @@ private:
         }
     }
 
-    inline void checkIndex(int index) const {
+    inline void checkIndex(size_type index) const {
         if (unlikely(index < 0 || index >= _size)) {
             LOGE("index=%d out of bound=%d", index, _size);
             abort();
@@ -51,7 +51,7 @@ private:
         }
     }
 
-    static inline int binaryCeil(int i) {
+    static inline size_type binaryCeil(size_type i) {
         i |= (i >> 1);
         i |= (i >> 2);
         i |= (i >> 4);

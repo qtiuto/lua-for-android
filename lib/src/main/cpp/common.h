@@ -10,7 +10,6 @@
 #include "jtype.h"
 #include "TJNIEnv.h"
 #include "macros.h"
-
 extern JavaVM *vm;
 extern TJNIEnv* _GCEnv;
 extern jclass stringType;
