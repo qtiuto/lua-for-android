@@ -5,11 +5,11 @@
 #include <jni.h>
 #include <string>
 #include <time.h>
-#include <unordered_map>
 #include "lua.hpp"
 #include "jtype.h"
 #include "TJNIEnv.h"
 #include "macros.h"
+#include "HashMap.h"
 extern JavaVM *vm;
 extern TJNIEnv* _GCEnv;
 extern jclass stringType;
@@ -25,11 +25,12 @@ extern jmethodID booleanValue;
 extern jmethodID longValue;
 extern jmethodID doubleValue;
 extern int getSDK();
+
 typedef std::string String;
 
 template<class _Key, typename _Value,
         class _Hash=std::hash <_Key>, class _Equal=std::equal_to <_Key>>
-using Map=std::unordered_map<_Key, _Value, _Hash, _Equal>;
+using Map=std::HMap<_Key, _Value, _Hash, _Equal>;
 
 template<typename _Tp>
 inline void forceRelease(_Tp &t) {

@@ -284,6 +284,10 @@ void setCode(void* addr,const unsigned char* code,size_t len){
         return;
     }
 }
+static int compareInt(const void* lhs, const void* rhs){
+    return (*static_cast<const uint *>(lhs))-(*static_cast<const uint *>(rhs));
+}
+
 static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *dexFiles) {
     jobjectArray ret = nullptr;
     char *tmp = new char[256];
@@ -298,7 +302,7 @@ static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *d
         for (int i = 0; i <size; ++i ) {
             idxes[i]=dexAccess(dexFile,class_defs_)[i].class_idx_;
         }
-        std::sort(idxes,idxes+size);
+        qsort(idxes,size, sizeof(uint),compareInt);
         JObjectArray classes(env,env->NewObjectArray(size,stringType,NULL));
         for (int i = 0; i <size; ++i ) {
             const char *bytes = dexCall(dexFile,stringFromType,idxes[i]) + 1;

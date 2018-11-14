@@ -3,7 +3,7 @@
 #ifndef LUADROID_FUNC_INFO_H
 #define LUADROID_FUNC_INFO_H
 
-#include <string>
+#include <common.h>
 #include <unordered_map>
 #include "myarray.h"
 #include "base_func.h"
@@ -17,8 +17,9 @@ struct Import {
         const char* pack;
         String cachePack;
     };
+    class Empty{};
     typedef Map<String, TypeInfo> TypeCache;
-    std::unordered_set<String> packages;
+    std::HashSet<String> packages;
     Vector<jobject> externalLoaders;
     TypeCache stubbed;
 

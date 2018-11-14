@@ -9,10 +9,13 @@
 #include <android/log.h>
 
 #define TAG_NAME	"Osl_DL"
-
+#ifdef NDEBUG
+#define log_info(fmt,args...)
+#define log_err(fmt,args...)
+#else
 #define log_info(fmt,args...) __android_log_print(ANDROID_LOG_INFO, TAG_NAME, (const char *) fmt, ##args)
 #define log_err(fmt,args...) __android_log_print(ANDROID_LOG_ERROR, TAG_NAME, (const char *) fmt, ##args)
-
+#endif
 //#ifdef LOG_DBG
 #define log_dbg log_info
 //#else
