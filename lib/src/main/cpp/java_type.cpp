@@ -65,7 +65,7 @@ switch (typeID){
     case CHAR: {
         String st;
         for (uint32_t i = 0; i < len; ++i) {
-            st = st + params[i].string;
+            st +=  + params[i].string;
         }
         len= static_cast<uint32_t>(strlen8to16(st.data()));
         if(len>size) return nullptr;

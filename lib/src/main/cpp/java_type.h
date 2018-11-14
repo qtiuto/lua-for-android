@@ -4,7 +4,6 @@
 
 #include <string>
 #include <jni.h>
-#include <unordered_map>
 #include <cstdlib>
 #include "myarray.h"
 #include "lua_object.h"

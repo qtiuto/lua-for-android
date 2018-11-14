@@ -1683,11 +1683,11 @@ int javaImport(lua_State *L) {
     }
     size_t len=strlen(s);
     if (s[len-1]=='*'&&separate==s+len-2) {//ends with .*
-        import->packages.emplace(std::move(pack));
+        import->packages.insert(std::move(pack));
     } else {
         String name=separate?separate+1:s;
         auto &&iter = import->stubbed.find(name);
-        if (iter != import->stubbed.end()) {
+        if (iter != nullptr) {
             const char *prevName = iter->second.pack;
             if (strcmp(prevName, pack.data()) != 0&&strcmp(prevName, "java.lang.") != 0) {
                 TopErrorHandle("Only single import is allowed for name: %s"
@@ -1702,7 +1702,7 @@ int javaImport(lua_State *L) {
             auto type = context->scriptContext->ensureType(env, c);
             Import::TypeInfo info={type};
             auto&& existedPack=import->packages.find(pack);
-            if(existedPack==import->packages.end()){
+            if(existedPack==nullptr){
                 info.cachePack=std::move(pack);
                 info.pack=info.cachePack.data();
             } else info.pack=existedPack->data();
@@ -2813,7 +2813,7 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
     }
     const auto &iter = loadedFuncs->find(info);
     if (iter != loadedFuncs->end()) {
-        lua_pushvalue(L, (*iter).second);
+        lua_pushvalue(L, iter->second);
         return;
     }
     if (info->isCFunc) {
