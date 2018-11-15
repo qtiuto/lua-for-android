@@ -19,4 +19,5 @@
     <string name="doc">Doc</string>
     <string name="helpordoc">Help/Doc</string>
     <string name="lua_doc">Lua Doc</string>
+    <string name="return_values">Retrun Values</string>
 </resources>

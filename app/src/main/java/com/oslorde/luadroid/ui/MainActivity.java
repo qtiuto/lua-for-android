@@ -111,7 +111,6 @@ public class MainActivity extends Activity {
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.run:
-
                 SpannableStringBuilder string = new SpannableStringBuilder();
                 final int textColor = 0xFF404040;
                 try {
@@ -143,14 +142,18 @@ public class MainActivity extends Activity {
                     context.setLogger(out, err);
                     Object[] results = context.run(editor.getText().toString());
                     context.flushLog();
-                    if (string.length() > 0 && string.charAt(string.length() - 1) != '\n')
-                        string.append("\n");
                     if (results != null) {
                         StringBuilder res = new StringBuilder();
-                        for (int i = 0, len = results.length; i < len; ++i) {
-                            res.append(i + 1).append(". ").append(results[i]).append('\n');
+                        res.append(getString(R.string.return_values)).append(":\n");
+                        if(results.length==1){
+                            res.append(results[0]);
+                        }else {
+                            for (int i = 0, len = results.length; i < len; ++i) {
+                                res.append(i + 1).append(". ").append(results[i]).append('\n');
+                            }
+                            res.deleteCharAt(res.length() - 1);
                         }
-                        res.deleteCharAt(res.length() - 1);
+
                         int start = string.length();
                         string.append(res);
                         string.setSpan(new ForegroundColorSpan(textColor), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);

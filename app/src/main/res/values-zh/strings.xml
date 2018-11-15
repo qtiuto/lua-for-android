@@ -25,4 +25,5 @@
     <string name="doc">檔案</string>
     <string name="helpordoc">幫助/檔案</string>
     <string name="lua_doc">Lua檔案</string>
+    <string name="return_values">返回值</string>
 </resources>
