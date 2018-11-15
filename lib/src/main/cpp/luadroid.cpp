@@ -180,7 +180,7 @@ static const luaL_Reg javaInterfaces[] =
 static const JNINativeMethod nativeMethods[] =
         {{"nativeOpen",        "(ZZ)J",                            (void *) nativeOpen},
          {"nativeClose",       "(J)V",                             (void *) nativeClose},
-         {"nativeClean",       "(J)V",                             (void *) nativeClean},
+         //{"nativeClean",       "(J)V",                             (void *) nativeClean},
          {"registerLogger",    "(JLjava/io/OutputStream;"
                                        "Ljava/io/OutputStream;)V", (void *) registerLogger},
          {"compile",           "(JLjava/lang/String;Z)J",          (void *) compile},
@@ -500,7 +500,7 @@ void ScriptContext::config(lua_State *L) {
     lua_atpanic(L, luaPanic);
     ThreadContext* context=getThreadContext();
     if(!context->env) context->env=AutoJNIEnv();
-    lua_pushlightuserdata(L, context);//for panic and lib init
+    lua_pushlightuserdata(L, context);//for panic and clean
     lua_setfield(L, LUA_REGISTRYINDEX, JAVA_CONTEXT);
     int top = lua_gettop(L);
     luaL_requiref(L, "java", luaGetJava,/*glb*/true);
@@ -573,8 +573,9 @@ void ScriptContext::config(lua_State *L) {
         //concat is simple
         lua_pushcfunction(L, concatString);
         lua_setfield(L, index, "__concat");
-        //gc function may run in other thread so we don't set a upvalue
-        lua_pushcfunction(L, JavaObject::objectGc);
+
+        lua_pushlightuserdata(L,context);
+        lua_pushcclosure(L, JavaObject::objectGc,1);
         lua_setfield(L, index, "__gc");
     }
     for (auto &pair:addedMap) {
@@ -583,11 +584,61 @@ void ScriptContext::config(lua_State *L) {
     pushJavaType(L,context->ensureType("com.oslorde.luadroid.ClassBuilder"));
     lua_pushvalue(L, -1);
     lua_setglobal(L, "ClassBuilder");
-    lua_settop(L, top);
 
     luaL_openlibs(L);
-
     luaL_requiref(L,LFS_LIBNAME,luaopen_lfs, true);
+
+    lua_settop(L, top);
+}
+
+int JavaObject::objectGc(lua_State *L) {
+    ThreadContext *context=(ThreadContext*) lua_touserdata(L, lua_upvalueindex(1));
+    JavaObject *ref = (JavaObject *) lua_touserdata(L, -1);
+    AutoJNIEnv()->DeleteGlobalRef(ref->object);
+    return 0;
+}
+
+ThreadContext::~ThreadContext() {
+    if (scriptContext != nullptr) {
+        JNIEnv* v;
+        int err=vm->GetEnv((void**)&v,JNI_VERSION_1_4);
+        if(likely(err==JNI_EDETACHED)){//most likely java thread detached first
+            err=vm->AttachCurrentThread(&v,NULL);
+            if(likely(!err)){
+                env=(TJNIEnv*)v;
+                scriptContext->removeCurrent();
+                scriptContext = nullptr;
+                vm->DetachCurrentThread();
+            } else{//TODO:should I shound the problem? It doesn't seems to happen.
+                LOGE("Failed to attach at exit=%d",err);
+            }
+        } else{
+            scriptContext->removeCurrent();
+            scriptContext = nullptr;
+        }
+
+    }
+}
+
+ScriptContext::~ScriptContext() {
+    AutoJNIEnv env;
+    _GCEnv=env;
+    for (auto &&pair :typeMap) {
+        delete pair.second;
+    }
+    ScopeLock sentry(gcLock);
+    for (auto &&pair :stateMap){
+        lua_State *L = pair.second;
+        lua_getfield(L,LUA_REGISTRYINDEX,JAVA_CONTEXT);
+        ThreadContext* context=(ThreadContext *)lua_touserdata(L, -1);
+        context->scriptContext= nullptr;
+        lua_close(L);
+    }
+
+    for (auto &&object:addedMap) {
+        env->DeleteGlobalRef(object.second.second);
+    }
+    env->DeleteWeakGlobalRef(javaRef);
 }
 
 static inline void pushJavaType(lua_State *L,JavaType* type){
@@ -1946,7 +1997,6 @@ int javaInstanceOf(lua_State *L) {
 static int lockGC(lua_State*L){
     JavaObject* objectRef=(JavaObject*)lua_touserdata(L,lua_upvalueindex(1));
     if(*static_cast<bool *>(lua_touserdata(L, 1))){
-        LOGE("Lock unlocked");
         AutoJNIEnv()->MonitorExit(objectRef->object);
     }
     return 0;
@@ -2742,13 +2792,15 @@ int funcWriter(lua_State *, const void *p, size_t sz, void *ud) {
 
 FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIndex) {
     typedef Vector<std::pair<int, FuncInfo *>> MY_VECTOR;
-    static thread_local MY_VECTOR *parsedFuncs;
+    static ThreadLocal <MY_VECTOR> parsedFuncs;
     bool isOwner = false;
-    if (parsedFuncs == nullptr) {
-        parsedFuncs = new MY_VECTOR();
+    MY_VECTOR* current=parsedFuncs.get();
+    if (current == nullptr) {
+        current = new MY_VECTOR();
         isOwner = true;
+        parsedFuncs.rawSet(current);
     }
-    for (auto &pair:*parsedFuncs) {
+    for (auto &pair:*current) {
         if (lua_rawequal(L, -1, pair.first))
             return pair.second;
     }
@@ -2772,7 +2824,7 @@ FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIndex) {
         ret = new FuncInfo(lua_tocfunction(L, -1));
     }
     lua_pop(L, 1);
-    parsedFuncs->push_back(std::make_pair(funcIndex, ret));
+    current->push_back(std::make_pair(funcIndex, ret));
     Vector<CrossThreadLuaObject> upvalues;
 #if LUA_VERSION_NUM>502
     lua_rawgeti(L,LUA_REGISTRYINDEX,LUA_RIDX_GLOBALS);
@@ -2797,22 +2849,24 @@ FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIndex) {
 
     ret->setImport(context->getImport());
     if (isOwner) {
-        delete parsedFuncs;
-        parsedFuncs = nullptr;
+        delete current;
+        parsedFuncs.rawSet(nullptr);
     }
     return ret;
 }
 
 void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptContext *context) {
     typedef Map<const FuncInfo *, int> MY_MAP;
-    static thread_local MY_MAP *loadedFuncs;
+    static ThreadLocal<MY_MAP> loadedFuncs;
     bool isOwner = false;
-    if (loadedFuncs == nullptr) {
-        loadedFuncs = new MY_MAP();
+    MY_MAP* current=loadedFuncs;
+    if (current==nullptr) {
+        current = new MY_MAP();
+        loadedFuncs.rawSet(current);
         isOwner = true;
     }
-    const auto &iter = loadedFuncs->find(info);
-    if (iter != loadedFuncs->end()) {
+    const auto &iter = current->find(info);
+    if (iter != current->end()) {
         lua_pushvalue(L, iter->second);
         return;
     }
@@ -2826,7 +2880,7 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
         luaL_loadbuffer(L, &info->funcData.at(0), info->funcData.size(), "");
     }
     int funcIndex = lua_gettop(L);
-    loadedFuncs->emplace(info, funcIndex);
+    current->emplace(info, funcIndex);
     auto &upvalues = info->getUpValues();
 
     for (int i = upvalues.size() - 1; i >= 0; --i) {
@@ -2841,8 +2895,8 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
     }
 #endif
     if (isOwner) {
-        delete loadedFuncs;
-        loadedFuncs = nullptr;
+        delete current;
+        loadedFuncs.rawSet(nullptr);
     }
 }
 
@@ -2976,10 +3030,10 @@ void nativeClose(JNIEnv *, jclass, jlong ptr) {
     }
 }
 
-void nativeClean(JNIEnv *, jclass, jlong ptr) {
+/*void nativeClean(JNIEnv *, jclass, jlong ptr) {
     ScriptContext *context = (ScriptContext *) ptr;
     if (context != nullptr)context->clean();
-}
+}*/
 
 void releaseFunc(JNIEnv *, jclass, jlong ptr) {
     BaseFunction *info = (BaseFunction *) ptr;
@@ -3014,7 +3068,6 @@ void addJavaMethod(TJNIEnv *env, jclass, jlong ptr, jstring jname, jstring metho
 jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) {
     ScriptContext *scriptContext = (ScriptContext *) ptr;
     ThreadContext* context=scriptContext->getThreadContext();
-    auto old=context->changeScriptContext(scriptContext);
     auto L = scriptContext->getLua();
     JString s(env, script);
     int ret;
@@ -3024,7 +3077,6 @@ jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) 
     if (ret != LUA_OK) {
         context->setPendingException("Failed to load");
         recordLuaError(context, L, ret);
-        context->changeScriptContext(old);
         context->throwToJava();
     } else {
         FuncInfo *info = saveLuaFunction(L, context, -1);
@@ -3034,7 +3086,6 @@ jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) 
     lua_pushcfunction(L, luaFullGC);
     lua_pcall(L, 0, 0, 0);
     s.invalidate();
-    context->changeScriptContext(old);
     return retVal;
 }
 
@@ -3043,9 +3094,8 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     ScriptContext *scriptContext = (ScriptContext *) ptr;
     ThreadContext* context=scriptContext->getThreadContext();
     Import *oldImport= nullptr;
-    ScriptContext* oldScriptContext=context->changeScriptContext(scriptContext);
     if (_setjmp(errorJmp)) {
-        context->restore(oldScriptContext,oldImport);
+        context->restore(oldImport);
         return nullptr;
     }
     Import myIMport;
@@ -3101,7 +3151,7 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     lua_pushcfunction(L, luaFullGC);
     lua_pcall(L, 0, 0, 0);
 
-    context->restore(oldScriptContext,oldImport);
+    context->restore(oldImport);
     return result;
 }
 
@@ -3111,9 +3161,8 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
     ScriptContext *scriptContext = (ScriptContext *) ptr;
     ThreadContext* context=scriptContext->getThreadContext();
     Import *oldImport= nullptr;
-    ScriptContext* oldScriptContext=context->changeScriptContext(scriptContext);
     if (_setjmp(errorJmp)) {
-        context->restore(oldScriptContext,oldImport);
+        context->restore(oldImport);
         return 0;
     }
     lua_State *L = scriptContext->getLua();
@@ -3130,7 +3179,6 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
         if (unlikely(lua_isnil(L, -1))) {
             context->setPendingException(
                     "Local Function must run in the given thread it's extracted from");
-            context->changeScriptContext(oldScriptContext);
             context->throwToJava();
             return 0;
         }
@@ -3210,7 +3258,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
     lua_settop(L, handlerIndex - 1);
     lua_pushcfunction(L, luaFullGC);
     lua_pcall(L, 0, 0, 0);
-    context->restore(oldScriptContext,oldImport);
+    context->restore(oldImport);
     return ret;
 }
 

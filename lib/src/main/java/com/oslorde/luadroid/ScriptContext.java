@@ -12,7 +12,6 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.OutputStream;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * For running a lua context
  */
-public class ScriptContext implements GCTracker {
+public class ScriptContext {
     private static final int JAVA_CHAR = 0;
     private static final int JAVA_BOOLEAN = 1;
     private static final int JAVA_INTEGER = 2;
@@ -73,7 +72,6 @@ public class ScriptContext implements GCTracker {
     private long nativePtr;
     private OutputStream outLogger;
     private OutputStream errLogger;
-    private WeakReference<GCListener> gcListener;
 
     public ScriptContext() {
         this(true, false);
@@ -89,12 +87,11 @@ public class ScriptContext implements GCTracker {
      */
     public ScriptContext(boolean importAllFunctions, boolean localFunction) {
         nativePtr = nativeOpen(importAllFunctions, localFunction);
-        gcListener = new WeakReference<>(new GCListener(new WeakReference<>(this)));
     }
 
     private native static synchronized void nativeClose(long ptr);
 
-    private native static void nativeClean(long ptr);
+    //private native static void nativeClean(long ptr);
 
     private static native void registerLogger(long ptr, OutputStream out, OutputStream err);
 
@@ -1064,14 +1061,6 @@ public class ScriptContext implements GCTracker {
         }
 
         dexFiles.add(dexFile.getName());
-    }
-
-
-
-    @Override
-    public void onNewGC(WeakReference<GCTracker> reference) {
-        nativeClean(nativePtr);
-        gcListener = new WeakReference<>(new GCListener(reference));
     }
 
     private native long nativeOpen(boolean importAll, boolean localFunction);

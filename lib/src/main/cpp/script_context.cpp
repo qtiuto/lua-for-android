@@ -6,13 +6,9 @@
 #include <sys/system_properties.h>
 #include <dlfcn.h>
 
-bool changeClassName(String &className) noexcept;
-thread_local ThreadContext ScriptContext::threadContext ;
 jmethodID ScriptContext::sMapPut;
 jmethodID ScriptContext::sWriteBytes;
 TJNIEnv* ScriptContext::sTypeEnv;
-int (*ScriptContext::sThreadTest)(intptr_t) ;
-intptr_t (*ScriptContext::sThreadID)() ;
 static jmethodID sProxy;
 TJNIEnv* _GCEnv;
 jmethodID charValue;
@@ -64,7 +60,7 @@ void ScriptContext::addJavaObject(const char *name, const char *methodName, jobj
     sAddInfo.object = object;
     addLock.lock();
     int self = gettid();
-    if (currentOnly && (stateMap.find(self) != stateMap.end())) {
+    if (currentOnly && (stateMap.find(self) != nullptr)) {
         pthread_mutex_unlock(&sAddInfo.mutex);
         handleAdd(ADD_SIG, nullptr, nullptr);
         pthread_mutex_lock(&sAddInfo.mutex);
@@ -156,21 +152,6 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
     BooleanClass->typeID=JavaType::BOX_BOOLEAN;
 }
 
-static intptr_t pThreadID(){
-    return pthread_self();
-}
-
-static int pThreadTest(intptr_t t){
-    return pthread_kill(t,0);
-}
-
-static intptr_t tThreadID(){
-    return gettid();
-}
-
-static int tThreadTest(intptr_t t){
-    return _tgkill(getpid(),(int)t,0);
-}
 
 void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
     if (stringType == nullptr) {
@@ -224,19 +205,6 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
         objectHash = env->GetMethodID(cObject, "hashCode", "()I");
         objectToString = env->GetMethodID(cObject, "toString", "()Ljava/lang/String;");
     }
-
-    if(sThreadTest== nullptr){
-        int sdk = getSDK();
-        if(sdk<26){
-            sThreadTest=pThreadTest;
-            sThreadID=pThreadID;
-        } else{
-            auto handle=dlopen("libc.so",RTLD_NOW);
-            _tgkill=decltype(_tgkill)(dlsym(handle,"tgkill"));
-            sThreadTest=tThreadTest;
-            sThreadID=tThreadID;
-        }
-    }
 }
 
 int getSDK() {
@@ -251,14 +219,14 @@ int getSDK() {
 
 lua_State *ScriptContext::getLua() {
     ScopeLock sentry(gcLock);
-    auto tid = sThreadID();
+    auto tid = pthread_self();
     const auto &iter = stateMap.find(tid);
     lua_State *state;
-    if (iter == stateMap.end()) {
+    if (iter == nullptr) {
         state = luaL_newstate();
         config(state);
         stateMap.emplace(tid, state);
-    } else state = (*iter).second;
+    } else state = iter->second;
     return state;
 }
 
@@ -267,8 +235,8 @@ JavaType *ScriptContext::ensureType(TJNIEnv *env, jclass type) {
     ScopeLock sentry(typeLock);
     sTypeEnv=env;
     const auto &iter = typeMap.find(type);
-    if (iter != typeMap.end()) {
-        return (*iter).second;
+    if (iter != nullptr) {
+        return iter->second;
     }
     JavaType *ret = new JavaType(env, type, this);
     typeMap.emplace(ret->type, ret);
@@ -334,9 +302,18 @@ inline JavaType* ThreadContext::ensureShortArrayType(const char *typeName){
     return ret;
 }
 
+static bool changeClassName(String &className) noexcept {
+    if (className.find('/') != String::npos) {
+        return false;
+    }
+    size_t pos = 0;
+    while ((pos = className.find('.', pos)) != String::npos) {
+        className[pos] = '/';
+    }
+    return true;
+}
 
-
-JClass ThreadContext::findClass(String& className){
+JClass ThreadContext::findClass(String& className)  {
     if(!changeClassName(className))
         return JClass();
     return getTypeNoCheck(className);
@@ -363,7 +340,7 @@ JavaType *ThreadContext::ensureType(const char *typeName) {
         if (strchr(typeName, '/') != nullptr) return nullptr;
         Import *import = getImport();
         auto&& iter = import->stubbed.find(FakeString(typeName));
-        if (iter != import->stubbed.end()) return iter->second.type;
+        if (iter != nullptr) return iter->second.type;
         if(typeName[strlen(typeName)-1]==']'){
             return ensureShortArrayType(typeName);
         }
@@ -452,7 +429,7 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
                     isOwner=true;
                 }
                 auto&& iter=parsedTable->find(luaObject.lazyTable);
-                if(iter==parsedTable->end()){
+                if(iter== nullptr){
                     JavaType *mapType = HashMapType();
                     ValidLuaObject lenObject;
                     lenObject.type = T_INTEGER;
@@ -589,20 +566,7 @@ jobject ThreadContext::luaObjectToJObject(ValidLuaObject &luaObject) {
     return nullptr;
 }
 
-ScriptContext::~ScriptContext() {
-    AutoJNIEnv env;
-    _GCEnv=env;
-    for (auto &&pair :typeMap) {
-        delete pair.second;
-    }
-    ScopeLock sentry(gcLock);
-    for (auto &&pair :stateMap)
-        lua_close(pair.second);
-    for (auto &&object:addedMap) {
-        env->DeleteGlobalRef(object.second.second);
-    }
-    env->DeleteWeakGlobalRef(javaRef);
-}
+
 
 jobject ThreadContext::proxy(JavaType *main, Vector<JavaType *> *interfaces,
                              const Vector<JObject> &principal,
@@ -641,7 +605,6 @@ jobject ThreadContext::proxy(JavaType *main, Vector<JavaType *> *interfaces,
     });
     return ret;
 }
-
 
 
 void ScriptContext::registerLogger(TJNIEnv *env, jobject out, jobject err) {
@@ -689,16 +652,4 @@ char *ScriptContext::checkLineEndForLogcat(const char *data) const {
     if (str[pos] == '\n')
         str[pos] = 0;
     return str;
-}
-
-
-bool changeClassName(String &className) noexcept {
-    if (className.find('/') != String::npos) {
-        return false;
-    }
-    size_t pos = 0;
-    while ((pos = className.find('.', pos)) != String::npos) {
-        className[pos] = '/';
-    }
-    return true;
 }

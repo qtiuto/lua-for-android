@@ -14,11 +14,7 @@ struct JavaObject {
     jobject object;
     JavaType *type;
 
-    static int objectGc(lua_State *L) {
-        JavaObject *ref = (JavaObject *) lua_touserdata(L, -1);
-        AutoJNIEnv()->DeleteGlobalRef(ref->object);
-        return 0;
-    }
+    static int objectGc(lua_State *L);
 };
 
 #endif //LUADROID_JAVA_OBJECT_H

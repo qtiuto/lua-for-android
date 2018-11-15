@@ -14,6 +14,7 @@
 #include "AutoJNIEnv.h"
 #include "TJNIEnv.h"
 #include <thread>
+#include "tls.h"
 
 #ifndef LUADROID_LUADROID_H
 #define LUADROID_LUADROID_H
@@ -94,8 +95,7 @@ public:
         return ret;
     }
 
-    void restore(ScriptContext* oldContext,Import* oldImport){
-        changeScriptContext(oldContext);
+    void restore(Import* oldImport){
         changeImport(oldImport);
         if(hasErrorPending())
             throwToJava();
@@ -132,7 +132,7 @@ public:
         return findClass(str);
     }
 
-    JClass findClass(String& str);
+    JClass findClass(String& str)  ;
 
     JavaType *ensureType(const char *typeName);
     jobject proxy(JavaType *main, Vector<JavaType *> *interfaces,
@@ -148,6 +148,7 @@ public:
 
     bool isLocalFunction();
 
+    ~ThreadContext();
 };
 
 class ScriptContext {
@@ -166,10 +167,7 @@ class ScriptContext {
         }
     };
     static jmethodID sMapPut;
-    static thread_local ThreadContext threadContext;
     static jmethodID sWriteBytes;
-    static int (*sThreadTest)(intptr_t tid);
-    static intptr_t (*sThreadID)();
     static TJNIEnv* sTypeEnv;
     friend class ThreadContext;
     typedef Map<jclass, JavaType *,hashJClass,equalJClass> TypeMap;
@@ -178,6 +176,7 @@ class ScriptContext {
     typedef Map<String, std::pair<String, jobject>> AddedMap;
     const bool importAll;
     const bool localFunction;
+    ThreadLocal<ThreadContext,true> threadContext;
     TypeMap typeMap;
     StateMap stateMap;
     AddedMap addedMap;
@@ -227,17 +226,12 @@ public:
         crossThreadMap[name]=std::move(object);
     }
 
-    void clean() {
+    void removeCurrent(){
         ScopeLock sentry(gcLock);
-        for (auto&& pair = stateMap.begin(); pair != stateMap.end();) {
-            int status = sThreadTest(pair->first);
-            if (status == 0) {
-                ++pair;
-                continue;
-            }
-            lua_close(pair->second);
-            stateMap.erase(pair++);
-        }
+        auto id=pthread_self();
+        auto L=stateMap.find(id)->second;
+        stateMap.erase(id);
+        lua_close(L);
     }
 
 
@@ -253,7 +247,13 @@ public:
         crossThreadMap.erase(String(name));
     }
     ThreadContext* getThreadContext(){
-        return &threadContext;
+        ThreadContext* context= threadContext.get();
+        if(context==nullptr){
+            context=new ThreadContext();
+            context->scriptContext=this;
+            threadContext.rawSet(context);
+        }
+        return context;
     }
 
     void addJavaObject(const char *name, const char *methodName, jobject object,
