@@ -65,6 +65,22 @@ public:
         }
     }
 };
+template <typename Tp>
+inline bool operator==(JType<Tp> j,Tp p){
+    return j.get()==p;
+}
+template <typename Tp>
+inline bool operator==(Tp p,JType<Tp> j){
+    return j.get()==p;
+}
+template <typename Tp>
+inline bool operator!=(JType<Tp> j,Tp p){
+    return j.get()!=p;
+}
+template <typename Tp>
+inline bool operator!=(Tp p,JType<Tp> j){
+    return j.get()!=p;
+}
 
 typedef JType<jclass> JClass;
 typedef JType<jobject> JObject;
