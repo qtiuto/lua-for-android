@@ -5,9 +5,11 @@
 #ifndef LUADROID_LOGGERWRAPPER_H
 #define LUADROID_LOGGERWRAPPER_H
 
-#include <functional>
+#include <jni.h>
 
-void requireLogger(std::function<void(const char *, bool)> logger);
+typedef void(*LoggerCallback)(JNIEnv* env,const char *, bool,void* arg);
+typedef void(*Destroyer)(void*);
+void requireLogger(LoggerCallback callback, void* arg= nullptr,Destroyer destroyer= nullptr);
 
 void dropLogger();
 

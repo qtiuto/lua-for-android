@@ -3007,11 +3007,13 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
     return JNI_VERSION_1_4;
 }
 
+static void loggerCallback(JNIEnv*env,const char* data,bool isErr,void* arg){
+    ((ScriptContext*)arg)->writeLog((TJNIEnv*)env,data, isErr);
+}
+
 jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll) {
     ScriptContext *context = new ScriptContext(env, object, importAll);
-    requireLogger([context, env](const char *data, bool isErr) {
-        context->writeLog(data, isErr);
-    });
+    requireLogger(loggerCallback,context);
     return reinterpret_cast<long>(context);
 }
 
@@ -3029,11 +3031,6 @@ void nativeClose(JNIEnv *, jclass, jlong ptr) {
         dropLogger();
     }
 }
-
-/*void nativeClean(JNIEnv *, jclass, jlong ptr) {
-    ScriptContext *context = (ScriptContext *) ptr;
-    if (context != nullptr)context->clean();
-}*/
 
 void releaseFunc(JNIEnv *, jclass, jlong ptr) {
     BaseFunction *info = (BaseFunction *) ptr;

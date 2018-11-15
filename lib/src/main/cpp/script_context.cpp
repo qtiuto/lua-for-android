@@ -620,25 +620,26 @@ void ScriptContext::registerLogger(TJNIEnv *env, jobject out, jobject err) {
     }
 }
 
-void ScriptContext::writeLog(const char *data, bool isError) {
+void ScriptContext::writeLog(TJNIEnv* env,const char *data, bool isError) {
     JType<jbyteArray> bytes;
-    AutoJNIEnv env;
     if (outLogger || errLogger) {
         int len = static_cast<int>(strlen(data));
         bytes = env->NewByteArray(len);
         env->SetByteArrayRegion(bytes, 0, len, reinterpret_cast<const jbyte *>(data));
     }
     if (isError) {
-        if (errLogger)
-            env->CallVoidMethod(errLogger, sWriteBytes, bytes.get());
+        JObject logger(env,env->NewLocalRef(errLogger));
+        if (logger!= nullptr)
+            env->CallVoidMethod(logger, sWriteBytes, bytes.get());
         else {
             char *str = checkLineEndForLogcat(data);
             __android_log_write(ANDROID_LOG_ERROR, "stderr", str);
         }
 
     } else {
-        if (outLogger)
-            env->CallVoidMethod(outLogger, sWriteBytes, bytes.get());
+        JObject logger(env,env->NewLocalRef(outLogger));
+        if (logger!= nullptr)
+            env->CallVoidMethod(logger, sWriteBytes, bytes.get());
         else {
             char *str = checkLineEndForLogcat(data);
             __android_log_write(ANDROID_LOG_VERBOSE, "stdout", str);

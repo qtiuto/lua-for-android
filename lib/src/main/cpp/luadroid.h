@@ -264,7 +264,7 @@ public:
 
     void registerLogger(TJNIEnv *env, jobject out, jobject err);
 
-    void writeLog(const char *data, bool isError);
+    void writeLog(TJNIEnv* env,const char *data, bool isError);
 
     ~ScriptContext();
 
