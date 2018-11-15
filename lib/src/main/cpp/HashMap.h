@@ -24,17 +24,17 @@ namespace std {
             friend class HashSet<Value,Hash,Equal>;
             HashNodePtr ptr;
             size_t bucket;
-            HashSet& table;
+            const HashSet& table;
         public:
-            Iterator(HashNodePtr ptr,size_t bucket,HashSet& table):ptr(ptr),bucket(bucket),table(table){}
-            Value& operator*() const{ return ptr->value;}
+            Iterator(HashNodePtr ptr,size_t bucket,const HashSet& table):ptr(ptr),bucket(bucket),table(table){}
+            Value& operator*() const{return ptr->value;}
             Value* operator->() const{ return &ptr->value;}
 
             Iterator& operator++() {
                 if(ptr->next!= nullptr){
                     ptr=ptr->next;
                 } else{
-                    ptr=table.findNextValidBucket(bucket);
+                    ptr=table.findNextValidBucket(++bucket);
                 }
                 return *this;
             }
@@ -54,19 +54,19 @@ namespace std {
             }
 
             friend bool operator==(const Iterator& t,const Value* other){
-                return &(*t)==other;
+                return (uintptr_t)t.ptr==(uintptr_t)other;
             }
 
             friend bool operator!=(const Iterator& t,const Value* other){
-                return &(*t)!=other;
+                return (uintptr_t)t.ptr!=(uintptr_t)other;
             }
 
             friend bool operator==(const Value* other,const Iterator& t){
-                return &(*t)==other;
+                return (uintptr_t)t.ptr==(uintptr_t)other;
             }
 
             friend bool operator!=(const Value* other,const Iterator& t){
-                return &(*t)!=other;
+                return (uintptr_t)t.ptr!=(uintptr_t)other;
             }
 
         };
@@ -82,9 +82,9 @@ namespace std {
         template <typename K>
         inline size_t hashIndex(const K& key ) const noexcept { return hashIndex(key,m_table_size);}
 
-        HashNodePtr findNextValidBucket(size_t & bucket){
+        HashNodePtr findNextValidBucket(size_t & bucket) const{
             auto table=m_table;
-            for(size_t i=bucket+1,end=m_table_size;i<end;++i){
+            for(size_t i=bucket,end=m_table_size;i<end;++i){
                 HashNodePtr node = table[i];
                 if(node){
                     bucket=i;
@@ -112,7 +112,7 @@ namespace std {
             return entry;
         }
         inline HashNodePtr addNode(Value &&key, const size_t index) {
-            HashNodePtr entry = new HashNode(move(key));
+            HashNodePtr entry = new HashNode(std::move(key));
             entry->next=m_table[index];
             m_table[index] = entry;
             if(++m_size > m_limit){
@@ -139,6 +139,13 @@ namespace std {
             m_limit <<=1;
             delete [] old;
         }
+        inline void free(){
+            if(m_table_size==0)
+                return;
+            clear();
+            delete[] m_table;
+            m_table_size = 0;
+        }
         static inline bool isPowerOfTwo(size_t n) {
             return ((n & (n -1)) == 0);
         }
@@ -148,6 +155,9 @@ namespace std {
             i |= (i >> 4);
             i |= (i >> 8);
             i |= (i >> 16);
+#if defined(__LP64__)
+            i |= (i >> 32);
+#endif
             return i + 1;
         }
     public:
@@ -170,16 +180,46 @@ namespace std {
             }
         }
 
-        ~HashSet( void ) {
-            if(m_table_size==0)
-                return;
-            clear();
-            delete[] m_table;
-            m_table_size = 0;
+        HashSet(HashSet&& other):m_table(other.m_table),m_table_size(other.m_table_size),m_size(other.m_size),m_limit(other.m_limit){
+            other.m_table_size=0;
+            other.m_table= nullptr;
+        }
+        HashSet(const HashSet& other):m_size(other.m_size),m_table_size(other.m_table_size),m_limit(other.m_limit){
+            m_table=new HashNodePtr[m_table_size]();
+            for(auto&& v:other){
+                insert(v);
+            }
+        }
+
+        HashSet& operator=(HashSet && other){
+            free();
+            m_table=other.m_table;
+            m_table_size=other.m_table_size;
+            m_size=other.m_size;
+            m_limit=other.m_limit;
+            other.m_table_size=0;
+            other.m_table= nullptr;
+            return *this;
+        }
+
+        HashSet& operator=(const HashSet & other){
+            free();
+            m_table_size=other.m_table_size;
+            m_size=other.m_size;
+            m_limit=other.m_limit;
+            m_table=new HashNodePtr[m_table_size]();
+            for(auto&& v:other){
+                insert(v);
+            }
+            return *this;
+        }
+
+        ~HashSet( ) {
+            free();
         }
 
         inline size_t size()  const noexcept { return m_size; }
-        inline bool  isEmpty() const noexcept { return m_size == 0; }
+        inline bool isEmpty() const noexcept { return m_size == 0; }
 
 
         void clear() noexcept {
@@ -208,14 +248,14 @@ namespace std {
             return &findNode(key, index)->value;
         }
 
-        Iterator begin(){
+        Iterator begin() const {
             if(size()==0)
                 return Iterator(nullptr,0,*this);
-            size_t bucket= static_cast<size_t>(-1l);
+            size_t bucket= 0;
             return Iterator(findNextValidBucket(bucket),bucket,*this);
         }
 
-        inline Iterator end(){
+        inline Iterator end()const{
             return Iterator(nullptr,0,*this);
         }
 
@@ -238,10 +278,7 @@ namespace std {
             return std::make_pair(&entry->value, true);
         }
 
-        inline void erase(Iterator&& iter){
-            erase(iter);
-        }
-        inline void erase(const Iterator& iter){
+        void erase(const Iterator& iter){
             if(m_table_size==0||iter.ptr== nullptr)
                 return;
             auto index=iter.bucket;
@@ -265,7 +302,7 @@ namespace std {
 
 
 
-        void erase(const Value& key ){
+        inline void erase(const Value& key ){
             erase_unique(key);
         }
         template <typename V>
@@ -325,7 +362,20 @@ namespace std {
         typedef typename Super::Iterator Iterator;
         HMap():Super(){};
         HMap(size_t cap):Super(cap){};
+        HMap(HMap&& other):Super(std::move(other)){
+        }
+        HMap(const HMap& other):Super(other){
+        }
 
+        HMap& operator=(HMap && other){
+            Super::operator=(std::move(other));
+            return *this;
+        }
+
+        HMap& operator=(const HMap & other){
+            Super::operator=(other);
+            return *this;
+        }
         template <typename K, typename V>
         std::pair<ValueType*, bool> emplace(K&& key, V&& value) {
             return Super::insert(std::make_pair(Key(std::move(key)), T(std::move(value))));
@@ -349,9 +399,7 @@ namespace std {
         void erase(const Key& key){
             Super::erase_unique(key);
         }
-        inline void erase(Iterator&& iter){
-            Super::erase(iter);
-        }
+
         inline void erase(const Iterator& iter){
             Super::erase(iter);
         }
