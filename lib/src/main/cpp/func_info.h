@@ -9,12 +9,63 @@
 #include "Vector.h"
 
 class JavaType;
+class __attribute__ ((__aligned__(1), __packed__)) DeleteOrNotString{
+    const char* s;
+    bool shouldDel;
+public:
+    DeleteOrNotString():s(nullptr),shouldDel(false){}
 
+    explicit DeleteOrNotString(const String& str, bool del=false):s(str.data()),shouldDel(del){
+        if(del){
+            size_t length = str.length()+1;
+            char* tmp=new char[length];
+            memcpy(tmp, s, length);
+            s=tmp;
+        }
+    }
+    explicit DeleteOrNotString(const char* str, bool del=false):s(str),shouldDel(del){
+        if(del){
+            size_t len=strlen(str)+1;
+            char* tmp=new char[len];
+            memcpy(tmp,s,len);
+            s=tmp;
+        }
+    }
+    DeleteOrNotString(DeleteOrNotString&& other):s(other.s), shouldDel(other.shouldDel){
+        other.shouldDel=false;
+    }
+
+    DeleteOrNotString(const DeleteOrNotString& )= delete;
+    DeleteOrNotString&operator=(const DeleteOrNotString& )= delete;
+    DeleteOrNotString&operator=(DeleteOrNotString&& other){
+        this->~DeleteOrNotString();
+        s=other.s;
+        shouldDel=other.shouldDel;
+        other.shouldDel=false;
+        return *this;
+    }
+
+    operator const char*(){
+        return s;
+    }
+
+    const char* get(){
+        return s;
+    }
+
+    bool cached(){
+        return !shouldDel;
+    }
+
+    ~DeleteOrNotString(){
+        if(shouldDel)
+            delete [] s;
+    }
+};
 struct Import {
     struct TypeInfo{
         JavaType* type;
-        const char* pack;
-        String cachePack;
+        DeleteOrNotString pack;
     };
     class Empty{};
     typedef Map<String, TypeInfo> TypeCache;
@@ -31,7 +82,14 @@ struct Import {
                              stubbed(std::move(other.stubbed)) {
     }
 
-    Import(const Import &other) : packages(other.packages), stubbed(other.stubbed) {
+    Import(const Import &other) : packages(other.packages),stubbed(other.stubbed.capacity()) {
+        for(auto&& p:other.stubbed){
+            TypeInfo info={p.second.type,DeleteOrNotString()};
+            if(p.second.pack.cached())
+                info.pack=DeleteOrNotString(*packages.find(FakeString(p.second.pack)));
+            else info.pack=DeleteOrNotString(p.second.pack, true);
+            stubbed.emplace(p.first,std::move(info));
+        }
         if(externalLoaders.size()>0){
             AutoJNIEnv env;
             for(auto iter=externalLoaders.begin();iter!=externalLoaders.end();++iter){
