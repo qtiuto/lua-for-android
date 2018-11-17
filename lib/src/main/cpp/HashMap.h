@@ -219,6 +219,7 @@ namespace std {
         }
 
         inline size_t size()  const noexcept { return m_size; }
+        inline size_t capacity() const noexcept { return m_table_size;}
         inline bool isEmpty() const noexcept { return m_size == 0; }
 
 

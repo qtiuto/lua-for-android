@@ -16,7 +16,6 @@ jmethodID charValue;
 jmethodID booleanValue;
 jmethodID longValue;
 jmethodID doubleValue;
-static int (*_tgkill)(int,int,int);
 static struct {
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
@@ -272,7 +271,7 @@ inline JClass ThreadContext::getTypeNoCheck(const String &className) const {
 }
 
 inline JavaType* ThreadContext::ensureShortArrayType(const char *typeName){
-    size_t nameLen=strchr(typeName,'[')-typeName;
+    uint32_t nameLen= uint32_t(strchr(typeName, '[') - typeName);
     String trueType(typeName,nameLen);
     if(trueType=="int") trueType="I";
     else if(trueType=="byte") trueType="B";
@@ -291,7 +290,7 @@ inline JavaType* ThreadContext::ensureShortArrayType(const char *typeName){
             }
         }
     }
-    size_t arrDepth=(strlen(typeName)-nameLen)>>1;
+    uint32_t arrDepth=(uint32_t(strlen(typeName))-nameLen)>>1;
     String legalName(trueType.size()+arrDepth,'[');
     memcpy(&legalName[arrDepth],trueType.data(),trueType.length()+1);
     JClass type = getTypeNoCheck(legalName);
@@ -299,7 +298,7 @@ inline JavaType* ThreadContext::ensureShortArrayType(const char *typeName){
         return nullptr;
     }
     JavaType *ret = scriptContext->ensureType(env, type);
-    getImport()->stubbed[typeName]={ret, nullptr};
+    getImport()->stubbed[typeName]={ret, DeleteOrNotString()};
     return ret;
 }
 
@@ -307,7 +306,7 @@ static bool changeClassName(String &className) noexcept {
     if (className.find('/') != String::npos) {
         return false;
     }
-    size_t pos = 0;
+    uint32_t pos = 0;
     while ((pos = className.find('.', pos)) != String::npos) {
         className[pos] = '/';
     }
@@ -350,7 +349,7 @@ JavaType *ThreadContext::ensureType(const char *typeName) {
             type = findClass(full);
             if(type== nullptr) continue;
             JavaType* ret= scriptContext->ensureType(env, type);
-            import->stubbed[typeName]={ret,pack.data()};
+            import->stubbed[typeName]={ret,DeleteOrNotString(pack.data())};
             return ret;
         }
     }
@@ -573,25 +572,26 @@ jobject ThreadContext::proxy(JavaType *main, Vector<JavaType *> *interfaces,
                              const Vector<JObject> &principal,
                              Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared,
                              long nativeInfo,jobject superObject) {
-    int interfaceCount;
+    uint interfaceCount;
     JObjectArray interfaceArray;
     if (interfaces != nullptr && (interfaceCount =  interfaces->size())) {
         interfaceArray = env->NewObjectArray(interfaceCount, classType, nullptr);
-        for (int i = interfaceCount - 1; i >= 0; --i) {
+        for (uint i = interfaceCount - 1; i !=-1; --i) {
             env->SetObjectArrayElement(interfaceArray, i,
                                        interfaces->at(i)->getType());
         }
     }
-    int principalCount =  principal.size();
+    uint principalCount =  principal.size();
     JObjectArray principalArray;
-    if (principalCount > 0)
+    if (principalCount ){
         principalArray = env->NewObjectArray(principalCount, env->GetObjectClass(principal[0]), nullptr);
-    for (int i = principalCount - 1; i >= 0; --i) {
-        env->SetObjectArrayElement(principalArray, i, principal[i]);
+        for (uint i = principalCount - 1; i != -1; --i) {
+            env->SetObjectArrayElement(principalArray, i, principal[i]);
+        }
     }
     int proxyCount = proxy.size();
     jlong buf[proxyCount];
-    for (jsize i = proxyCount - 1; i >= 0; --i) {
+    for (jsize i = proxyCount - 1; i !=-1; --i) {
         buf[i] = (jlong) proxy[i].get();
     }
     JType<jlongArray> proxyArray = env->NewLongArray(proxyCount);

@@ -9,7 +9,7 @@
 #include <new>
 #include "macros.h"
 
-template<typename _Tp,int cacheCount=4>
+template<typename _Tp,uint cacheCount=4>
 class Vector {
 public:
     typedef uint size_type;// int type is enough since the most usage is for arg passage
