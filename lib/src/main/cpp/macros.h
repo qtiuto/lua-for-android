@@ -6,6 +6,12 @@
 #define LUADROID_MACROS_H
 
 #include <android/log.h>
+#ifdef __cplusplus
+#include "stdcpp/functional"
+#include "stdcpp/initializer_list"
+#include "stdcpp/unique.h"
+#include "stdcpp/MString.h"
+#endif
 
 #define likely(x)    __builtin_expect(!!(x),1)
 #define unlikely(x) __builtin_expect((x),0)

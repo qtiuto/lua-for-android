@@ -1,9 +1,6 @@
 
 #include <jni.h>
 #include <android/log.h>
-#include <unordered_set>
-#include <unordered_map>
-#include <memory>
 #include "common.h"
 #include "SpinLock.h"
 #include "myarray.h"
@@ -13,7 +10,6 @@
 #include "lua.hpp"
 #include "AutoJNIEnv.h"
 #include "TJNIEnv.h"
-#include <thread>
 #include "tls.h"
 
 #ifndef LUADROID_LUADROID_H

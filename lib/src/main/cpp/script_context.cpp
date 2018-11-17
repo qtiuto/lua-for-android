@@ -5,6 +5,7 @@
 #include "utf8.h"
 #include <sys/system_properties.h>
 #include <dlfcn.h>
+#include <assert.h>
 
 jmethodID ScriptContext::sMapPut;
 jmethodID ScriptContext::sWriteBytes;

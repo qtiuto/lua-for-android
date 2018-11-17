@@ -1,7 +1,7 @@
 #ifndef HashMap_h
 #define HashMap_h
 
-#include <functional>
+#include "macros.h"
 #include <string.h>
 #include <stdint.h>
 namespace std {
@@ -376,9 +376,10 @@ namespace std {
             Super::operator=(other);
             return *this;
         }
+
         template <typename K, typename V>
         std::pair<ValueType*, bool> emplace(K&& key, V&& value) {
-            return Super::insert(std::make_pair(Key(std::move(key)), T(std::move(value))));
+            return Super::insert(std::make_pair(Key(std::forward<K>(key)), T(std::forward<V>(value))));
         }
         ValueType* find ( Key&& key){
             return find((const Key&)key);

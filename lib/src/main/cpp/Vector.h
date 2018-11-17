@@ -6,7 +6,7 @@
 #define LUADROID_VECTOR_H
 
 #include <cstdlib>
-#include <algorithm>
+#include <new>
 #include "macros.h"
 
 template<typename _Tp,int cacheCount=4>
@@ -18,36 +18,47 @@ private:
     _Tp *array = nullptr;
     size_type _size = 0;
     size_type _capacity = 0;
-    _Tp cache[cacheCount];//use cache to improve performance and avoid memory fragments
+    uint8_t cache[cacheCount* sizeof(_Tp)];//use cache to improve performance and avoid memory fragments
 
     inline bool isUsingCache(){
-        return array==cache;
+        return intptr_t (array)==intptr_t (cache);
     }
 
+    inline void free(_Tp* v){
+        v->~_Tp();
+    }
+
+    void deallocate() const { operator delete[]((void*)array); }
+
     inline void release() {
-        if (array != cache){
-            delete[] array;
+        if (!isUsingCache()){
+            _Tp* soon_to_be_end = end();
+            while (array != soon_to_be_end)
+                free(--soon_to_be_end);
+            deallocate();
         }
     }
 
     inline void checkIndex(size_type index) const {
+#ifndef NDEBUG
         if (unlikely(index < 0 || index >= _size)) {
             LOGE("index=%d out of bound=%d", index, _size);
             abort();
         }
+#endif
     }
 
     static inline void arrayMove(_Tp *from, _Tp *to, size_type count) {
         while (count > 0) {
             --count;
-            to[count] = std::move(from[count]);
+            new (&to[count])_Tp(std::move(from[count]));
         }
     }
 
     static inline void arrayCopy(const _Tp *from, _Tp *to, size_type count) {
         while (count > 0) {
             --count;
-            to[count] = from[count];
+            new (&to[count])_Tp(from[count]);
         }
     }
 
@@ -65,7 +76,7 @@ public:
     Vector() {}
 
     Vector(size_type capacity) : _size(0), _capacity(capacity) {
-        array = new _Tp[_capacity];
+        array = (_Tp*)new uint8_t[_capacity*sizeof(_Tp)];
     }
 
     Vector(std::initializer_list<_Tp>&& list) {
@@ -79,7 +90,6 @@ public:
             array=cache;
             arrayMove(other.cache,cache,_size);
         }
-
         other.array = nullptr;
         other._size = 0;
         other._capacity = 0;
@@ -128,12 +138,12 @@ public:
 
     void push_back(_Tp &&val) {
         reserve(_size + 1);
-        array[_size++] = std::move(val);
+        new (&array[_size++])_Tp(std::move(val));
     }
 
     void push_back(const _Tp &val) {
         reserve(_size + 1);
-        array[_size++] = val;
+        new (&array[_size++])_Tp(val);
     }
 
     template<typename... Args>
@@ -142,36 +152,37 @@ public:
         new((void *) &array[_size++])_Tp(std::forward<Args>(args)...);
     }
 
-    void erase(size_type index) {
+    void eraseAt(size_type index) {
         checkIndex(index);
         arrayMove(array + index + 1, array + index, _size - index - 1);
-        --_size;
+        --_size;//move dosen't seem to need free any more.
     }
 
     void erase(iterator iterator) {
-        erase(iterator - begin());
+        eraseAt(static_cast<size_type>(iterator - begin()));
     }
-    int indexOf(_Tp& value){
-        for(int i=0;i<=_size;++i){
+    size_type indexOf(_Tp& value){
+        for(size_type i=0;i<=_size;++i){
             if(std::equal_to<_Tp>()(value,array[i])){
                 return i;
             }
         }
-        return -1;
+        return size_type (-1);
     }
     void erase(_Tp& value){
-        int index = indexOf(value);
-        if(index!=-1)erase(index);
+        size_type index = indexOf(value);
+        if(index!=-1)eraseAt(index);
     }
 
     void reserve(size_type len) {
         if (len <= _capacity) return;
         _capacity = binaryCeil(len);
         if (_capacity <= cacheCount) {
-            array = cache;
+            array = (_Tp*)cache;
         } else {
-            _Tp *newArr = new _Tp[_capacity];
+            _Tp *newArr =(_Tp*) new uint8_t[_capacity* sizeof(_Tp)];
             arrayMove(array, newArr, _size);
+            if(!isUsingCache())deallocate();//should be save to free moved memory
             array = newArr;
         }
     }

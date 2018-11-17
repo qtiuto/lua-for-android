@@ -1,15 +1,13 @@
 
 
 #include <jni.h>
-#include <vector>
-#include <list>
-#include <unordered_set>
 #include <dlfcn.h>
 #include <common.h>
 #include <sys/mman.h>
 #include "fake_dlfcn.h"
 #include "dex_file.h"
 #include <errno.h>
+#include "vector_base.h"
 #ifdef __LP64__
 #define libPath "lib64"
 #else
@@ -24,14 +22,22 @@ public:
 };
 
 struct ClassLinker_26 {
-    std::vector<const void *> boot_class_path_;
+    vector_base<const void *> boot_class_path_;
 };
 
 struct ClassLinker_virtual {
     virtual ~ClassLinker_virtual() {}
 
-    std::vector<const void *> boot_class_path_;
+    vector_base<const void *> boot_class_path_;
 };
+
+template <typename T>
+class list_stub{
+    void* st[3];
+};
+
+
+
 #define dexAccess(dex,member) (sdk<28?((art::DexFile*)dex)->member:((art::DexFile28*)dex)->member)
 
 #define dexCall(dex,member, ...) (sdk<28?((art::DexFile*)dex)->member(__VA_ARGS__):((art::DexFile28*)dex)->member(__VA_ARGS__))
@@ -61,33 +67,33 @@ struct Runtime_26 {
     bool dex2oat_enabled_;
     bool image_dex2oat_enabled_;
 
-    std::string compiler_executable_;
-    std::string patchoat_executable_;
-    std::vector<std::string> compiler_options_;
-    std::vector<std::string> image_compiler_options_;
-    std::string image_location_;
+    StringStub compiler_executable_;
+    StringStub patchoat_executable_;
+    vector_base<StringStub> compiler_options_;
+    vector_base<StringStub> image_compiler_options_;
+    StringStub image_location_;
 
-    std::string boot_class_path_string_;
-    std::string class_path_string_;
-    std::vector<std::string> properties_;
+    StringStub boot_class_path_string_;
+    StringStub class_path_string_;
+    vector_base<StringStub> properties_;
 
-    std::list<int> agents_;
-    std::vector<int> plugins_;
+    list_stub<int> agents_;
+    vector_base<int> plugins_;
 
     // The default stack size for managed threads created by the runtime.
     size_t default_stack_size_;
 
     void *heap_;
 
-    std::unique_ptr<int> jit_arena_pool_;
-    std::unique_ptr<int> arena_pool_;
+    void* jit_arena_pool_;
+    void* arena_pool_;
     // Special low 4gb pool for compiler linear alloc. We need ArtFields to be in low 4gb if we are
     // compiling using a 32 bit image on a 64 bit compiler in case we resolve things in the image
     // since the field arrays are int arrays in this case.
-    std::unique_ptr<int> low_4gb_arena_pool_;
+    void* low_4gb_arena_pool_;
 
     // Shared linear alloc for now.
-    std::unique_ptr<int> linear_alloc_;
+    void* linear_alloc_;
 
     // The number of spins that are done before thread suspension is used to forcibly inflate.
     size_t max_spins_before_thin_lock_inflation_;
@@ -101,7 +107,7 @@ struct Runtime_26 {
     ClassLinker_26 *class_linker_;
 
     void *signal_catcher_;
-    std::string stack_trace_file_;
+    StringStub stack_trace_file_;
 
     std::unique_ptr<JavaVM> java_vm_;
 };
@@ -130,33 +136,33 @@ struct Runtime_27 {
     bool dex2oat_enabled_;
     bool image_dex2oat_enabled_;
 
-    std::string compiler_executable_;
-    std::string patchoat_executable_;
-    std::vector<std::string> compiler_options_;
-    std::vector<std::string> image_compiler_options_;
-    std::string image_location_;
+    StringStub compiler_executable_;
+    StringStub patchoat_executable_;
+    vector_base<StringStub> compiler_options_;
+    vector_base<StringStub> image_compiler_options_;
+    StringStub image_location_;
 
-    std::string boot_class_path_string_;
-    std::string class_path_string_;
-    std::vector<std::string> properties_;
+    StringStub boot_class_path_string_;
+    StringStub class_path_string_;
+    vector_base<StringStub> properties_;
 
-    std::list<int> agents_;
-    std::vector<int> plugins_;
+    list_stub<int> agents_;
+    vector_base<int> plugins_;
 
     // The default stack size for managed threads created by the runtime.
     size_t default_stack_size_;
 
     void *heap_;
 
-    std::unique_ptr<int> jit_arena_pool_;
-    std::unique_ptr<int> arena_pool_;
+    void* jit_arena_pool_;
+    void* arena_pool_;
     // Special low 4gb pool for compiler linear alloc. We need ArtFields to be in low 4gb if we are
     // compiling using a 32 bit image on a 64 bit compiler in case we resolve things in the image
     // since the field arrays are int arrays in this case.
-    std::unique_ptr<int> low_4gb_arena_pool_;
+    void* low_4gb_arena_pool_;
 
     // Shared linear alloc for now.
-    std::unique_ptr<int> linear_alloc_;
+    void* linear_alloc_;
 
     // The number of spins that are done before thread suspension is used to forcibly inflate.
     size_t max_spins_before_thin_lock_inflation_;
@@ -170,7 +176,7 @@ struct Runtime_27 {
     ClassLinker_virtual *class_linker_;
 
     void *signal_catcher_;
-    std::string stack_trace_file_;
+    StringStub stack_trace_file_;
     bool use_tombstoned_traces_;
     std::unique_ptr<JavaVM> java_vm_;
 };
@@ -199,34 +205,34 @@ struct Runtime_28 {
     bool dex2oat_enabled_;
     bool image_dex2oat_enabled_;
 
-    std::string compiler_executable_;
-    std::string patchoat_executable_;
-    std::vector<std::string> compiler_options_;
-    std::vector<std::string> image_compiler_options_;
-    std::string image_location_;
+    StringStub compiler_executable_;
+    StringStub patchoat_executable_;
+    vector_base<StringStub> compiler_options_;
+    vector_base<StringStub> image_compiler_options_;
+    StringStub image_location_;
 
-    std::string boot_class_path_string_;
-    std::string class_path_string_;
-    std::vector<std::string> properties_;
+    StringStub boot_class_path_string_;
+    StringStub class_path_string_;
+    vector_base<StringStub> properties_;
 
-    std::list<int> agent_specs_;
-    std::list<int> agents_;
-    std::vector<int> plugins_;
+    list_stub<int> agent_specs_;
+    list_stub<int> agents_;
+    vector_base<int> plugins_;
 
     // The default stack size for managed threads created by the runtime.
     size_t default_stack_size_;
 
     void *heap_;
 
-    std::unique_ptr<int> jit_arena_pool_;
-    std::unique_ptr<int> arena_pool_;
+    void* jit_arena_pool_;
+    void* arena_pool_;
     // Special low 4gb pool for compiler linear alloc. We need ArtFields to be in low 4gb if we are
     // compiling using a 32 bit image on a 64 bit compiler in case we resolve things in the image
     // since the field arrays are int arrays in this case.
-    std::unique_ptr<int> low_4gb_arena_pool_;
+    void* low_4gb_arena_pool_;
 
     // Shared linear alloc for now.
-    std::unique_ptr<int> linear_alloc_;
+    void* linear_alloc_;
 
     // The number of spins that are done before thread suspension is used to forcibly inflate.
     size_t max_spins_before_thin_lock_inflation_;
@@ -240,7 +246,7 @@ struct Runtime_28 {
     ClassLinker_virtual *class_linker_;
 
     void *signal_catcher_;
-    std::string stack_trace_file_;
+    StringStub stack_trace_file_;
     bool use_tombstoned_traces_;
     std::unique_ptr<JavaVM> java_vm_;
 };
@@ -288,7 +294,7 @@ static int compareInt(const void* lhs, const void* rhs){
     return (*static_cast<const uint *>(lhs))-(*static_cast<const uint *>(rhs));
 }
 
-static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *dexFiles) {
+static jobjectArray getClassList(JNIEnv *env, const vector_base<const void *> *dexFiles) {
     jobjectArray ret = nullptr;
     char *tmp = new char[256];
     int cacheLen = 256;
@@ -296,6 +302,7 @@ static jobjectArray getClassList(JNIEnv *env, const std::vector<const void *> *d
     int cacheIndexLen=dexAccess(((*dexFiles)[0]),header_)->class_defs_size_;
     uint* idxes=new uint[cacheIndexLen];// for worst
     int index = 0;
+    int dexSize=dexFiles->size();
     for (auto &&dexFile:*dexFiles) {
         int size = dexAccess(dexFile,header_)->class_defs_size_;
         bestCache(&idxes, &cacheIndexLen, size);
@@ -347,7 +354,7 @@ namespace DexResolver {
             return nullptr;
         }
         int sdk = getSDK();
-        std::vector<const void *> *dexFiles;
+        vector_base<const void *> *dexFiles;
         switch (sdk) {
             case 26: {
                 Runtime_26 *runtime_26 = static_cast<Runtime_26 *>(runtime);
@@ -357,7 +364,7 @@ namespace DexResolver {
                     size_t actual=0;
                     for (int i = 0; i < 1024; i+=4) {
                         if(*(JavaVM**)(((uint8_t*)(runtime_26))+i)==vm){
-                            //LOGI("Expected =%d, Actual=%d",offsetof(Runtime_26,java_vm_),i);
+                            //LOGI("Expected =%lu, Actual=%d",offsetof(Runtime_26,java_vm_),i);
                             actual=i-(offsetof(Runtime_26,java_vm_)-offsetof(Runtime_26,class_linker_));
                             break;
                         }
@@ -379,7 +386,7 @@ namespace DexResolver {
                     size_t actual=0;
                     for (int i = 0; i < 1024; i+=4) {
                         if(*(JavaVM**)(((uint8_t*)(runtime_27))+i)==vm){
-                            //LOGI("Expected =%d, Actual=%ld",offsetof(Runtime_27,java_vm_),i);
+                            //LOGI("Expected =%lu, Actual=%d",offsetof(Runtime_27,java_vm_),i);
                             actual=i-(offsetof(Runtime_27,java_vm_)-offsetof(Runtime_27,class_linker_));
                             break;
                         }
@@ -404,7 +411,7 @@ namespace DexResolver {
                     size_t actual=0;
                     for (int i = 0; i < 1024; i+=4) {
                         if(*(JavaVM**)(((uint8_t*)(runtime_28))+i)==vm){
-                            //LOGI("Expected =%d, Actual=%ld",offsetof(Runtime_28,java_vm_),i);
+                            //LOGI("Expected =%lu, Actual=%d",offsetof(Runtime_28,java_vm_),i);
                             actual=i-(offsetof(Runtime_28,java_vm_)-offsetof(Runtime_28,class_linker_));
                             break;
                         }
@@ -424,11 +431,11 @@ namespace DexResolver {
     jobjectArray getClassList(JNIEnv *env, jclass, jobject cookie){
         int sdk=getSDK();
         if(sdk<21) return nullptr;
-        std::vector<const void*> dexFiles;
+        vector_base<const void*> dexFiles;
         switch (sdk){
             case 21:
             case 22:
-                 dexFiles= *reinterpret_cast<std::vector<const void*>*>(env->CallLongMethod(cookie,longValue));
+                 dexFiles= *reinterpret_cast<vector_base<const void*>*>(env->CallLongMethod(cookie,longValue));
                 break;
             default:
                 int len=env->GetArrayLength((jlongArray)cookie);

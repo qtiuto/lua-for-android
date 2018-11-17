@@ -2,7 +2,6 @@
 #ifndef LUADROID_JAVA_TYPE_H
 #define LUADROID_JAVA_TYPE_H
 
-#include <string>
 #include <jni.h>
 #include <cstdlib>
 #include "myarray.h"

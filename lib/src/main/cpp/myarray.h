@@ -4,7 +4,6 @@
 #define LUADROID_ARRAY_H
 
 #include <cstring>
-#include <vector>
 #include "common.h"
 #include "Vector.h"
 
@@ -14,27 +13,39 @@ class Array {
     typedef const _Tp *const_iterator;
     _Tp *array = nullptr;
     size_type _size;
+
+    _Tp* allocate(int size){
+        return  new _Tp[size];
+    }
+
+    static inline void arrayMove(_Tp *from, _Tp *to, size_type count) {
+        while (count > 0) {
+            --count;
+            new (&to[count])_Tp(std::move(from[count]));
+        }
+    }
+
+    static inline void arrayCopy(const _Tp *from, _Tp *to, size_type count) {
+        while (count > 0) {
+            --count;
+            new (&to[count])_Tp(from[count]);
+        }
+    }
+
 public:
     Array() : _size(0) {}
 
     Array(size_type size) : _size(size) {
-        array = new _Tp[size];
+        array = allocate(size);
     }
 
     Array(Vector<_Tp> &&list):Array(list.size()) {
-        auto iter = array;
-        for (auto iterator = list.begin(); iterator != list.end(); ++iterator) {
-            *iter = std::move(*iterator);
-            ++iter;
-        }
+        arrayMove(list.begin(),array,list.size());
+
     }
 
     Array(const Vector<_Tp> &list):Array(list.size()) {
-        auto iter = array;
-        for (_Tp v:list) {
-            *iter = v;
-            ++iter;
-        }
+        arrayCopy(list.begin(),array,list.size());
     }
 
     Array(Array<_Tp> &&other) : array(other.array), _size(other._size){
@@ -44,18 +55,8 @@ public:
 
     Array(const Array<_Tp> &other) : _size(other._size) {
         _size = other._size;
-        array = new _Tp[_size];
-        for (size_type i = _size - 1; i != -1; --i) {
-            array[i] = other.array[i];
-        }
-    }
-
-    const_iterator cbegin() const {
-        return array;
-    }
-
-    const_iterator cend() const {
-        return array + _size;
+        array = allocate(_size);
+        arrayCopy(other.begin(),array,other.size());
     }
 
     iterator begin() const {
@@ -67,10 +68,12 @@ public:
     }
 
     _Tp &at(size_type index) const {
+#ifndef NDEBUG
         if (unlikely(index < 0 || index >= _size)) {
             LOGE("index=%u out of bound=%u", (uint32_t)index,(uint32_t)_size);
             abort();
         }
+#endif
         return array[index];
     }
 
@@ -103,7 +106,7 @@ public:
 
 public:
     ~Array() {
-        delete[] array;
+        delete [] array;
     }
 };
 

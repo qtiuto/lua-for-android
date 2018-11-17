@@ -7,7 +7,6 @@
 
 #include <cstdint>
 #include <jni.h>
-#include <string>
 #include "lua.h"
 #include "java_object.h"
 #include "base_func.h"

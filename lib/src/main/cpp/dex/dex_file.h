@@ -17,14 +17,15 @@
 #ifndef ART_RUNTIME_DEX_FILE_H_
 #define ART_RUNTIME_DEX_FILE_H_
 
-#include <memory>
-#include <string>
-#include <atomic>
 
 #include "jni.h"
 #include "modifiers.h"
 #include "macros.h"
-
+class StringStub{
+    size_t __cap_;
+    size_t __size_;
+    const char *pointer;
+};
 
 typedef uint8_t byte;
 #define PACKED(x) __attribute__ ((__aligned__(x), __packed__))
@@ -331,13 +332,16 @@ namespace art {
         // The ClassLinker will use this to match DexFiles the boot class
         // path to DexCache::GetLocation when loading from an image.
 
-        std::string location_;
+        StringStub location_;
 
 
-        uint32_t location_checksum_;
+        union {
+            uint32_t location_checksum_;
+            intptr_t stub;
+        };
 
         // Manages the underlying memory allocation.
-        std::unique_ptr<void > mem_map_;
+        void * mem_map_;
 
         // Points to the header section.
         Header *header_;
@@ -361,7 +365,7 @@ namespace art {
         ClassDef *class_defs_;
 
         // Number of misses finding a class def from a descriptor.
-        mutable std::atomic<uint32_t> find_class_def_misses_;
+        //mutable uint32_t find_class_def_misses_;
 
 
         char *stringByIndex(uint32_t index) {
@@ -407,11 +411,12 @@ namespace art {
         // The ClassLinker will use this to match DexFiles the boot class
         // path to DexCache::GetLocation when loading from an image.
 
-        std::string location_;
+        StringStub location_;
 
-
-        uint32_t location_checksum_;
-
+        union {
+            uint32_t location_checksum_;
+            intptr_t stub;
+        };
         // Manages the underlying memory allocation.
         //std::unique_ptr<MemMap> mem_map_;
 
@@ -437,7 +442,7 @@ namespace art {
         ClassDef *class_defs_;
 
         // Number of misses finding a class def from a descriptor.
-        mutable std::atomic<uint32_t> find_class_def_misses_;
+       // mutable uint32_t find_class_def_misses_;
 
         char *stringByIndex(uint32_t index) {
             if (index >= header_->string_ids_size_) {

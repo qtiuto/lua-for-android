@@ -8,9 +8,7 @@
 #include "lua_object.h"
 #include "log_wrapper.h"
 #include "lfs.h"
-#include <unordered_map>
-#include <algorithm>
-#include <FakeVector.h>
+#include "FakeVector.h"
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>

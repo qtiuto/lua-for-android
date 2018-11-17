@@ -1,0 +1,227 @@
+
+#ifndef _LIBCPP_FUNCTIONAL
+#define _LIBCPP_FUNCTIONAL
+
+#include <stdint.h>
+#include "type_traits"
+namespace std {
+    template <class Arg, class Result>
+    struct unary_function
+    {
+        typedef Arg    argument_type;
+        typedef Result result_type;
+    };
+
+    template <class Arg1, class Arg2, class Result>
+    struct binary_function
+    {
+        typedef Arg1   first_argument_type;
+        typedef Arg2   second_argument_type;
+        typedef Result result_type;
+    };
+
+    template<class T> // <class T=void> in C++14
+    struct equal_to : binary_function<T, T, bool> {
+        bool operator()(const T &x, const T &y) const{
+            return x==y;
+        }
+    };
+
+    template<class T> // <class T=void> in C++14
+    struct not_equal_to : binary_function<T, T, bool> {
+        bool operator()(const T &x, const T &y) const{
+            return x!=y;
+        }
+    };
+
+    //template <class T> struct hash;
+
+    template <> struct hash<bool>{
+        size_t operator()(const bool & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<char>{
+        size_t operator()(const char & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<signed char>{
+        size_t operator()(const signed char & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<unsigned char>{
+        size_t operator()(const unsigned char & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<char16_t>{
+        size_t operator()(const char16_t & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<char32_t>{
+        size_t operator()(const char32_t & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<wchar_t>{
+        size_t operator()(const wchar_t & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<short>{
+        size_t operator()(const short & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<unsigned short>{
+        size_t operator()(const unsigned short & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<int>{
+        size_t operator()(const int & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<unsigned int>{
+        size_t operator()(const unsigned int & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<long>{
+        size_t operator()(const long & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<long long>{
+        size_t operator()(const long long & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<unsigned long>{
+        size_t operator()(const unsigned long long & t){
+            return (size_t) t;
+        }
+    };
+    template <> struct hash<unsigned long long>{
+        size_t operator()(const unsigned long long & t){
+            return (size_t) t;
+        }
+    };
+
+    template <> struct hash<float>{
+        size_t operator()(const float & t){
+            return *reinterpret_cast<const uint*>(&t);
+        }
+    };
+    template <> struct hash<double>{
+        size_t operator()(const double & t){
+            return *reinterpret_cast<const size_t *>(&t);
+        }
+    };
+    template <> struct hash<long double>{
+        size_t operator()(const long double & t){
+            return *reinterpret_cast<const size_t* >(&t);
+        }
+    };
+
+    template<class T>
+    struct hash<T *> {
+        size_t operator()( T*  t){
+            return (size_t) t;
+        }
+    };
+}
+
+namespace std{
+    template <class _T1, class _T2> struct _LIBCPP_TEMPLATE_VIS pair{
+        typedef _T1 first_type;
+        typedef _T2 second_type;
+
+        _T1 first;
+        _T2 second;
+        pair() = default;
+
+        pair(pair const &) = default;
+
+        pair(pair &&) = default;
+
+        pair(_T1 const &__t1, _T2 const &__t2)
+                : first(__t1), second(__t2) {}
+        template<class _U1, class _U2>
+         pair(_U1&& __u1, _U2&& __u2)
+                : first(std::forward<_U1>(__u1)), second(std::forward<_U2>(__u2)) {}
+        template<class _U1, class _U2>
+        pair(pair<_U1, _U2> &&__p): first(std::forward<_U1>(__p.first)), second(std::forward<_U2>(__p.second)) {}
+
+        pair& operator=(typename conditional<
+                is_move_assignable<first_type>::value &&
+                is_move_assignable<second_type>::value,
+                pair, __nat>::type&& __p)
+        _NOEXCEPT_(is_nothrow_move_assignable<first_type>::value &&
+                           is_nothrow_move_assignable<second_type>::value)
+        {
+            first = _VSTD::forward<first_type>(__p.first);
+            second = _VSTD::forward<second_type>(__p.second);
+            return *this;
+        }
+        pair&operator=(const pair& o){
+            first=o.first;
+            second=o.second;
+            return *this;
+        }
+    };
+
+    template <class _T1, class _T2>
+    inline bool operator==(const pair<_T1,_T2>& __x, const pair<_T1,_T2>& __y)
+    {
+        return __x.first == __y.first && __x.second == __y.second;
+    }
+
+    template <class _T1, class _T2>
+    inline bool operator!=(const pair<_T1,_T2>& __x, const pair<_T1,_T2>& __y)
+    {
+        return !(__x == __y);
+    }
+
+    template <class _Tp>
+    struct __make_pair_return_impl
+    {
+        typedef _Tp type;
+    };
+
+    template <class _Tp>
+    struct __make_pair_return_impl<reference_wrapper<_Tp>>
+    {
+        typedef _Tp& type;
+    };
+
+    template <class _Tp>
+    struct __make_pair_return
+    {
+        typedef typename __make_pair_return_impl<typename decay<_Tp>::type>::type type;
+    };
+
+    template <class _T1, class _T2>
+    inline _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+    pair<typename __make_pair_return<_T1>::type, typename __make_pair_return<_T2>::type>
+    make_pair(_T1&& __t1, _T2&& __t2)
+    {
+        return pair<typename __make_pair_return<_T1>::type, typename __make_pair_return<_T2>::type>
+                (_VSTD::forward<_T1>(__t1), _VSTD::forward<_T2>(__t2));
+    }
+
+    template <class T>
+    const T& max(const T& f,const T& o){
+        return f>o?f:o;
+    }
+    template <class T>
+    const T& min(const T& f,const T& o){
+        return o>f?f:o;
+    }
+}
+
+#endif

@@ -2,20 +2,19 @@
 #ifndef LUADROID_SPINLOCK_H
 #define LUADROID_SPINLOCK_H
 
-#include <atomic>
 #include <unistd.h>
-#include <mutex>
-
+#include "atomic.h"
+#include "pthread.h"
 
 class ReSpinLock {
-    std::atomic_flag locked = ATOMIC_FLAG_INIT;
+    volatile at_flag locked = 0;
     int count = 0;
     pthread_t holder = 0;
 public:
     volatile void lock() {
       pthread_t self=  pthread_self();
         if (self != holder) {
-            while (locked.test_and_set(std::memory_order_acquire)) {
+            while (at_flag_test_and_set(&locked)) {
                 struct ::timespec req;
                 req.tv_sec = 0;
                 req.tv_nsec = 1000;
@@ -32,16 +31,16 @@ public:
         --count;
         if (count == 0) {
             holder = 0;
-            locked.clear(std::memory_order_release);
+            at_flag_clear(&locked);
         }
 
     }
 };
 class SpinLock {
-    std::atomic_flag locked = ATOMIC_FLAG_INIT;
+    volatile at_flag locked = 0;
 public:
     volatile void lock() {
-            while (locked.test_and_set(std::memory_order_acquire)) {
+            while (at_flag_test_and_set(&locked)) {
                 struct ::timespec req;
                 req.tv_sec = 0;
                 req.tv_nsec = 1000;
@@ -51,9 +50,23 @@ public:
     }
 
     volatile void unlock() {
-        locked.clear(std::memory_order_release);
+        at_flag_clear(&locked);
     }
 };
-typedef std::lock_guard<SpinLock> ScopeLock;
-typedef  std::lock_guard<ReSpinLock> ReScopeLock;
+template <class mutex>
+class lock_guard{
+     mutex* m;
+public:
+    lock_guard(mutex& _m):m(&_m){
+        _m.lock();
+    }
+    lock_guard()= delete;
+    lock_guard(const lock_guard&)= delete;
+    ~lock_guard(){
+        m->unlock();
+    }
+};
+
+typedef lock_guard<SpinLock> ScopeLock;
+typedef  lock_guard<ReSpinLock> ReScopeLock;
 #endif //LUADROID_SPINLOCK_H

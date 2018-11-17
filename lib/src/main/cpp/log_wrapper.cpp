@@ -3,12 +3,11 @@
 #include "log_wrapper.h"
 #include "SpinLock.h"
 #include "common.h"
-#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <poll.h>
 #include <time.h>
-#include <thread>
+#include "errno.h"
 
 static volatile int refCount = 0;
 static SpinLock mutex;

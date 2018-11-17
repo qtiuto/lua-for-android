@@ -3,7 +3,6 @@
 #define LUADROID_COMMON_H
 
 #include <jni.h>
-#include <string>
 #include <time.h>
 #include "lua.hpp"
 #include "jtype.h"
@@ -26,7 +25,7 @@ extern jmethodID longValue;
 extern jmethodID doubleValue;
 extern int getSDK();
 
-typedef std::string String;
+typedef std::MString String;
 
 template<class _Key, typename _Value,
         class _Hash=std::hash <_Key>, class _Equal=std::equal_to <_Key>>

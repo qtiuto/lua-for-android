@@ -4,7 +4,6 @@
 #define LUADROID_FUNC_INFO_H
 
 #include <common.h>
-#include <unordered_map>
 #include "myarray.h"
 #include "base_func.h"
 #include "Vector.h"
