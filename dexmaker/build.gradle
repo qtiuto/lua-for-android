@@ -1,5 +1,5 @@
 apply plugin: 'com.android.library'
-apply plugin: "guru.stefma.bintrayrelease"
+/*apply plugin: "guru.stefma.bintrayrelease"
 
 androidArtifact { // 2
     artifactId = "dexmaker"
@@ -11,7 +11,7 @@ publish {
     desc = 'dexmaker for luadroid'
     website = 'https://github.com/qtiuto/lua-for-android'
     bintrayUser ='karven'
-}
+}*/
 
 android {
     compileSdkVersion 28
