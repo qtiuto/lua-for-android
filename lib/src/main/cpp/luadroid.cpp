@@ -1399,7 +1399,7 @@ bool
 readProxyMethods(lua_State *L, ThreadContext *context, Vector<JavaType *> &interfaces,
                  JavaType *main, Vector<std::unique_ptr<BaseFunction>> &luaFuncs,
                  Vector<JObject> &agentMethods) {
-    size_t expectedLen = lua_rawlen(L, -1);
+    uint expectedLen = (uint)lua_rawlen(L, -1);
     luaFuncs.reserve(expectedLen);
     agentMethods.reserve(expectedLen);
     lua_pushnil(L);
@@ -1725,7 +1725,7 @@ int javaImport(lua_State *L) {
     String pack;
     if (separate!= nullptr) {
         auto len = separate - s + 1;
-        pack.resize(len);
+        pack.resize(uint(len));
         memcpy(&pack[0],s,len);
     }
     size_t len=strlen(s);
@@ -1808,7 +1808,7 @@ int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
         ERROR( "%d elements is too many for an array of size %d", top - index, size);
     }
     Vector<ValidLuaObject> elements;
-    elements.reserve(top - index + 1);
+    elements.reserve(static_cast<uint >(top - index + 1));
     for (; index <= top; ++index) {
         ValidLuaObject object;
         if (!parseLuaObject( L, context, index, object)) {
@@ -1839,7 +1839,7 @@ int javaNew(lua_State *L) {
         return newArray(L, 2, context, component);
     } else if(!type->isPrimitive()){
         int top=lua_gettop(L);
-        auto expectedSize = top - 1;
+        uint expectedSize = uint (top - 1);
         JavaType* arr1[expectedSize];
         ValidLuaObject arr2[expectedSize];
         FakeVector<JavaType *> types(arr1,expectedSize);
@@ -1949,7 +1949,7 @@ int javaToJavaObject(lua_State *L) {
     ThreadContext *context = getContext(L);
     auto env=context->env;
     int top=lua_gettop(L);
-    auto expectedSize = top - 1;
+    uint expectedSize = uint (top - 1);
     JavaType* arr1[expectedSize];
     ValidLuaObject arr2[expectedSize];
     FakeVector<JavaType *> types(arr1,expectedSize);
@@ -2284,7 +2284,7 @@ int callMethod(lua_State *L) {
     JavaType *type = isStatic ? *(JavaType **) lua_touserdata(L, OBJ_INDEX) : objRef->type;
     int start=1 + flag->isNotOnlyMethod;
     int top=lua_gettop(L);
-    auto expectedSize = top - (flag->isNotOnlyMethod);
+    uint expectedSize = uint(top - (flag->isNotOnlyMethod));
     JavaType* arr1[expectedSize];
     ValidLuaObject arr2[expectedSize];
     FakeVector<JavaType *> types(arr1,expectedSize);
@@ -2913,7 +2913,7 @@ LuaTable<ValidLuaObject> *LazyTable::getTable(ThreadContext *context) {
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
         luaTable = new LuaTable<ValidLuaObject>();
-        int len =(int) lua_rawlen(L, index);
+        uint len =(uint) lua_rawlen(L, index);
         luaTable->get().reserve(len);
         lua_pushvalue(L, index);
         lua_pushlightuserdata(L, luaTable);
