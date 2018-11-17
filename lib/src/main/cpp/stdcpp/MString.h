@@ -861,53 +861,34 @@ namespace std{
         };
     };
 
-    inline MString& operator+(MString &f,const MString& s){
-        f+=s;
-        return f;
-    }
-    inline MString& operator+(MString &f,const char * s){
-        f+=s;
-        return f;
-    }
-    inline MString& operator+(MString &f,const char c){
-        f+=c;
-        return f;
-    }
-    inline MString& operator+(const char c,MString &f){
-        f.insert(0,&c,1);
-        return f;
-    }
     inline MString operator+(const char c,const MString &f){
         MString tmp;
-        tmp.resize(f.size()+1);
+        tmp.reserve(f.size()+1);
         tmp+=f;
         tmp+=c;
         return tmp;
     }
     inline MString operator+(const char c, MString &&f){
-        return operator+(c,(MString&)f);
+        f.insert(0,&c,1);
+        return f;
     }
     inline MString operator+(const MString &f,const char c){
         MString tmp;
-        tmp.resize(f.size()+1);
+        tmp.reserve(f.size()+1);
         tmp+=f;
         tmp+=c;
         return tmp;
     }
     inline MString operator+(const MString &f,const char* c){
         MString tmp;
-        tmp.resize(f.size()+1);
+        tmp.reserve(f.size()+strlen(c));
         tmp+=f;
         tmp+=c;
         return tmp;
     }
-    inline MString operator+(const MString &f,MString&& c){
-        c.insert(0,f);
-        return c;
-    }
     inline MString operator+(const MString &f,const MString& c){
         MString tmp;
-        tmp.resize(f.size()+1);
+        tmp.reserve(f.size()+c.size());
         tmp+=f;
         tmp+=c;
         return tmp;
@@ -924,26 +905,19 @@ namespace std{
         f+=c;
         return f;
     }
-    inline MString operator+(MString &&f,const MString&& c){
-        f+=c;
-        return f;
-    }
     inline MString operator+(const char* c, MString &&f){
         f.insert(0,c,strlen(c));
         return f;
     }
     inline MString operator+(const char* c,const MString &f){
         MString tmp;
-        tmp.resize(f.size()+1);
-        tmp+=f;
+        tmp.reserve(f.size()+strlen(c));
         tmp+=c;
+        tmp+=f;
         return tmp;
     }
 
-    inline MString& operator+(const char *f, MString& s){
-        s.insert(0,f);
-        return s;
-    }
+
     inline bool operator==(const char *f, const MString& s){
         return strcmp(f,s.data())==0;
     }
