@@ -862,8 +862,8 @@ namespace std{
     inline MString operator+(const char c,const MString &f){
         MString tmp;
         tmp.reserve(f.size()+1);
-        tmp+=f;
         tmp+=c;
+        tmp+=f;
         return tmp;
     }
     inline MString operator+(const char c, MString &&f){
@@ -902,6 +902,10 @@ namespace std{
     inline MString operator+(MString &&f,const MString& c){
         f+=c;
         return std::move(f);
+    }
+    inline MString operator+(const MString &f, MString&& c){
+        c.insert(0,f);
+        return std::move(c);
     }
     inline MString operator+(const char* c, MString &&f){
         f.insert(0,c,strlen(c));
