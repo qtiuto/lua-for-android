@@ -351,7 +351,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         intType= static_cast<INT_TYPE>(provided->typeID);//since they have the same order
                     }else if(provided->_isBox){
                         goto Handle_OBJ;
-                    }
+                    } else goto bail;
                     uint score = 0;
                     switch (intType) {
                         case J_BYTE: {
