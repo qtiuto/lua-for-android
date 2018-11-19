@@ -24,7 +24,9 @@
 -keep public interface com.oslorde.luadroid.*{
    public <methods>;
 }
-
+-keep  class com.oslorde.luadroid.DataMap{
+   <init>(...);
+}
 -keep public !synthetic class com.oslorde.luadroid.*{
    public !synthetic <methods>;
 }
