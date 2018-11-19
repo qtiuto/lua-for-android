@@ -28,13 +28,13 @@ private:
         v->~_Tp();
     }
 
-    void deallocate() const { operator delete[]((void*)array); }
+    void deallocate() const { operator delete[](array); }
 
     inline void release() {
+        _Tp* soon_to_be_end = end();
+        while (array != soon_to_be_end)
+            free(--soon_to_be_end);
         if (!isUsingCache()){
-            _Tp* soon_to_be_end = end();
-            while (array != soon_to_be_end)
-                free(--soon_to_be_end);
             deallocate();
         }
     }
@@ -87,8 +87,8 @@ public:
 
     Vector(Vector<_Tp> &&other) : array(other.array), _size(other._size), _capacity(other._capacity) {
         if(other.isUsingCache()){
-            array=cache;
-            arrayMove(other.cache,cache,_size);
+            array=(_Tp*)cache;
+            arrayMove((_Tp*)other.cache,(_Tp*)cache,_size);
         }
         other.array = nullptr;
         other._size = 0;
@@ -125,8 +125,8 @@ public:
         array = other.array;
         _capacity = other._capacity;
         if(other.isUsingCache()){
-            array=cache;
-            arrayMove(other.cache,cache,_size);
+            array=(_Tp*)cache;
+            arrayMove((_Tp*)other.cache,(_Tp*)cache,_size);
         }
         other.array = nullptr;
         other._size = 0;

@@ -163,7 +163,6 @@ namespace std {
     public:
         HashSet():m_size(0),m_table_size(0){}
         HashSet( size_t tableSize) : // Best to keep table size a power of two.
-                m_table_size( tableSize ),
                 m_size( 0 ) {
             if( m_table_size ==0 ) {
                 m_table_size = DEFAULT_HASH_TABLE_SIZE;
@@ -171,6 +170,9 @@ namespace std {
             } else if(!isPowerOfTwo(tableSize)){
                 m_table_size=binaryCeil(tableSize);
                 m_limit=(m_table_size*3)>>2;
+            } else {
+                m_table_size=tableSize;
+                m_limit=(tableSize*3)>>2;
             }
             m_table = new HashNodePtr[m_table_size]();
         }
@@ -262,11 +264,11 @@ namespace std {
 
 
         inline std::pair<Value*,bool> insert(const Value& key ){
-            return insert(std::move(Value(key)));
+            return insert(Value(key));
         }
         template <typename V>
         std::pair<Value*,bool> emplace(V&& value ){
-            return insert(Value(std::move(value)));
+            return insert(Value(std::forward<V>(value)));
         }
 
         std::pair<Value*,bool> insert(Value&& key ) {
@@ -380,7 +382,7 @@ namespace std {
 
         template <typename K, typename V>
         std::pair<ValueType*, bool> emplace(K&& key, V&& value) {
-            return Super::insert(std::make_pair(Key(std::forward<K>(key)), T(std::forward<V>(value))));
+            return Super::insert(std::make_pair(std::forward<K>(key), std::forward<V>(value)));
         }
         ValueType* find ( Key&& key){
             return find((const Key&)key);

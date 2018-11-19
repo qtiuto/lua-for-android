@@ -137,26 +137,58 @@ namespace std {
 }
 
 namespace std{
-    template <class _T1, class _T2> struct _LIBCPP_TEMPLATE_VIS pair{
+    template <class _T1, class _T2>
+    struct _LIBCPP_TEMPLATE_VIS pair
+    {
         typedef _T1 first_type;
         typedef _T2 second_type;
 
         _T1 first;
         _T2 second;
-        pair() = default;
 
-        pair(pair const &) = default;
+        pair(pair const& p) : first(p.first), second(p.second) {}
+        pair(pair&& p) : first(_VSTD::forward<_T1>(p.first)), second(_VSTD::forward<_T2>(p.second)) {};
 
-        pair(pair &&) = default;
 
-        pair(_T1 const &__t1, _T2 const &__t2)
+
+        _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR
+        pair() : first(), second() {}
+
+
+        _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+        pair(_T1 const& __t1, _T2 const& __t2)
                 : first(__t1), second(__t2) {}
-        template<class _U1, class _U2>
-         pair(_U1&& __u1, _U2&& __u2)
-                : first(std::forward<_U1>(__u1)), second(std::forward<_U2>(__u2)) {}
-        template<class _U1, class _U2>
-        pair(pair<_U1, _U2> &&__p): first(std::forward<_U1>(__p.first)), second(std::forward<_U2>(__p.second)) {}
 
+
+        template<class _U1, class _U2>
+        _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+        pair(_U1&& __u1, _U2&& __u2)
+                : first(_VSTD::forward<_U1>(__u1)), second(_VSTD::forward<_U2>(__u2)) {}
+
+        template<class _U1, class _U2>
+        _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+        pair(pair<_U1, _U2> const& __p)
+                : first(__p.first), second(__p.second) {}
+
+        template<class _U1, class _U2>
+        _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+        pair(pair<_U1, _U2>&& __p)
+                : first(_VSTD::forward<_U1>(__p.first)), second(_VSTD::forward<_U2>(__p.second)) {}
+
+        _LIBCPP_INLINE_VISIBILITY
+        pair& operator=(typename conditional<
+                is_copy_assignable<first_type>::value &&
+                is_copy_assignable<second_type>::value,
+                pair, __nat>::type const& __p)
+        _NOEXCEPT_(is_nothrow_copy_assignable<first_type>::value &&
+                           is_nothrow_copy_assignable<second_type>::value)
+        {
+            first = __p.first;
+            second = __p.second;
+            return *this;
+        }
+
+        _LIBCPP_INLINE_VISIBILITY
         pair& operator=(typename conditional<
                 is_move_assignable<first_type>::value &&
                 is_move_assignable<second_type>::value,
@@ -168,10 +200,16 @@ namespace std{
             second = _VSTD::forward<second_type>(__p.second);
             return *this;
         }
-        pair&operator=(const pair& o){
-            first=o.first;
-            second=o.second;
-            return *this;
+
+
+        _LIBCPP_INLINE_VISIBILITY
+        void
+        swap(pair& __p) _NOEXCEPT_(__is_nothrow_swappable<first_type>::value &&
+                                           __is_nothrow_swappable<second_type>::value)
+        {
+            using _VSTD::swap;
+            swap(first,  __p.first);
+            swap(second, __p.second);
         }
     };
 

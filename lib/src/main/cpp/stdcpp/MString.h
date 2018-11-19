@@ -502,20 +502,18 @@ namespace std{
         }
         MString& assign(const value_type* __s, size_type __n){
             size_type __cap = capacity();
-            size_type __sz = size();
-            if (__cap - __sz >= __n)
+            if (__cap >= __n)
             {
-                if (__n)
-                {
-                    value_type* __p = __get_pointer();
-                    memcpy(__p + __sz, __s, __n);
-                    __sz += __n;
-                    __set_size(__sz);
-                    __p[__sz]= value_type();
-                }
+                value_type* __p = __get_pointer();
+                memmove(__p, __s, __n);
+                __p[__n]= value_type();
+                __set_size(__n);
             }
             else
-                __grow_by_and_replace(__cap, __sz + __n - __cap, __sz, __sz, 0, __n, __s);
+            {
+                size_type __sz = size();
+                __grow_by_and_replace(__cap, __n - __cap, __sz, 0, __sz, __n, __s);
+            }
             return *this;
         }
         MString& assign(const value_type* s){
@@ -870,7 +868,7 @@ namespace std{
     }
     inline MString operator+(const char c, MString &&f){
         f.insert(0,&c,1);
-        return f;
+        return std::move(f);
     }
     inline MString operator+(const MString &f,const char c){
         MString tmp;
@@ -895,19 +893,19 @@ namespace std{
     }
     inline MString operator+(MString &&f,const char* c){
         f+=c;
-        return f;
+        return std::move(f);
     }
     inline MString operator+(MString &&f,const char c){
         f+=c;
-        return f;
+        return std::move(f);
     }
     inline MString operator+(MString &&f,const MString& c){
         f+=c;
-        return f;
+        return std::move(f);
     }
     inline MString operator+(const char* c, MString &&f){
         f.insert(0,c,strlen(c));
-        return f;
+        return std::move(f);
     }
     inline MString operator+(const char* c,const MString &f){
         MString tmp;

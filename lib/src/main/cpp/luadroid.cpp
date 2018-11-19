@@ -867,12 +867,14 @@ void pushArrayElement(lua_State *L, ThreadContext *context, const JavaObject *ob
         char s[4];\
         strncpy16to8(s,(const char16_t *) &c, 1);\
         lua_pushstring(L,s);\
+        break;\
         })
 #define ArrayGet(typeID,jtype, jname, TYPE)\
             case JavaType::typeID:{\
                 j##jtype buf;\
                 env->Get##jname##ArrayRegion((j##jtype##Array) obj->object, (jsize) index, 1, &buf);\
                 lua_push##TYPE(L,buf);\
+                break;\
             }
 #define IntArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,integer)
 #define FloatArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,number)
@@ -1747,7 +1749,8 @@ int javaImport(lua_State *L) {
             JClass c(context->findClass(s));
             if(c== nullptr){  TopErrorHandle(" Type:%s not found", s); }
             auto type = context->scriptContext->ensureType(env, c);
-            Import::TypeInfo info={type};
+            Import::TypeInfo info;
+            info.type=type;
             auto&& existedPack=import->packages.find(pack);
             if(existedPack==nullptr){
                 info.pack=DeleteOrNotString(pack,true);
@@ -1954,7 +1957,7 @@ int javaToJavaObject(lua_State *L) {
     ValidLuaObject arr2[expectedSize];
     FakeVector<JavaType *> types(arr1,expectedSize);
     FakeVector<ValidLuaObject> luaObjects(arr2,expectedSize);
-    readArguments(L, context, types, luaObjects, 1, 0);
+    readArguments(L, context, types, luaObjects, 1, top);
     int len=luaObjects.asVector().size();
     int i;
     for (i = 0; i < len; ++i) {
@@ -1963,6 +1966,7 @@ int javaToJavaObject(lua_State *L) {
             jobject obj=context->luaObjectToJObject(luaObjects.asVector()[i]);
             if(likely(obj!=INVALID_OBJECT))
                 pushJavaObject(L,context,JObject(env,obj));
+            else lua_pushnil(L);
             continue;
         } else {
             if(type->isPrimitive()){
@@ -1972,7 +1976,8 @@ int javaToJavaObject(lua_State *L) {
             if(likely(v.l!=INVALID_OBJECT)){
                 pushJavaObject(L,context,v.l);
                 cleanArg(env,v.l,luaObjects.asVector()[i].shouldRelease);
-            }
+            }else
+                lua_pushnil(L);
         }
     }
 
@@ -2438,7 +2443,7 @@ int getFieldOrMethod(lua_State *L) {
             if (luaL_isstring(L, 2)) {
                 const char *s = lua_tostring(L, 2);
                 if (unlikely(strcmp(s, "length") != 0)) {
-                    ERROR( "Invalid member for an array:%s", s);
+                    goto MemberStart;
                 } else {
                     lua_pushinteger(L, env->GetArrayLength((jarray) obj->object));
                 }
@@ -2454,7 +2459,7 @@ int getFieldOrMethod(lua_State *L) {
         }
         ERROR( "Invaild type to get a field or method:%s", luaL_typename(L, 2));
     }
-
+    MemberStart:
     FakeString name(lua_tostring(L, 2));
     auto member=type->ensureMember(env,name,isStatic);
     JavaType::FieldArray* fieldArr=nullptr;

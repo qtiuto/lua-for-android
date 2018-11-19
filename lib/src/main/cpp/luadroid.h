@@ -138,7 +138,7 @@ public:
 
     jobject luaObjectToJObject( ValidLuaObject &luaObject);
 
-    JavaType *HashMapType();
+    JavaType *MapType();
 
     JavaType *FunctionType();
 
@@ -162,7 +162,6 @@ class ScriptContext {
             return c1 == c2 || ScriptContext::sTypeEnv->IsSameObject(c1, c2);
         }
     };
-    static jmethodID sMapPut;
     static jmethodID sWriteBytes;
     static TJNIEnv* sTypeEnv;
     friend class ThreadContext;

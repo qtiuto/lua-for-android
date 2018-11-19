@@ -116,7 +116,7 @@ public:
     ~LuaTable(){
         LuaTable* m=metaTable;
         metaTable= nullptr;
-        forceRelease(table);
+        Table(std::move(table));
         if(m) m->free();
 
     }

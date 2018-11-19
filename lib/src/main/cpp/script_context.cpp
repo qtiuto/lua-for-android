@@ -7,7 +7,6 @@
 #include <dlfcn.h>
 #include <assert.h>
 
-jmethodID ScriptContext::sMapPut;
 jmethodID ScriptContext::sWriteBytes;
 TJNIEnv* ScriptContext::sTypeEnv;
 static jmethodID sProxy;
@@ -186,7 +185,7 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
         JavaType::sGetSingleInterface = env->GetStaticMethodID(cl, "getSingleInterface"
                 , "(Ljava/lang/Class;)Ljava/lang/reflect/Method;");
         JavaType::sIsTableType = env->GetMethodID(cl, "isTableType", "(Ljava/lang/Class;)Z");
-        JavaType::sTableConvert = env->GetMethodID(cl, "convertTable", "(Ljava/util/Map;"
+        JavaType::sTableConvert = env->GetMethodID(cl, "convertTable", "(Lcom/oslorde/luadroid/DataMap;"
                 "Ljava/lang/Class;Ljava/lang/reflect/Type;)Ljava/lang/Object;");
     }
     if (charValue == nullptr) {
@@ -422,24 +421,24 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
         } else if (luaObject.type == T_TABLE) {
             luaObject.shouldRelease=true;
             if (type->isTableType(env)) {
-                static thread_local Map<LazyTable*,jobject>* parsedTable= nullptr;
+                typedef Map<LazyTable*,jobject> PTable;
+                static ThreadLocal<PTable> parsedTable;
                 bool isOwner=false;
-                if(parsedTable== nullptr){
-                    parsedTable=new PTR_TYPE(parsedTable)();
+                PTable* current=parsedTable;
+                if(current== nullptr){
+                    current=new PTable();
+                    parsedTable.rawSet(current);
                     isOwner=true;
                 }
-                auto&& iter=parsedTable->find(luaObject.lazyTable);
+                auto&& iter=current->find(luaObject.lazyTable);
                 if(iter== nullptr){
-                    JavaType *mapType = HashMapType();
-                    ValidLuaObject lenObject;
-                    lenObject.type = T_INTEGER;
+                    JavaType *mapType = MapType();
                     auto &&table = luaObject.lazyTable->getTable(this)->get();
-                    lenObject.integer = static_cast<lua_Integer>(table.size());
-                    Vector<JavaType *> types{nullptr};
-                    Vector<ValidLuaObject> args;
-                    args.push_back(std::move(lenObject));
-                    JObject map = JObject(env, mapType->newObject(this,types, args));
-                    parsedTable->emplace(luaObject.lazyTable,map.get());
+                    static jmethodID initMap=env->GetMethodID(mapType->type,"<init>","(I)V");
+                    static jmethodID mapPut=env->GetMethodID(mapType->type, "put",
+                            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+                    JObject map = JObject(env, env->NewObject(mapType->type,initMap,table.size()));
+                    current->emplace(luaObject.lazyTable,map.get());
                     for (auto &&pair:table) {
                         jobject key = luaObjectToJObject(pair.first);
                         if (key == INVALID_OBJECT) goto ERROR_HANDLE;
@@ -448,15 +447,15 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
                             env->DeleteLocalRef(key);
                             goto ERROR_HANDLE;
                         }
-                        env->CallObjectMethod(map, ScriptContext::sMapPut, JObject(env, key).get(),
+                        env->CallObjectMethod(map, mapPut, JObject(env, key).get(),
                                               JObject(env, value).get());
                     }
-                    parsedTable->erase(luaObject.lazyTable);
+                    current->erase(luaObject.lazyTable);
                     ret.l = type->convertTable(env,map,real);
                 } else ret.l=type->convertTable(env,iter->second,real);
                 if(isOwner) {
-                    delete parsedTable;
-                    parsedTable= nullptr;
+                    delete current;
+                    parsedTable.rawSet(nullptr);
                 }
             } else if (type->isInterface(env)) {
                 ret.l = luaObject.lazyTable->asInterface(this, type);
@@ -512,11 +511,9 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
     return ret;
 }
 
-JavaType *ThreadContext::HashMapType() {
+JavaType *ThreadContext::MapType() {
     if (scriptContext->HashMapClass == nullptr) {
-        scriptContext->HashMapClass = ensureType("LinkedHashMap");
-        ScriptContext::sMapPut = env->GetMethodID(scriptContext->HashMapClass->getType(), "put", "(Ljava/lang/Object;"
-                "Ljava/lang/Object;)Ljava/lang/Object;");
+        scriptContext->HashMapClass = ensureType("com.oslorde.luadroid.DataMap");
     }
     return scriptContext->HashMapClass;
 }
@@ -545,12 +542,12 @@ jobject ThreadContext::luaObjectToJObject(ValidLuaObject &luaObject) {
                     getBoxMethodForBoxType(env), luaObject.number).invalidate();
         }
         case T_OBJECT: {
-            jvalue v = luaObjectToJValue(luaObject,HashMapType());
+            jvalue v = luaObjectToJValue(luaObject, MapType());
             v.l = env->NewLocalRef(v.l);
             return v.l;
         }
         case T_TABLE:{
-            jvalue v = luaObjectToJValue(luaObject, HashMapType());
+            jvalue v = luaObjectToJValue(luaObject, MapType());
             return v.l;
         }
         case T_STRING:

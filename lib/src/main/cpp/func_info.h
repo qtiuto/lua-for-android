@@ -7,9 +7,10 @@
 #include "myarray.h"
 #include "base_func.h"
 #include "Vector.h"
+#include "AutoJNIEnv.h"
 
 class JavaType;
-class __attribute__ ((__aligned__(1), __packed__)) DeleteOrNotString{
+class  DeleteOrNotString{
     const char* s;
     bool shouldDel;
 public:
@@ -32,6 +33,7 @@ public:
         }
     }
     DeleteOrNotString(DeleteOrNotString&& other):s(other.s), shouldDel(other.shouldDel){
+        other.s= nullptr;
         other.shouldDel=false;
     }
 
@@ -41,6 +43,7 @@ public:
         this->~DeleteOrNotString();
         s=other.s;
         shouldDel=other.shouldDel;
+        other.s= nullptr;
         other.shouldDel=false;
         return *this;
     }
@@ -58,14 +61,27 @@ public:
     }
 
     ~DeleteOrNotString(){
-        if(shouldDel)
+        if(shouldDel){
             delete [] s;
+        }
+
     }
 };
 struct Import {
     struct TypeInfo{
         JavaType* type;
         DeleteOrNotString pack;
+
+        TypeInfo():type(nullptr),pack(){}
+        TypeInfo(JavaType* type,DeleteOrNotString&&string):type(type),pack(std::move(string)){}
+        TypeInfo(TypeInfo&& o):type(o.type),pack(std::move(o.pack)){}
+        TypeInfo&operator=(TypeInfo&& o){
+            type=o.type;
+            pack=std::move(o.pack);
+            return *this;
+        }
+        TypeInfo&operator=(const TypeInfo& o)= delete;
+        TypeInfo(const TypeInfo&)= delete;
     };
     class Empty{};
     typedef Map<String, TypeInfo> TypeCache;
@@ -84,11 +100,11 @@ struct Import {
 
     Import(const Import &other) : packages(other.packages),stubbed(other.stubbed.capacity()) {
         for(auto&& p:other.stubbed){
-            TypeInfo info={p.second.type,DeleteOrNotString()};
+            DeleteOrNotString pack;
             if(p.second.pack.cached())
-                info.pack=DeleteOrNotString(*packages.find(FakeString(p.second.pack)));
-            else info.pack=DeleteOrNotString(p.second.pack, true);
-            stubbed.emplace(p.first,std::move(info));
+                pack=DeleteOrNotString(*packages.find(FakeString(p.second.pack)));
+            else pack=DeleteOrNotString(p.second.pack, true);
+            stubbed.emplace(p.first, TypeInfo(p.second.type, std::move(pack)));
         }
         if(externalLoaders.size()>0){
             AutoJNIEnv env;
