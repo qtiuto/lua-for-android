@@ -877,11 +877,23 @@ void pushArrayElement(lua_State *L, ThreadContext *context, const JavaObject *ob
                 break;\
             }
 #define IntArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,integer)
+#if LUA_VERSION_NUM>=503
+#define LongArrayGet() IntArrayGet(LONG,long, Long)
+#else
+#define LongArrayGet() case JavaType::LONG:{\
+                jlong buf;\
+                env->GetLongArrayRegion((jlongArray) obj->object, (jsize) index, 1, &buf);\
+                if(int64_t(double(v))!=v)\
+                    lua_pushnumber(L,v);\
+                else Integer64::pushLong(L,v);\
+                break;\
+            }
+#endif
 #define FloatArrayGet(typeID,jtype, jname) ArrayGet(typeID,jtype,jname,number)
         IntArrayGet(BYTE,byte, Byte)
         IntArrayGet(SHORT,short, Short)
         IntArrayGet(INT,int, Int)
-        IntArrayGet(LONG,long, Long)
+        LongArrayGet()
         FloatArrayGet(FLOAT,float, Float)
         FloatArrayGet(DOUBLE,double, Double)
         ArrayGet(BOOLEAN,boolean, Boolean, boolean)
@@ -1843,10 +1855,10 @@ int javaNew(lua_State *L) {
     } else if(!type->isPrimitive()){
         int top=lua_gettop(L);
         uint expectedSize = uint (top - 1);
-        JavaType* arr1[expectedSize];
-        ValidLuaObject arr2[expectedSize];
-        FakeVector<JavaType *> types(arr1,expectedSize);
-        FakeVector<ValidLuaObject> objects(arr2,expectedSize);
+        JavaType* _types[expectedSize];
+        ValidLuaObject _objects[expectedSize];
+        FakeVector<JavaType *> types(_types,expectedSize);
+        FakeVector<ValidLuaObject> objects(_objects,expectedSize);
         readArguments(L, context, types, objects, 2, top);
         JObject obj = JObject(env, type->newObject(context,types, objects));
         if (context->hasErrorPending()) {
@@ -1953,17 +1965,21 @@ int javaToJavaObject(lua_State *L) {
     auto env=context->env;
     int top=lua_gettop(L);
     uint expectedSize = uint (top - 1);
-    JavaType* arr1[expectedSize];
-    ValidLuaObject arr2[expectedSize];
-    FakeVector<JavaType *> types(arr1,expectedSize);
-    FakeVector<ValidLuaObject> luaObjects(arr2,expectedSize);
+    JavaType* _types[expectedSize];
+    ValidLuaObject _objects[expectedSize];
+    FakeVector<JavaType *> types(_types,expectedSize);
+    FakeVector<ValidLuaObject> luaObjects(_objects,expectedSize);
     readArguments(L, context, types, luaObjects, 1, top);
     int len=luaObjects.asVector().size();
     int i;
     for (i = 0; i < len; ++i) {
-        JavaType* type=types.asVector()[i];
+        if(_objects[i].type==T_NIL){
+            lua_pushnil(L);
+            continue;
+        }
+        JavaType* type=_types[i];
         if(type== nullptr){
-            jobject obj=context->luaObjectToJObject(luaObjects.asVector()[i]);
+            jobject obj=context->luaObjectToJObject(_objects[i]);
             if(likely(obj!=INVALID_OBJECT))
                 pushJavaObject(L,context,JObject(env,obj));
             else{
@@ -1974,10 +1990,10 @@ int javaToJavaObject(lua_State *L) {
             if(type->isPrimitive()){
                 type=type->toBoxedType();
             }
-            jvalue v=context->luaObjectToJValue(luaObjects.asVector()[i],type);
+            jvalue v=context->luaObjectToJValue(_objects[i],type);
             if(likely(v.l!=INVALID_OBJECT)){
                 pushJavaObject(L,context,v.l);
-                cleanArg(env,v.l,luaObjects.asVector()[i].shouldRelease);
+                cleanArg(env,v.l,_objects[i].shouldRelease);
             }else{
                 throwJavaError(L,context);
             }
@@ -2293,10 +2309,10 @@ int callMethod(lua_State *L) {
     int start=1 + flag->isNotOnlyMethod;
     int top=lua_gettop(L);
     uint expectedSize = uint(top - (flag->isNotOnlyMethod));
-    JavaType* arr1[expectedSize];
-    ValidLuaObject arr2[expectedSize];
-    FakeVector<JavaType *> types(arr1,expectedSize);
-    FakeVector<ValidLuaObject> objects(arr2,expectedSize);
+    JavaType* _types[expectedSize];
+    ValidLuaObject _objects[expectedSize];
+    FakeVector<JavaType *> types(_types,expectedSize);
+    FakeVector<ValidLuaObject> objects(_objects,expectedSize);
     readArguments(L, context, types, objects, start,top);
     auto env=context->env;
     auto info = type->findMethod(env,FakeString(name), isStatic, types, &objects.asVector());
@@ -2306,7 +2322,7 @@ int callMethod(lua_State *L) {
     int argCount = objects.asVector().size();
     jvalue args[argCount];
     for (int i = argCount - 1; i != -1; --i) {
-        ValidLuaObject &object = objects.asVector()[i];
+        ValidLuaObject &object = _objects[i];
         JavaType::ParameterizedType &tp = info->params[i];
         args[i] = context->luaObjectToJValue(object, tp.rawType,tp.realType);
         if (!tp.rawType->isPrimitive() && args[i].l == INVALID_OBJECT) {
