@@ -44,7 +44,9 @@ public class ScriptContext {
     private static final int CLASS_B_DOUBLE=14;
     private static final int CLASS_B_CHAR=15;
     private static final int CLASS_B_BOOLEAN=16;
-    private static final int CLASS_OBJECT =17;
+    private static final int CLASS_B_NUMBER=17;//Number.class
+    private static final int CLASS_B_OBJECT=18;//Object.class
+    private static final int CLASS_OBJECT =19;
     //Optimize  for the redundant call in new Class Api
     private static  Method sUnchecked;
     private static final Method[] EMPTY_METHODS= new Method[0];
@@ -1074,6 +1076,7 @@ public class ScriptContext {
         sConverters.put(HashMap.class, mapConverter);
         sConverters.put(Map.class, mapConverter);
         sConverters.put(LinkedHashMap.class, LinkedHashMap::new);
+        sConverters.put(DataMap.class,table -> table);
         sConverters.put(JSONObject.class, JSONObject::new);
         sConverters.put(JSONArray.class, table -> new JSONArray(table.values()));
 
@@ -1320,7 +1323,6 @@ public class ScriptContext {
                             entry.setKey(key);
                         }
                     }
-
                 }
             }
             return converter.convert(table);

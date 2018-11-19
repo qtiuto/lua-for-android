@@ -149,6 +149,8 @@ ScriptContext::ScriptContext(TJNIEnv *env, jobject javaObject, bool importAll, b
     DoubleClass->typeID=JavaType::BOX_DOUBLE;
     CharacterClass->typeID=JavaType::BOX_CHAR;
     BooleanClass->typeID=JavaType::BOX_BOOLEAN;
+    ObjectClass->typeID=JavaType::BOX_OBJECT;
+    ensureType(env,env->FindClass("java/lang/Number"))->typeID=JavaType::BOX_NUMBER;
 }
 
 
@@ -380,128 +382,142 @@ void ThreadContext::setPendingException(const String &msg) {
 
 jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *type,jobject real) {
     jvalue ret;
-    if (type->isChar()) {
-        if(unlikely(luaObject.type==T_OBJECT)){
-            ret.c=env->CallCharMethod(luaObject.objectRef->object,charValue);
-        } else if(luaObject.type==T_CHAR)
-            ret.c=luaObject.character;
-        else strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
-    } else if (type->isBool()) {
-        if(unlikely(luaObject.type==T_OBJECT)){
-            ret.z=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
-        } else ret.z = luaObject.isTrue;
-    } else if (type->isInteger()) {
-        if(unlikely(luaObject.type==T_OBJECT)){
-            ret.j=env->CallLongMethod(luaObject.objectRef->object,longValue);
-        } else ret.j = luaObject.integer;
-    } else if (type->typeID == JavaType::FLOAT) {
-        if(unlikely(luaObject.type==T_OBJECT)){
-            ret.f= float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
-        } else ret.f = (float) luaObject.number;
-    } else if (type->typeID == JavaType::DOUBLE) {
-        if(unlikely(luaObject.type==T_OBJECT)){
-            ret.d= env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
-        } else ret.d = luaObject.number;
-    } else {
-        if (luaObject.type == T_FUNCTION) {
-            luaObject.shouldRelease=true;
-            JObject method = type->getSingleInterface(env);
-            Vector<JObject> methods;
-            methods.push_back(std::move(method));
-            BaseFunction *info = luaObject.func;
-            luaObject.func = nullptr;//avoid
-            Vector<std::unique_ptr<BaseFunction>> func;
-            func.emplace_back(info);
-            info->javaRefCount++;
-            ret.l = proxy( type, nullptr, methods, func);
+    switch (type->getTypeID()){
+        case JavaType::CHAR:
+            if(unlikely(luaObject.type==T_OBJECT)){
+                ret.c=env->CallCharMethod(luaObject.objectRef->object,charValue);
+            } else if(luaObject.type==T_CHAR)
+                ret.c=luaObject.character;
+            else strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
+            break;
+        case JavaType::BOOLEAN:
+            if(unlikely(luaObject.type==T_OBJECT)){
+                ret.z=env->CallBooleanMethod(luaObject.objectRef->object,booleanValue);
+            } else ret.z = luaObject.isTrue;
+            break;
+        case JavaType::FLOAT:
+            if(unlikely(luaObject.type==T_OBJECT)){
+                ret.f= float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
+            } else ret.f = (float) luaObject.number;
+            break;
+        case JavaType::DOUBLE:
+            if(unlikely(luaObject.type==T_OBJECT)){
+                ret.d= env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
+            } else ret.d = luaObject.number;
+            break;
+        case JavaType::BYTE:
+        case JavaType::SHORT:
+        case JavaType::INT:
+        case JavaType::LONG:
+            if(unlikely(luaObject.type==T_OBJECT)){
+                ret.j=env->CallLongMethod(luaObject.objectRef->object,longValue);
+            } else ret.j = luaObject.integer;
+            break;
+        default:{
+            if (luaObject.type == T_FUNCTION) {
+                luaObject.shouldRelease=true;
+                JObject method = type->getSingleInterface(env);
+                Vector<JObject> methods;
+                methods.push_back(std::move(method));
+                BaseFunction *info = luaObject.func;
+                luaObject.func = nullptr;//avoid
+                Vector<std::unique_ptr<BaseFunction>> func;
+                func.emplace_back(info);
+                info->javaRefCount++;
+                ret.l = proxy( type, nullptr, methods, func);
 
-            if (ret.l != INVALID_OBJECT) {
-                func.begin()->release();
-            }
-        } else if (luaObject.type == T_TABLE) {
-            luaObject.shouldRelease=true;
-            if (type->isTableType(env)) {
-                typedef Map<LazyTable*,jobject> PTable;
-                static ThreadLocal<PTable> parsedTable;
-                bool isOwner=false;
-                PTable* current=parsedTable;
-                if(current== nullptr){
-                    current=new PTable();
-                    parsedTable.rawSet(current);
-                    isOwner=true;
+                if (ret.l != INVALID_OBJECT) {
+                    func.begin()->release();
                 }
-                auto&& iter=current->find(luaObject.lazyTable);
-                if(iter== nullptr){
-                    JavaType *mapType = MapType();
-                    auto &&table = luaObject.lazyTable->getTable(this)->get();
-                    static jmethodID initMap=env->GetMethodID(mapType->type,"<init>","(I)V");
-                    static jmethodID mapPut=env->GetMethodID(mapType->type, "put",
-                            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-                    JObject map = JObject(env, env->NewObject(mapType->type,initMap,table.size()));
-                    current->emplace(luaObject.lazyTable,map.get());
-                    for (auto &&pair:table) {
-                        jobject key = luaObjectToJObject(pair.first);
-                        if (key == INVALID_OBJECT) goto ERROR_HANDLE;
-                        jobject value = luaObjectToJObject(pair.second);
-                        if (value == INVALID_OBJECT) {
-                            env->DeleteLocalRef(key);
-                            goto ERROR_HANDLE;
+            } else if (luaObject.type == T_TABLE) {
+                luaObject.shouldRelease=true;
+                if (type->isTableType(env)) {
+                    typedef Map<LazyTable*,jobject> PTable;
+                    static ThreadLocal<PTable> parsedTable;
+                    bool isOwner=false;
+                    PTable* current=parsedTable;
+                    if(current== nullptr){
+                        current=new PTable();
+                        parsedTable.rawSet(current);
+                        isOwner=true;
+                    }
+                    auto&& iter=current->find(luaObject.lazyTable);
+                    if(iter== nullptr){
+                        JavaType *mapType = MapType();
+                        auto &&table = luaObject.lazyTable->getTable(this)->get();
+                        static jmethodID initMap=env->GetMethodID(mapType->type,"<init>","(I)V");
+                        static jmethodID mapPut=env->GetMethodID(mapType->type, "put",
+                                                                 "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+                        JObject map = JObject(env, env->NewObject(mapType->type,initMap,table.size()));
+                        current->emplace(luaObject.lazyTable,map.get());
+                        for (auto &&pair:table) {
+                            jobject key = luaObjectToJObject(pair.first);
+                            if (key == INVALID_OBJECT) goto ERROR_HANDLE;
+                            jobject value = luaObjectToJObject(pair.second);
+                            if (value == INVALID_OBJECT) {
+                                env->DeleteLocalRef(key);
+                                goto ERROR_HANDLE;
+                            }
+                            env->CallObjectMethod(map, mapPut, JObject(env, key).get(),
+                                                  JObject(env, value).get());
                         }
-                        env->CallObjectMethod(map, mapPut, JObject(env, key).get(),
-                                              JObject(env, value).get());
+                        current->erase(luaObject.lazyTable);
+                        ret.l = type->convertTable(env,map,real);
+                    } else ret.l=type->convertTable(env,iter->second,real);
+                    if(isOwner) {
+                        delete current;
+                        parsedTable.rawSet(nullptr);
                     }
-                    current->erase(luaObject.lazyTable);
-                    ret.l = type->convertTable(env,map,real);
-                } else ret.l=type->convertTable(env,iter->second,real);
-                if(isOwner) {
-                    delete current;
-                    parsedTable.rawSet(nullptr);
-                }
-            } else if (type->isInterface(env)) {
-                ret.l = luaObject.lazyTable->asInterface(this, type);
-            }
-            HOLD_JAVA_EXCEPTION(this, {
-                goto ERROR_HANDLE;
-            });
-        } else if (luaObject.type == T_NIL) {
-            ret.l = nullptr;
-        } else if (luaObject.type == T_STRING) {
-            luaObject.shouldRelease=true;
-            ret.l = env->NewStringUTF(luaObject.string).invalidate();
-        } else if (luaObject.type == T_OBJECT) {
-            ret.l = luaObject.objectRef->object;
-        } else {
-            luaObject.shouldRelease=true;
-            switch (type->typeID){
-                case JavaType::BOX_CHAR:
-                    if (luaObject.type == T_STRING)
-                        strcpy8to16(&luaObject.character, luaObject.string, NULL);
-                    ret.l = env->CallStaticObjectMethod(type->getType(), type->
-                            getBoxMethodForBoxType(env), luaObject.character).invalidate();
-                    break;
-                case JavaType::BOX_BOOLEAN:
-                    ret.l = env->CallStaticObjectMethod(type->getType(), type->
-                            getBoxMethodForBoxType(env), luaObject.isTrue).invalidate();
-                    break;
-                case JavaType::BOX_DOUBLE:
-                    ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env)
-                            , luaObject.type == T_INTEGER ? (double) luaObject.integer:
-                              luaObject.number).invalidate();
-                    break;
-                case JavaType::BOX_FLOAT:
-                    ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
-                                                        luaObject.type == T_INTEGER ? (float) luaObject.integer :
-                                                        (float) luaObject.number).invalidate();
-                    break;
-                default:
-                    if (likely(type->_isBox)) {
+                } else if (type->isInterface(env)) {
+                    ret.l = luaObject.lazyTable->asInterface(this, type);
+                } else ret.l= nullptr;
+                HOLD_JAVA_EXCEPTION(this, {
+                    goto ERROR_HANDLE;
+                });
+            } else if (luaObject.type == T_NIL) {
+                ret.l = nullptr;
+            } else if (luaObject.type == T_STRING) {
+                luaObject.shouldRelease=true;
+                ret.l = env->NewStringUTF(luaObject.string).invalidate();
+            } else if (luaObject.type == T_OBJECT) {
+                ret.l = luaObject.objectRef->object;
+            } else {
+                luaObject.shouldRelease=true;
+                switch (type->typeID){
+                    case JavaType::BOX_CHAR:
+                        if (luaObject.type == T_STRING)
+                            strcpy8to16(&luaObject.character, luaObject.string, NULL);
                         ret.l = env->CallStaticObjectMethod(type->getType(), type->
-                                getBoxMethodForBoxType(env), luaObject.integer).invalidate();
-                    } else {
-                        luaObject.shouldRelease = false;
-                        ret.l = INVALID_OBJECT;
-                    }
-                    break;
+                                getBoxMethodForBoxType(env), luaObject.character).invalidate();
+                        break;
+                    case JavaType::BOX_BOOLEAN:
+                        ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                                getBoxMethodForBoxType(env), luaObject.isTrue).invalidate();
+                        break;
+                    case JavaType::BOX_DOUBLE:
+                        ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env)
+                                , luaObject.type == T_INTEGER ? (double) luaObject.integer:
+                                  luaObject.number).invalidate();
+                        break;
+                    case JavaType::BOX_FLOAT:
+                        ret.l = env->CallStaticObjectMethod(type->getType(), type->getBoxMethodForBoxType(env),
+                                                            luaObject.type == T_INTEGER ? (float) luaObject.integer :
+                                                            (float) luaObject.number).invalidate();
+                        break;
+                    case JavaType::BOX_NUMBER:
+                    case JavaType::BOX_OBJECT:
+                        ret.l=luaObjectToJObject(luaObject);
+                        break;
+                    default:
+                        if (likely(type->_isBox)) {
+                            ret.l = env->CallStaticObjectMethod(type->getType(), type->
+                                    getBoxMethodForBoxType(env), luaObject.integer).invalidate();
+                        } else {
+                            luaObject.shouldRelease = false;
+                            ret.l = INVALID_OBJECT;
+                        }
+                        break;
+                }
             }
         }
     }

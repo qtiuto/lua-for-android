@@ -333,17 +333,18 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                     break;
                 }
                 case T_INTEGER: {
-                    if (!toCheck->_isInteger && !toCheck->_isFloat) goto bail;
                     long long v = luaObject.integer;
-                    INT_TYPE intType = J_INT;
+                    INT_TYPE intType;
                     if (provided == nullptr) {
+                        if (!toCheck->_isInteger && !toCheck->_isFloat&&
+                            !toCheck->isObjectClass()&&!toCheck->isNumberClass()) goto bail;
                         if (v >= INT8_MIN && v <= INT8_MAX) {
                             intType = J_BYTE;
                         } else if (v >= INT16_MIN && v <= INT16_MAX) {
                             intType = J_SHORT;
                         }else if (v >= INT32_MIN && v <= INT32_MAX) {
                             intType = J_INT;
-                        }  else {
+                        } else {
                             intType = J_LONG;
                         }
                     } else if (provided->isInteger()) {
@@ -355,29 +356,33 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                     switch (intType) {
                         case J_BYTE: {
                             switch (toCheck->typeID){
-                                case BYTE:score = 12;
+                                case BYTE:score = 14;
                                     break;
-                                case SHORT:score = 11;
+                                case SHORT:score = 13;
                                     break;
-                                case INT:score = provided?10:13;
+                                case INT:score = provided?12:15;
                                     break;
-                                case LONG:score = 9;
+                                case LONG:score = 11;
                                     break;
-                                case FLOAT:score = 8;
+                                case FLOAT:score = 10;
                                     break;
-                                case DOUBLE:score = 7;
+                                case DOUBLE:score = 9;
                                     break;
-                                case BOX_BYTE:score = 6;
+                                case BOX_BYTE:score = 8;
                                     break;
-                                case BOX_SHORT:score = 5;
+                                case BOX_SHORT:score = 7;
                                     break;
-                                case BOX_INT:score = 4;
+                                case BOX_INT:score = 6;
                                     break;
-                                case BOX_LONG:score = 3;
+                                case BOX_LONG:score = 5;
                                     break;
-                                case BOX_FLOAT:score = 2;
+                                case BOX_FLOAT:score = 4;
                                     break;
-                                case BOX_DOUBLE:score = 1;
+                                case BOX_DOUBLE:score = 3;
+                                    break;
+                                case BOX_NUMBER: score= 2;
+                                    break;
+                                case BOX_OBJECT: score=1;
                                     break;
                                 default:  goto bail;
                             }
@@ -385,25 +390,29 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         }
                         case J_SHORT: {
                             switch (toCheck->typeID){
-                                case SHORT:score = 10;
+                                case SHORT:score = 12;
                                     break;
-                                case INT: score = provided?8:11;
+                                case INT: score = provided?11:13;
                                     break;
-                                case LONG:score = 9;
+                                case LONG:score = 10;
                                     break;
-                                case FLOAT:score = 7;
+                                case FLOAT:score = 9;
                                     break;
-                                case DOUBLE:score = 6;
+                                case DOUBLE:score = 8;
                                     break;
-                                case BOX_SHORT:score = 5;
+                                case BOX_SHORT:score = 7;
                                     break;
-                                case BOX_INT:score = 4;
+                                case BOX_INT:score = 6;
                                     break;
-                                case BOX_LONG:score = 3;
+                                case BOX_LONG:score = 5;
                                     break;
-                                case BOX_FLOAT:score = 2;
+                                case BOX_FLOAT:score = 4;
                                     break;
-                                case BOX_DOUBLE:score = 1;
+                                case BOX_DOUBLE:score = 3;
+                                    break;
+                                case BOX_NUMBER: score= 2;
+                                    break;
+                                case BOX_OBJECT: score=1;
                                     break;
                                 default:  goto bail;
                             }
@@ -411,21 +420,25 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         }
                         case J_INT: {
                             switch (toCheck->typeID){
-                                case INT:score = 8;
+                                case INT:score = 10;
                                     break;
-                                case LONG:score = 7;
+                                case LONG:score = 9;
                                     break;
-                                case FLOAT:score = 6;
+                                case FLOAT:score = 8;
                                     break;
-                                case DOUBLE:score = 5;
+                                case DOUBLE:score = 7;
                                     break;
-                                case BOX_INT:score = 4;
+                                case BOX_INT:score = 6;
                                     break;
-                                case BOX_LONG:score = 3;
+                                case BOX_LONG:score = 5;
                                     break;
-                                case BOX_FLOAT:score = 2;
+                                case BOX_FLOAT:score = 4;
                                     break;
-                                case BOX_DOUBLE:score = 1;
+                                case BOX_DOUBLE:score = 3;
+                                    break;
+                                case BOX_NUMBER: score= 2;
+                                    break;
+                                case BOX_OBJECT: score=1;
                                     break;
                                 default:  goto bail;
                             }
@@ -433,17 +446,21 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                         }
                         case J_LONG: {
                             switch (toCheck->typeID){
-                                case LONG:score = 6;
+                                case LONG:score = 8;
                                     break;
-                                case FLOAT:score = 5;
+                                case FLOAT:score = 7;
                                     break;
-                                case DOUBLE: score = 4;
+                                case DOUBLE: score = 6;
                                     break;
-                                case BOX_LONG:score = 3;
+                                case BOX_LONG:score = 5;
                                     break;
-                                case BOX_FLOAT:score = 2;
+                                case BOX_FLOAT:score = 4;
                                     break;
-                                case BOX_DOUBLE:score = 1;
+                                case BOX_DOUBLE:score = 3;
+                                    break;
+                                case BOX_NUMBER: score= 2;
+                                    break;
+                                case BOX_OBJECT: score=1;
                                     break;
                                 default:  goto bail;
                             }
@@ -455,21 +472,27 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                     break;
                 }
                 case T_FLOAT: {
-                    if (!toCheck->isFloat()) goto bail;
                     if (provided == nullptr) {
                         uint score;
                         switch (toCheck->typeID){
-                            case DOUBLE:score = 4;
+                            case DOUBLE:score = 6;
                                 break;
-                            case FLOAT: score = 3;
+                            case FLOAT: score = 5;
                                 break;
-                            case BOX_DOUBLE:score = 2;
+                            case BOX_DOUBLE:score = 4;
                                 break;
-                            default:score = 1;
+                            case BOX_FLOAT:score = 3;
+                                break;
+                            case BOX_NUMBER: score=2;
+                                break;
+                            case BOX_OBJECT: score=1;
+                                break;
+                            default:
+                                goto bail;
                         }
                         if (score < scores[i]) goto bail;
                         else cacheScores[i] = score;
-                    } else if(!provided->_isBox) {
+                    } else if(provided->isFloat()) {
                         if (provided->typeID == DOUBLE) {
                             if (toCheck->typeID ==DOUBLE)
                                 cacheScores[i]=1;

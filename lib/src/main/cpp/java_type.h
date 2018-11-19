@@ -102,6 +102,8 @@ public:
         BOX_DOUBLE,
         BOX_CHAR,
         BOX_BOOLEAN,
+        BOX_NUMBER,
+        BOX_OBJECT,
         OBJECT
     };
 private:
@@ -296,6 +298,14 @@ public:
 
     bool isVoid() {
         return typeID==VOID;
+    }
+
+    bool isObjectClass(){
+        return typeID==BOX_OBJECT;
+    }
+
+    bool isNumberClass(){
+        return typeID==BOX_NUMBER;
     }
 
     bool isStringAssignable(TJNIEnv *env) {

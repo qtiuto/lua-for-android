@@ -15,6 +15,7 @@
 #include <setjmp.h>
 #include <lua.h>
 #include <dex/DexResolver.h>
+#include <assert.h>
 
 #if LUA_VERSION_NUM < 503
 #include "int64_support.h"
@@ -803,12 +804,13 @@ checkLuaTypeNoThrow(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObje
                 return false;
         }
         if(luaObject.type==T_FLOAT){
-            if(expected->isBoxedFloat()){
+            if(expected->isBoxedFloat()||expected->isObjectClass()||expected->isNumberClass()){
                 return false;
             }
         } else if(luaObject.type==T_INTEGER){
-            if(expected->isBoxedInteger()||expected->isBoxedFloat())
+            if(expected->isBoxedInteger()||expected->isBoxedFloat()||expected->isObjectClass()||expected->isNumberClass())
                 return false;
+
         }
         if(expected->isBoxedChar()&&luaObject.type == T_STRING)
             return false;
@@ -1963,13 +1965,12 @@ int javaNewArray(lua_State *L) {
 int javaToJavaObject(lua_State *L) {
     ThreadContext *context = getContext(L);
     auto env=context->env;
-    int top=lua_gettop(L);
-    uint expectedSize = uint (top - 1);
+    uint expectedSize=(uint)lua_gettop(L);
     JavaType* _types[expectedSize];
     ValidLuaObject _objects[expectedSize];
     FakeVector<JavaType *> types(_types,expectedSize);
     FakeVector<ValidLuaObject> luaObjects(_objects,expectedSize);
-    readArguments(L, context, types, luaObjects, 1, top);
+    readArguments(L, context, types, luaObjects, 1, expectedSize);
     int len=luaObjects.asVector().size();
     int i;
     for (i = 0; i < len; ++i) {

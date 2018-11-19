@@ -551,6 +551,10 @@ Module app is a lua editor for running test in android.
    
    and the type is interface,
    then it's considered as an implementation for the interface.
+   For a convertible type, no type can be superior to the other,
+   so for specified class like Arrays.copyOf, where all th array types
+   has the same weight, which method is chosen is unspecified. To clarify
+   your intention, add a type before the table when calling a method.
    
    User date is treated as integer.
      
@@ -561,10 +565,14 @@ Module app is a lua editor for running test in android.
    automatically according to the type.Type check ha thse same rule in 
    method deduction.If type check failed,an exception may be thrown
      
-   For primitive types,like a static_cast<type>(value).
+   For primitive types, value in its range and associated box type.
      
    For char type, only one-character is acceptable,and return value
    will be converted to one-character string.
+   
+   Object.class receives all values including primitive types.
+   
+   Number.class receives all primitive types and its sub class.
      
    For object types,no conversion.
      
@@ -574,8 +582,12 @@ Module app is a lua editor for running test in android.
    For table, if the table is convertible, it's converted by the table converter
    else it's like call proxy with super set to the type and methods set to 
    the table if it's valid to be converted to be proxied. Additionally, generic type
-   check and conversion will be performed automatically, That's to say, Type such as 
+   check and conversion will be performed automatically, That's to say, 'Type' such as 
    List<Integer>,List<Short> or List<List<String>> will be supported.
+   
+   Actually, the  table converter is a little bit inefficient cause it needs to
+   store a lua table to a c++ vector and then to a java map and finally to the object specified
+   If you really care about efficiency, avoid using table auto cast.
      
    User date is treated as integer.
       
