@@ -507,7 +507,9 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
                             if (score < scores[i]) goto bail;
                             else cacheScores[i] = score;
                         }
-                    } else goto Handle_OBJ;
+                    } else if(provided->isInteger())
+                        goto bail;
+                     else goto Handle_OBJ;
                     break;
                 }
                 case T_FUNCTION: {
