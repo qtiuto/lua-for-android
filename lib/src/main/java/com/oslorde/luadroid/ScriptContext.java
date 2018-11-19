@@ -44,6 +44,7 @@ public class ScriptContext {
     private static final int CLASS_B_DOUBLE=14;
     private static final int CLASS_B_CHAR=15;
     private static final int CLASS_B_BOOLEAN=16;
+    private static final int CLASS_OBJECT =17;
     //Optimize  for the redundant call in new Class Api
     private static  Method sUnchecked;
     private static final Method[] EMPTY_METHODS= new Method[0];
@@ -1069,10 +1070,10 @@ public class ScriptContext {
         if (sConverters != null)
             return sConverters;
         sConverters = new HashMap<>();
-        TableConverter<HashMap<?, ?>> mapConverter = table -> (HashMap<?, ?>) table;
+        TableConverter<HashMap<?, ?>> mapConverter = HashMap::new;
         sConverters.put(HashMap.class, mapConverter);
         sConverters.put(Map.class, mapConverter);
-        sConverters.put(LinkedHashMap.class, mapConverter);
+        sConverters.put(LinkedHashMap.class, LinkedHashMap::new);
         sConverters.put(JSONObject.class, JSONObject::new);
         sConverters.put(JSONArray.class, table -> new JSONArray(table.values()));
 
@@ -1132,24 +1133,55 @@ public class ScriptContext {
             }
             Class<?> componentType = cls.getComponentType();
             if (componentType != null) {
-                if (componentType.isPrimitive()) {
-                    sConverters.put(cls, table -> {
-                        Object array = Array.newInstance(componentType,table.size());
-                        int i = 0;
-                        for (Object v : table.values()) {
-                            Array.set(array,i++,v);
-                        }
-                        return array;
-                    });
-                } else {
-                    sConverters.put(cls, table -> table.values().toArray((Object[])
-                            Array.newInstance(componentType, table.size())));
-                }
+                int type=getClassType(nativePtr,componentType);
+                sConverters.put(cls, table -> {
+                    Object array = Array.newInstance(componentType,table.size());
+                    int i = 0;
+                    for (Object v : table.values()) {
+                        setArray(array,type,i++,fixValue(v,type,componentType,componentType,type== CLASS_OBJECT&&isTableType(componentType)));
+                    }
+                    return array;
+                });
                 return true;
             }
         } catch (NoSuchMethodException ignored) {
         }
         return false;
+    }
+
+    private static void setArray(Object array,int arrayType,int index,Object value){
+        switch (arrayType) {
+            case CLASS_INT:
+                ((int[])array)[index]= (int) value;
+                break;
+            case CLASS_SHORT:
+                ((short[])array)[index]= (short) value;
+                break;
+            case CLASS_BYTE:
+                ((byte[])array)[index]= (byte) value;
+                break;
+
+            case CLASS_FLOAT:
+                ((float[])array)[index]= (float) value;
+                break;
+            case CLASS_CHAR:
+                ((char[])array)[index]= (char) value;
+                break;
+            case CLASS_VOID:
+                throw new LuaException("unexpected array type");
+
+            case CLASS_BOOLEAN:
+                ((boolean[])array)[index]= (boolean) value;
+                break;
+            case CLASS_DOUBLE:
+                ((double[])array)[index]= (double) value;
+                break;
+            case CLASS_LONG:
+                ((long[])array)[index]= (long) value;
+                break;
+            default:
+                ((Object[])array)[index]=value;
+        }
     }
 
     private Type resolveKeyTableType(Type type){
@@ -1199,8 +1231,8 @@ public class ScriptContext {
             return ((Double) from).floatValue();
         if(raw==Character.class&&from instanceof String)
             return ((String) from).charAt(0);
-        if(from instanceof Map&&shouldFixTable)
-            return convertTable((Map<Object, Object>) from
+        if(from instanceof DataMap&&shouldFixTable)
+            return convertTable((DataMap<Object, Object>) from
                     , raw, real);
         if(!raw.isInstance(from))
             throw new LuaException("Incompatible Object passed:expected:"+real+",got:"+from);
@@ -1228,8 +1260,8 @@ public class ScriptContext {
 
             case CLASS_FLOAT:
             case CLASS_B_FLOAT:
-                if(from instanceof Double)
-                    return ((Double) from).floatValue();
+                if(from instanceof Double||from instanceof Long)
+                    return ((Number) from).floatValue();
                 break;
             case CLASS_CHAR:
             case CLASS_B_CHAR:
@@ -1239,15 +1271,17 @@ public class ScriptContext {
             case CLASS_VOID:
                 return null;
             case CLASS_B_DOUBLE:
+            case CLASS_DOUBLE:
+                if(from instanceof Long)
+                    return ((Long) from).doubleValue();
             case CLASS_B_LONG:
             case CLASS_B_BOOLEAN:
             case CLASS_BOOLEAN:
-            case CLASS_DOUBLE:
             case CLASS_LONG:
                 return from;
             default:
-                if(from instanceof Map&&shouldFixTable)
-                    return convertTable((Map<Object, Object>) from
+                if(from instanceof DataMap&&shouldFixTable)
+                    return convertTable((DataMap<Object, Object>) from
                             , raw, real);
                 if(!raw.isInstance(from))
                     throw new LuaException("Incompatible Object passed:expected:"+real+",got:"+from);
@@ -1256,7 +1290,7 @@ public class ScriptContext {
         return from;
     }
 
-    private Object convertTable(Map<Object, Object> table,Class raw, Type target) throws Throwable {
+    private Object convertTable(DataMap<Object, Object> table,Class raw, Type target) throws Throwable {
         TableConverter<?> converter = sConverters.get(raw);
         if (converter != null){
             if(target!=null){
@@ -1267,8 +1301,8 @@ public class ScriptContext {
                 if(valueType!=null){
                     Class rawType = resolveType(valueType);
                     boolean shouldFixTable=isTableType(rawType);
-                    for (Map.Entry<Object, Object> entry :
-                            table.entrySet()) {
+                    for (DataMap.CustomEntry<Object,Object> entry :
+                            table) {
                         Object old = entry.getValue();
                         Object value = fixValue2(old,rawType,valueType,shouldFixTable);
                         if(value!=old)
@@ -1276,20 +1310,17 @@ public class ScriptContext {
                     }
                 }
                 if(keyType!=null){
-                    List<Pair<Object, Object>> toChanged=new ArrayList<>();
                     Class rawType = resolveType(keyType);
                     boolean shouldFixTable=isTableType(rawType);
-                    for (Map.Entry<Object, Object> entry :
-                            table.entrySet()) {
+                    for (DataMap.CustomEntry<Object,Object> entry :
+                            table) {
                         Object key = entry.getKey();
                         Object newKey=fixValue2(key,rawType,keyType,shouldFixTable);
                         if(newKey!=key){
-                            toChanged.add(new Pair<>(key,newKey));
+                            entry.setKey(key);
                         }
                     }
-                    for (Pair<Object, Object> pair : toChanged) {
-                        table.put(pair.second,table.remove(pair.first));
-                    }
+
                 }
             }
             return converter.convert(table);
