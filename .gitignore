@@ -1,4 +1,5 @@
 *.iml
+*.cmd
 .gradle
 /.idea
 /.idea/caches

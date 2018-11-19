@@ -1966,7 +1966,9 @@ int javaToJavaObject(lua_State *L) {
             jobject obj=context->luaObjectToJObject(luaObjects.asVector()[i]);
             if(likely(obj!=INVALID_OBJECT))
                 pushJavaObject(L,context,JObject(env,obj));
-            else lua_pushnil(L);
+            else{
+                throwJavaError(L,context);
+            }
             continue;
         } else {
             if(type->isPrimitive()){
@@ -1976,8 +1978,9 @@ int javaToJavaObject(lua_State *L) {
             if(likely(v.l!=INVALID_OBJECT)){
                 pushJavaObject(L,context,v.l);
                 cleanArg(env,v.l,luaObjects.asVector()[i].shouldRelease);
-            }else
-                lua_pushnil(L);
+            }else{
+                throwJavaError(L,context);
+            }
         }
     }
 
