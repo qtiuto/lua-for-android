@@ -572,7 +572,7 @@ Module app is a lua editor for running test in android.
    
    Object.class receives all values including primitive types.
    
-   Number.class receives all primitive types and its sub class.
+   Number.class receives all primitive types and its children.
      
    For object types,no conversion.
      
