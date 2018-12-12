@@ -2498,7 +2498,7 @@ int getFieldOrMethod(lua_State *L) {
         fieldCount = fieldArr->size();
     }
     if (fieldCount == 1 && !isMethod) {
-        auto&& info = &fieldArr->at(0);
+        auto&& info = fieldArr->begin();
         JavaType *fieldType = info->type.rawType;
 #define GetField(typeID,jtype, jname, TYPE)\
         case JavaType::typeID:{\
@@ -2524,7 +2524,7 @@ int getFieldOrMethod(lua_State *L) {
 #endif
 
 
-#define PushField()
+#define PushField()\
         switch(fieldType->getTypeID()){\
             GetIntegerField(INT,int,Int)\
             GetIntegerField(BYTE,byte,Byte)\
@@ -2539,7 +2539,7 @@ int getFieldOrMethod(lua_State *L) {
             }\
             default:{\
             JObject object=isStatic?env->GetStaticObjectField(type->getType(),info->id):env->GetObjectField(obj->object,info->id);\
-            if(object==nullptr) lua_pushnil(L);else pushJavaObject(L,context,object);\
+            if(object==nullptr) lua_pushnil(L);else pushJavaObject(L,context,object);break;\
             }}
         PushField();
     } else {
@@ -2617,12 +2617,13 @@ int getField(lua_State *L) {
                 ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str());
     }
     auto&& info = type->deductField(env,&flag->member->fields,
-                                flag->isDuplicatedField ? nullptr : *fieldTypeRef);
+                                flag->isDuplicatedField ? *fieldTypeRef:nullptr);
     if(info== nullptr){
         TopErrorHandle( "The class doesn't have a field name %s with type %s", getMemberName(env, env->
                 ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str(),(*fieldTypeRef)->name(env).str());
     }
     JavaType *fieldType = info->type.rawType;
+    auto context=flag->context;
     PushField();
     return 1;
 }
@@ -2648,7 +2649,7 @@ int setField(lua_State *L) {
                 ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str());
     }
     auto info = type->deductField(env,&flag->member->fields,
-                                flag->isDuplicatedField ? nullptr : *fieldTypeRef);
+                                flag->isDuplicatedField ? *fieldTypeRef  :nullptr);
     if(info== nullptr){
         TopErrorHandle( "The class doesn't have a field name %s with type %s", getMemberName(env, env->
                 ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str(),(*fieldTypeRef)->name(env).str());
@@ -2669,7 +2670,7 @@ int setField(lua_State *L) {
     }
 #define SetIntegerField(typeID,jtype, jname) SetField(typeID,jtype,jname,integer)
 #define SetFloatField(typeID,jtype, jname) SetField(typeID,jtype,jname,number)
-#define SET_FIELD()
+#define SET_FIELD()\
     switch(fieldType->getTypeID()){\
         SetIntegerField(INT,int,Int)\
         SetField(BOOLEAN,boolean,Boolean,isTrue)\
@@ -2767,8 +2768,8 @@ int setFieldOrArray(lua_State *L) {
         ERROR("No such field");
     }
     if (arr->size() > 1) ERROR("The name %s repsents not only one field", name.data());
-    auto &&info = arr->at(0);
-    JavaType *fieldType = info.type.rawType;
+    auto &&info = arr->begin();
+    JavaType *fieldType = info->type.rawType;
     ValidLuaObject luaObject;
     if (unlikely(!parseLuaObject(L, context, 3, luaObject))) {
         ERROR("Invalid value passed to java as a field with type:%s",
@@ -2912,7 +2913,7 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
         }
         lua_pushcclosure(L, info->cFunc, count);
     } else {
-        luaL_loadbuffer(L, &info->funcData.at(0), info->funcData.size(), "");
+        luaL_loadbuffer(L, info->funcData.begin(), info->funcData.size(), "");
     }
     int funcIndex = lua_gettop(L);
     current->emplace(info, funcIndex);
