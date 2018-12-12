@@ -105,7 +105,7 @@ public class ScriptContext {
 
     private static native void addObject(long ptr, String s, Object ob, boolean local);
 
-    private static native void addMethod(long ptr, String name, String method, Object instOrType, boolean local);
+    private static native void addMember(long ptr, String name, String method, Object inst, Class type, boolean local);
 
     private static native Object invokeLuaFunction(long ptr, boolean isInterface,
                                                    long funcRef, Object proxy, int[] types, Object[] args);
@@ -149,7 +149,7 @@ public class ScriptContext {
         return null;
     }
 
-    private static boolean hasMethod(Class origClass,String name,boolean isStatic){
+    private static boolean hasMember(Class origClass, String name, boolean isStatic){
         for (Class<?> clazz=origClass; clazz != null; clazz = clazz
                 .getSuperclass()) {
                 Method[] methods = getDeclaredMethods(clazz);
@@ -157,6 +157,9 @@ public class ScriptContext {
                     if(isStatic==Modifier.isStatic(m.getModifiers())&&m.getName().equals(name))
                         return true;
                 }
+                Field[] fields=getDeclaredFields(clazz);
+                if(binarySearchMember(fields,name,isStatic,false)>=0)
+                    return true;
         }
         return false;
     }
@@ -1503,6 +1506,7 @@ public class ScriptContext {
      * @return this
      */
     public final ScriptContext addToLua(String name, Object obj, boolean local) {
+        if(name==null) throw new NullPointerException();
         addObject(nativePtr, name, obj, local);
         return this;
     }
@@ -1510,27 +1514,45 @@ public class ScriptContext {
     /**
      * @see ScriptContext#addToLua(String, String, Object, boolean)
      */
-    public ScriptContext addToLua(String luaName, String methodName, Object instOrType) throws NoSuchMethodException {
-        return addToLua(luaName, methodName, instOrType, false);
+    public ScriptContext addToLua(String luaName, String memberName, Object instOrType){
+        return addToLua(luaName, memberName, instOrType, false);
     }
-
     /**
      *
      * @param luaName lua global name
-     * @param methodName method name in the class
-     * @param instOrType o bject for method or the declaring class
+     * @param memberName member name in the class
+     * @param instOrType object for method or the declaring class
      * @param local false:the method to be added to all lua state,and will be added to new lua states,
      *              true:the method to be added to only current state.If no running state, no operation.
      * @return this
-     * @throws NoSuchMethodException if the method not found
+     * @throws LuaException if the member not found
      */
-    public ScriptContext addToLua(String luaName, String methodName, Object instOrType, boolean local) throws NoSuchMethodException {
-        if (instOrType == null) throw new IllegalArgumentException("No permitted:null");
-        boolean isStatic = instOrType instanceof Class;
-        if (!hasMethod(isStatic?(Class) instOrType:instOrType.getClass(),methodName,isStatic)) {
-            throw new NoSuchMethodException((isStatic?instOrType:instOrType.getClass())+"->"+methodName);
+    public ScriptContext addToLua(String luaName, String memberName, Object instOrType, boolean local) {
+        if(instOrType instanceof Class)
+            return addToLua(luaName,memberName,null,(Class) instOrType,local);
+        return addToLua(luaName,memberName,instOrType,null,local);
+    }
+    /**
+     *
+     * @param luaName lua global name
+     * @param memberName member name in the class
+     * @param inst instance for the method. Must be null for static method
+     * @param type type for the method,nullable for object method
+     * @param local false:the method to be added to all lua state,and will be added to new lua states,
+     *              true:the method to be added to only current state.If no running state, no operation.
+     * @return this
+     * @throws LuaException if the member not found
+     */
+    public ScriptContext addToLua(String luaName, String memberName, Object inst,Class type, boolean local) {
+        if(type==null&& inst==null||luaName==null||memberName==null) throw new NullPointerException();
+        if(type==null) type=inst.getClass();
+        else if(inst!=null&& !type.isInstance(inst))
+            throw new IllegalArgumentException("The object if of type "+inst.getClass().getName()+" rather than type "+type.getName());
+        boolean isStatic = inst==null;
+        if (!hasMember(type,memberName,isStatic)) {
+            throw new LuaException("No member is named "+memberName+ " in "+type);
         }
-        addMethod(nativePtr, luaName, methodName, instOrType, local);
+        addMember(nativePtr, luaName, memberName, inst,type, local);
         return this;
     }
 
