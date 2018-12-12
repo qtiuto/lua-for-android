@@ -55,7 +55,8 @@ namespace std {
     };
 
 }
-class JavaType;
+//class JavaType;
+class Member;
 class ScriptContext;
 struct ThreadContext{
     TJNIEnv* env;
@@ -147,6 +148,11 @@ public:
     ~ThreadContext();
 };
 
+struct AddInfo{
+    JavaType* type;
+    jobject obj;
+    Member* member;
+};
 class ScriptContext {
 
     struct hashJClass {
@@ -168,7 +174,7 @@ class ScriptContext {
     typedef Map<jclass, JavaType *,hashJClass,equalJClass> TypeMap;
     typedef Map<intptr_t , lua_State *> StateMap;
     typedef Map<String, CrossThreadLuaObject> CrossThreadMap;
-    typedef Map<String, std::pair<String, jobject>> AddedMap;
+    typedef Map<String, AddInfo> AddedMap;
     const bool importAll;
     const bool localFunction;
     ThreadLocal<ThreadContext,true> threadContext;
@@ -251,11 +257,10 @@ public:
         return context;
     }
 
-    void addJavaObject(const char *name, const char *methodName, jobject object,
-                       bool currentOnly);
+    void addJavaObject(TJNIEnv *env, const char *name, const char *methodName, jobject object, JavaType *type,
+                           bool currentOnly);
 
-    void pushAddedObject(TJNIEnv *env, lua_State *L, const char *name, const char *methodName,
-                         jobject obj);
+    void pushAddedObject(TJNIEnv *env, lua_State *L, const char *name,const AddInfo& addInfo);
 
     void registerLogger(TJNIEnv *env, jobject out, jobject err);
 

@@ -6,14 +6,15 @@
 
 #define FLAG_INDEX lua_upvalueindex(1)
 #define OBJ_INDEX lua_upvalueindex(2)
-#define NAME_INDEX lua_upvalueindex(3)
+struct Member;
 struct MemberFlag {
+    const Member* member;
+    ThreadContext* context;
     bool isStatic;
     union {
         bool isField;
         bool isNotOnlyMethod;
     };
     bool isDuplicatedField;
-    ThreadContext* context;
 };
 #endif //LUADROID_JAVA_METHOD_H

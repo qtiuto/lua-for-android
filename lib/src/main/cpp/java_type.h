@@ -13,77 +13,78 @@
 
 
 class ScriptContext;
+struct ParameterizedType{
+    JavaType* rawType;
+    jobject realType= nullptr;
+    ParameterizedType(){}
+    ParameterizedType(const ParameterizedType&)= delete;
+    ParameterizedType(ParameterizedType&& o):rawType(o.rawType),realType(o.realType){
+        o.realType= nullptr;
+    }
 
+    ParameterizedType& operator=(ParameterizedType&& o){
+        this->~ParameterizedType();
+        rawType=o.rawType;
+        realType=o.realType;;
+        o.realType= nullptr;
+        return *this;
+    }
+    ~ParameterizedType(){
+        if(realType)
+            _GCEnv->DeleteGlobalRef(realType);
+    }
+};
+struct FieldInfo {
+    jfieldID id;
+    ParameterizedType type;
+    FieldInfo()= default;
+    FieldInfo(FieldInfo&& other):id(other.id),type(std::move(other.type)){};
+    FieldInfo& operator=(FieldInfo&& other){
+        this->~FieldInfo();
+        id=other.id;
+        type=std::move(other.type);
+        return *this;
+    };
+};
+struct MethodInfo {
+    jmethodID id;
+    ParameterizedType returnType;
+    Array<ParameterizedType> params;
+    MethodInfo()= default;
+    MethodInfo(MethodInfo&& other):id(other.id),returnType(std::move(other.returnType)),params(std::move(other.params)){};
+    MethodInfo& operator=(MethodInfo&& other){
+        this->~MethodInfo();
+        id=other.id;
+        returnType=std::move(other.returnType);
+        params=std::move(other.params);
+        return *this;
+    };
+};
+
+
+
+typedef Array<MethodInfo> MethodArray;
+typedef Array<FieldInfo> FieldArray;
+//Should I optimize for field of length 1, it seems failed
+struct Member{
+    MethodArray methods;
+    FieldArray fields;
+    Member(){}
+    Member(Member&& other):methods(std::move(other.methods)),fields(std::move(other.fields)){};
+    Member& operator=(Member&& other){
+        this->~Member();
+        methods=std::move(other.methods);
+        fields=std::move(other.fields);
+        return *this;
+    };
+};
+struct MockField{
+    const Member* getter;
+    const Member* setter;
+};
 class JavaType {
 public:
-    struct ParameterizedType{
-        JavaType* rawType;
-        jobject realType= nullptr;
-        ParameterizedType(){}
-        ParameterizedType(const ParameterizedType&)= delete;
-        ParameterizedType(ParameterizedType&& o):rawType(o.rawType),realType(o.realType){
-            o.realType= nullptr;
-        }
 
-        ParameterizedType& operator=(ParameterizedType&& o){
-            this->~ParameterizedType();
-            rawType=o.rawType;
-            realType=o.realType;;
-            o.realType= nullptr;
-            return *this;
-        }
-        ~ParameterizedType(){
-            if(realType)
-                _GCEnv->DeleteGlobalRef(realType);
-        }
-    };
-    struct FieldInfo {
-        jfieldID id;
-        ParameterizedType type;
-        FieldInfo()= default;
-        FieldInfo(FieldInfo&& other):id(other.id),type(std::move(other.type)){};
-        FieldInfo& operator=(FieldInfo&& other){
-            this->~FieldInfo();
-            id=other.id;
-            type=std::move(other.type);
-            return *this;
-        };
-    };
-    struct MethodInfo {
-        jmethodID id;
-        ParameterizedType returnType;
-        Array<ParameterizedType> params;
-        MethodInfo()= default;
-        MethodInfo(MethodInfo&& other):id(other.id),returnType(std::move(other.returnType)),params(std::move(other.params)){};
-        MethodInfo& operator=(MethodInfo&& other){
-            this->~MethodInfo();
-            id=other.id;
-            returnType=std::move(other.returnType);
-            params=std::move(other.params);
-            return *this;
-        };
-    };
-
-    struct MockField{
-        const char* getter;
-        const char* setter;
-    };
-
-    typedef Array<MethodInfo> MethodArray;
-    typedef Array<FieldInfo> FieldArray;
-    //Should I optimize for field of length 1, it seems failed
-    struct Member{
-        MethodArray methods;
-        FieldArray fields;
-        Member(){}
-        Member(Member&& other):methods(std::move(other.methods)),fields(std::move(other.fields)){};
-        Member& operator=(Member&& other){
-            this->~Member();
-            methods=std::move(other.methods);
-            fields=std::move(other.fields);
-            return *this;
-        };
-    };
     enum TYPE_ID{
         BYTE,
         SHORT,
@@ -163,10 +164,17 @@ public:
     jarray newArray(ThreadContext *context,jint size, Vector<ValidLuaObject> &params);
     Member* ensureMember(TJNIEnv *env, const String &name, bool isStatic);
 
+    const MethodInfo *deductMethod(TJNIEnv* env,const MethodArray* array, Vector<JavaType *> &types,
+                                   Vector<ValidLuaObject> *arguments);
     const MethodInfo *findMethod(TJNIEnv* env,const String &name, bool isStatic, Vector<JavaType *> &types,
-                                 Vector<ValidLuaObject> *arguments);
-    const char* findMockName(TJNIEnv* env,const String& name, bool getter);
-    const FieldInfo *findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type);
+                                 Vector<ValidLuaObject> *arguments){
+        return deductMethod(env,ensureMethod(env,name,isStatic),types,arguments);
+    }
+    const Member* findMockMember(TJNIEnv *env, const String &name, bool getter);
+    /*const FieldInfo *findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type){
+        return deductField(env,ensureField(env,name,isStatic),type);
+    }*/
+    const FieldInfo *deductField(TJNIEnv* env,const FieldArray* array,  JavaType *type);
     MethodArray *ensureMethod(TJNIEnv* env,const String &s, bool isStatic){
         auto members= ensureMember(env, s, isStatic);
         if(members&&members->methods.size())

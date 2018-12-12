@@ -95,7 +95,7 @@ return nullptr;//unreachable statement;
 }
 
 
-JavaType::Member* JavaType::ensureMember(TJNIEnv *env, const String &name, bool isStatic) {
+Member* JavaType::ensureMember(TJNIEnv *env, const String &name, bool isStatic) {
     auto &&map = isStatic ? staticMembers : objectMembers;
     auto &&iter = map.find(name);
     if (iter != map.end()){
@@ -161,11 +161,8 @@ JavaType::Member* JavaType::ensureMember(TJNIEnv *env, const String &name, bool 
 }
 
 
-const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
-        const String &name, bool isStatic,
-        Vector<JavaType *> &types,
-        Vector<ValidLuaObject> *arguments) {
-    auto &&array = ensureMethod(env,name, isStatic);
+const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, Vector<JavaType *> &types,
+                                                   Vector<ValidLuaObject> *arguments) {
     if (unlikely(!array)) return nullptr;
     int paramsLen = (int) types.size();
     const MethodInfo *select = nullptr;
@@ -550,7 +547,7 @@ const JavaType::MethodInfo *JavaType::findMethod(TJNIEnv* env,
     return select;
 }
 
-const char* JavaType::findMockName(TJNIEnv* env,const String& name, bool get){
+const Member* JavaType::findMockMember(TJNIEnv *env, const String &name, bool get){
     auto && iter=mockFields.find(name);
     if(iter==mockFields.end())
     {
@@ -562,24 +559,23 @@ const char* JavaType::findMockName(TJNIEnv* env,const String& name, bool get){
             return nullptr;
         const char* gett=getter.get()== nullptr? nullptr:getter.str();
         const char* sett=setter.get()== nullptr? nullptr:setter.str();
+        const Member* getMem= nullptr;
+        const Member* setMem= nullptr;
         if(gett){
             FakeString tmp(gett);
-            ensureMember(env,tmp,false);
-            gett=objectMembers.find(tmp)->first.data();
+            getMem=ensureMember(env,tmp,false);
         }
         if(sett){
             FakeString tmp(sett);
-            ensureMember(env,tmp,false);
-            sett=objectMembers.find(tmp)->first.data();
+            setMem=ensureMember(env,tmp,false);
         }
-        mockFields.emplace(name,MockField{gett,sett});
-        return get?gett:sett;
+        mockFields.emplace(name,MockField{getMem,setMem});
+        return get?getMem:setMem;
     } else{
         return get?iter->second.getter:iter->second.setter;
     }
 }
-const JavaType::FieldInfo *JavaType::findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type) {
-    auto &&array = ensureField(env,name, isStatic);
+const FieldInfo *JavaType::deductField(TJNIEnv* env,const FieldArray* array, JavaType *type){
     if (unlikely(array == nullptr))
         return nullptr;
     if (type == nullptr) {
