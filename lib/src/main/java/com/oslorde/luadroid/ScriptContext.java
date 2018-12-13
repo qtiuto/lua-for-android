@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * For running a lua context
  */
 public class ScriptContext {
+
     private static final int JAVA_CHAR = 0;
     private static final int JAVA_BOOLEAN = 1;
     private static final int JAVA_INTEGER = 2;
@@ -47,6 +48,8 @@ public class ScriptContext {
     private static final int CLASS_B_NUMBER=17;//Number.class
     private static final int CLASS_B_OBJECT=18;//Object.class
     private static final int CLASS_OBJECT =19;
+    private static final boolean DIRECT_FIRST=isDirect(Enum.class.getDeclaredMethods()[0].getModifiers());
+    private static final boolean STATIC_FIRST=Modifier.isStatic(ArrayList.class.getDeclaredFields()[0].getModifiers());
     //Optimize  for the redundant call in new Class Api
     private static  Method sUnchecked;
     private static final Method[] EMPTY_METHODS= new Method[0];
@@ -153,12 +156,13 @@ public class ScriptContext {
         for (Class<?> clazz=origClass; clazz != null; clazz = clazz
                 .getSuperclass()) {
                 Method[] methods = getDeclaredMethods(clazz);
-                for (Method m:methods){
-                    if(isStatic==Modifier.isStatic(m.getModifiers())&&m.getName().equals(name))
+                if(binarySearchMethod(methods,name,isStatic)>=0)
+                    return true;
+                if(!isStatic)
+                    if(binarySearchMethod(methods,name,true)>=0)
                         return true;
-                }
                 Field[] fields=getDeclaredFields(clazz);
-                if(binarySearchMember(fields,name,isStatic,false)>=0)
+                if(binarySearchField(fields,name,isStatic)>=0)
                     return true;
         }
         return false;
@@ -234,20 +238,69 @@ public class ScriptContext {
         }
         return ret;
     }
+    private static  boolean isDirect(int modifier){
+        return (modifier&Modifier.STATIC)!=0||(modifier&Modifier.PRIVATE)!=0;
+    }
+    //Optimize for android only, cause dex file use binary order to store members
+    //Only receive members from declare call;
+    private static long binarySearchMethod(Method[] methods, String name, boolean isDirect){
+        int total = methods.length;
+        if(total ==0) return -1;
+        int low = 0;
+        int high = total - 1;
+        int mid;
+        while (low <= high) {
+            mid= (low + high) >>> 1;
+            Member midVal = methods[mid];
+            boolean  realState=isDirect(midVal.getModifiers());
+            if(realState!=isDirect){
+                if(realState== DIRECT_FIRST)
+                    low=mid+1;
+                else high=mid-1;
+            }else {
+                int cmp = midVal.getName().compareTo(name);
+                if (cmp < 0) low = mid + 1;
+                else if (cmp > 0) high = mid - 1;
+                else {
+                    low=mid-1;
+                    while (low >=0&&methods[low].getName().equals(name) ) --low;
+                    high=mid+1;
+                    while ( high < total &&methods[high].getName().equals(name) )++high;
+                    return ((long)(low+1)<<32)|high;
+                }
+            }
+        }
+
+        return -1;
+        /*for(low=0; low< total; ++low){
+            if(methods[low].getName().equals(name)&&
+                    Modifier.isStatic(methods[low].getModifiers())==isStatic)
+                break;
+        }
+        if(low== total) return -1;
+        high=low+1;
+
+        for (; high< total; ++high){
+            if(!methods[high].getName().equals(name)&&
+                    Modifier.isStatic(methods[high].getModifiers())==isStatic)
+                break;
+        }
+        return ((long)(low)<<32)|high;*/
+    }
 
     //Optimize for android only, cause dex file use binary order to store members
     //Only receive members from declare call;
-    private static long binarySearchMember(Member[] members,String name,boolean isStatic,boolean isMethod){
-        if(members.length==0) return -1;
+    private static long binarySearchField(Field[] fields,String name,boolean isStatic){
+        int total = fields.length;
+        if(total ==0) return -1;
         int low = 0;
-        int high = members.length - 1;
-        boolean staticFirst=Modifier.isStatic(members[0].getModifiers());
+        int high = total - 1;
         while (low <= high) {
             int mid = (low + high) >>> 1;
-            Member midVal = members[mid];
+            Member midVal = fields[mid];
             boolean  realState=Modifier.isStatic(midVal.getModifiers());
             if(realState!=isStatic){
-                if(realState==staticFirst)
+                if(realState== STATIC_FIRST)
                     low=mid+1;
                 else high=mid-1;
             }else {
@@ -258,33 +311,14 @@ public class ScriptContext {
                     high = mid - 1;
                 else {
                     low=mid-1;
-                    while (low >=0&&members[low].getName().equals(name) ){
-                        --low;
-                    }
+                    while (low >=0&&fields[low].getName().equals(name) ) --low;
                     high=mid+1;
-                    //noinspection StatementWithEmptyBody
-                    for (int len=members.length; high <len&&members[high].getName().equals(name); ++high);
+                    while (high < total &&fields[high].getName().equals(name))++high;
                     return ((long)(low+1)<<32)|high;
-                }// key found
+                }
             }
+        }
 
-        }
-        if(isMethod){//Method is not arranged strictly
-            int len=members.length;
-            for(low=0;low<len;++low){
-                if(members[low].getName().equals(name)&&
-                        Modifier.isStatic(members[low].getModifiers())==isStatic)
-                    break;
-            }
-            if(low==len) return -1;
-            high=low+1;
-            for (;high<len;++high){
-                if(!members[high].getName().equals(name)&&
-                        Modifier.isStatic(members[high].getModifiers())==isStatic)
-                    break;
-            }
-            return ((long)(low)<<32)|high;
-        }
         return -1;
     }
 
@@ -294,8 +328,8 @@ public class ScriptContext {
         while (low <= high) {
             int mid = (low + high) >>> 1;
             Member midVal = members[mid];
-            boolean  isStatic=Modifier.isStatic(midVal.getModifiers());
-            if(isStatic){
+            boolean  isDirect=isDirect(midVal.getModifiers());
+            if(isDirect){
                  low=mid+1;
             }else {
                 int cmp = midVal.getName().compareTo(name);
@@ -305,19 +339,19 @@ public class ScriptContext {
                     high = mid - 1;
                 else {
                     return midVal.getName();
-                }// key found
+                }
             }
 
         }
         return null;
     }
-    private static final Map<Class,Method[]> sMethodCache =new LinkedHashMap<Class,Method[]>(20,0.75f,true){
+    private static final Map<Class,Method[]> sMethodCache =new LinkedHashMap<Class,Method[]>(64,0.75f,true){
         @Override
         protected boolean removeEldestEntry(Entry<Class, Method[]> eldest) {
             return true;
         }
     };
-    private static final Map<Class,Field[]> sFieldCache =new LinkedHashMap<Class,Field[]>(20,0.75f,true){
+    private static final Map<Class,Field[]> sFieldCache =new LinkedHashMap<Class,Field[]>(64,0.75f,true){
         @Override
         protected boolean removeEldestEntry(Entry<Class, Field[]> eldest) {
             return true;
@@ -325,10 +359,10 @@ public class ScriptContext {
     };
     private static Field[] getDeclaredFields(Class c){
         synchronized (sFieldCache){
-            if(sFieldCache.containsKey(c)){
-                return sFieldCache.get(c);
-            }
-            Field [] ret = c.getDeclaredFields();
+            Field [] ret =sFieldCache.get(c);
+            if(ret!=null)
+                return ret;
+            ret= c.getDeclaredFields();
             sFieldCache.put(c,ret);
             return ret;
         }
@@ -468,34 +502,46 @@ public class ScriptContext {
             Set<SameMethodEntry> methodSet) {
             do{
                 Method[] methods=getDeclaredMethods(c);
-                long index=binarySearchMember(methods,name,isStatic,true);
+                //static method is always direct, add non-virtual methods for
+                //instance method firstly
+                long index= binarySearchMethod(methods,name,isStatic);
                 if(index>=0) {
-                    int end=(int) index;
-                    for (int i=(int) (index>>>32);i<end;++i) {
-                        Method m=methods[i];
-                        SameMethodEntry entry =  SameMethodEntry.from(m);
-                        if(entry==null) continue;
-                        if (methodSet.add(entry)) {
-                            retList.add(m);
-                            Class<?> returnType = entry.returnType;
-                            retList.add(returnType);
-                            Type genericReturnType = m.getGenericReturnType();
-                            retList.add(genericReturnType==returnType?null:returnType);
-                            Class<?>[] parameterTypes = entry.paramTypes;
-                            retList.add(parameterTypes);
-                            Type[] genericParameterTypes = m.getGenericParameterTypes();
-                            for (int j=genericParameterTypes.length-1;j>=0;--j){
-                                if(genericParameterTypes[j]==parameterTypes[j])
-                                    genericParameterTypes[j]=null;
-                            }
-                            retList.add(genericParameterTypes);
-                        }
+                    addFoundMethod(retList, methodSet, methods, index);
+                }
+                if(!isStatic){//add private methods
+                    index= binarySearchMethod(methods,name,true);
+                    if(index>=0) {
+                        addFoundMethod(retList, methodSet, methods, index);
                     }
                 }
                 for (Class inter : c.getInterfaces()) {
                     checkAndAddMethods(inter, name, isStatic, retList, methodSet);
                 }
             }while ((c=c.getSuperclass())!=null);
+    }
+
+    private static void addFoundMethod(ArrayList<Object> retList, Set<SameMethodEntry> methodSet, Method[] methods, long index) {
+        int end=(int) index;
+        for (int i=(int) (index>>>32);i<end;++i) {
+            Method m=methods[i];
+            SameMethodEntry entry =  SameMethodEntry.from(m);
+            if(entry==null) continue;
+            if (methodSet.add(entry)) {
+                retList.add(m);
+                Class<?> returnType = entry.returnType;
+                retList.add(returnType);
+                Type genericReturnType = m.getGenericReturnType();
+                retList.add(genericReturnType==returnType?null:returnType);
+                Class<?>[] parameterTypes = entry.paramTypes;
+                retList.add(parameterTypes);
+                Type[] genericParameterTypes = m.getGenericParameterTypes();
+                for (int j=genericParameterTypes.length-1;j>=0;--j){
+                    if(genericParameterTypes[j]==parameterTypes[j])
+                        genericParameterTypes[j]=null;
+                }
+                retList.add(genericParameterTypes);
+            }
+        }
     }
 
     private static void checkAndAddFields(Class c,
@@ -511,7 +557,7 @@ public class ScriptContext {
                 } catch (NoSuchFieldException e) {
                     e.printStackTrace();
                 }
-            }else index = binarySearchMember(fields,name,isStatic,false);
+            }else index = binarySearchField(fields,name,isStatic);
             if(index>=0) {
                 int end=(int) index;
                 for (int i=(int) (index>>>32);i<end;++i) {

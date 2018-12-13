@@ -19,9 +19,29 @@ Module app is a lua editor for running test in android.
      
 ## Performance
 
-  Around 2100000 method call(Math.abs) per second on my Oneplus 5 device.
+  Around 2500000 method call(Math.abs) per second on my Oneplus 5 device.
+  Around 1800000 member access plus with method call(Math.abs) per second.
   Note that if you run it in debug mode,CheckJni mode is enabled by the
   vm,and it will take away more than half of the efficiency.
+  
+  Here is the test script:
+  ```lua
+  using "java.lang"
+  --for method call test
+  local abs=Math.abs
+  local t=os.clock()
+  for i=1,2.5e6 do
+      abs(0)
+  end
+  print(os.clock()-t)
+  
+  --for member access test
+  t=os.clock()
+  for i=1,1.8e6 do
+      Math.abs(0)
+  end
+  print(os.clock()-t)
+  ```
   
 ## Documentation
      
@@ -497,7 +517,7 @@ Module app is a lua editor for running test in android.
       end
    ```
    
-   If an object has **getter/setter** method for an non-static property without associated field, 
+   If an object has non-private **getter/setter** method for a non-static property without associated field, 
    then you can operator on the property like a true field. However If the property has only getter method,
    then set operation will raise an error,and vise versa.
    For Example,
@@ -509,6 +529,11 @@ Module app is a lua editor for running test in android.
       view.visibilty=View.GONE
       print(view.visibilty)
    ```
+   
+   A newly accessed member will be by uservalue on lua >= 5.2, so member access should be twice faster than
+   luajit. However, if the member is only access once, the speed may be slower cause a table is requried to
+   be allocated to hold the members. I can not argue which is better. But for performance test, the previous
+   may be better.
    
 ### Type Specification
    You can add a type before the arg in method call,new(),newArray

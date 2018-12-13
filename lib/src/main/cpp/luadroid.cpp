@@ -71,6 +71,8 @@ static int concatString(lua_State *L)noexcept;
 
 static int objectEquals(lua_State *L)noexcept;
 
+static int typeEquals(lua_State *L)noexcept;
+
 static int javaTypeToString(lua_State *L) noexcept;
 
 static int javaObjectToString(lua_State *L)noexcept;
@@ -545,6 +547,9 @@ void ScriptContext::config(lua_State *L) {
         lua_pushlightuserdata(L,context);
         lua_pushcclosure(L, javaTypeToString,1);
         lua_setfield(L, index, "__tostring");
+        lua_pushlightuserdata(L,context);
+        lua_pushcclosure(L, typeEquals,1);
+        lua_setfield(L, index, "__eq");
     }
     if (newMetaTable(L,OBJECT_KEY, JAVA_OBJECT)) {
         int index = lua_gettop(L);
@@ -607,7 +612,7 @@ ThreadContext::~ThreadContext() {
                 scriptContext->removeCurrent();
                 scriptContext = nullptr;
                 vm->DetachCurrentThread();
-            } else{//TODO:should I shound the problem? It doesn't seems to happen.
+            } else{//TODO:should I solve the problem? It doesn't seems to happen.
                 LOGE("Failed to attach at exit=%d",err);
             }
         } else{
@@ -1705,12 +1710,12 @@ int javaUsing(lua_State*L){
             }
             if(!qualifyJavaName(name))continue;
             lua_getglobal(L,name.data());
-            JavaType* existed= (JavaType *)lua_touserdata(L, -1);
-            lua_pop(L,1);
-            if(existed!=type){
+            JavaType** existed= (JavaType **)lua_touserdata(L, -1);
+            if(existed== nullptr||*existed!=type){
                 pushJavaType(L,type);
                 lua_setglobal(L,name.data());
             }
+            lua_pop(L,1);//avoid stack overflow
         }
         
     } else {
@@ -1905,8 +1910,13 @@ static int javaNext(lua_State* L){
     ThreadContext *context = getContext(L);
     JavaObject* object= static_cast<JavaObject *>(lua_touserdata(L, 1));
     TJNIEnv *env = context->env;
-    static jmethodID hasNext= env->GetMethodID(object->type->getType(),"hasNext","()Z");
-    static jmethodID nextEntry= env->GetMethodID(object->type->getType(),"nextEntry","()[Ljava/lang/Object;");
+    static jmethodID hasNext;
+    static jmethodID nextEntry;
+    if(hasNext== nullptr){
+        JClass type(env->FindClass("com/oslorde/luadroid/MapIterator"));
+        hasNext = env->GetMethodID(type, "hasNext", "()Z");
+        nextEntry = env->GetMethodID(type, "nextEntry", "()[Ljava/lang/Object;");
+    }
     jboolean hasMore=env->CallBooleanMethod(object->object,hasNext);
     HOLD_JAVA_EXCEPTION(context,{ throwJavaError(L,context);});
     if(!hasMore){
@@ -1919,7 +1929,7 @@ static int javaNext(lua_State* L){
     if(len==1){
         int64_t key=lua_tointeger(L,2);
         JObject value=env->GetObjectArrayElement(next,0);
-        lua_pushinteger(L,++key);
+        lua_pushinteger(L,key+1);
         if(value== nullptr)lua_pushnil(L);
         else pushJavaObject(L,context,value);
     } else{
@@ -1934,8 +1944,6 @@ static int javaNext(lua_State* L){
     return 2;
 }
 
-
-
 int javaIterate(lua_State* L){
     ThreadContext *context = getContext(L);
     auto env=context->env;
@@ -1949,7 +1957,7 @@ int javaIterate(lua_State* L){
     lua_pushlightuserdata(L,context);
     lua_pushcclosure(L,javaNext,1);
     pushJavaObject(L,context,iterator);
-    lua_pushinteger(L,0);
+    lua_pushinteger(L,-1);
     return 3;
 }
 
@@ -2293,7 +2301,6 @@ int javaGet(lua_State *L) {
         lua_pushnil(L);
     }
     return 1;
-
 }
 
 static JString getMemberName(TJNIEnv *env, const JObject &member) {
@@ -2457,6 +2464,35 @@ static int newCall(lua_State* L){
     lua_call(L,len+1,1);
     return 1;
 }
+#if LUA_VERSION_NUM >=502
+static inline bool tryExistedMember(lua_State* L){
+    if(lua_getuservalue(L,1)==LUA_TNIL){
+        lua_pop(L,1);
+        return false;
+    }
+    lua_pushvalue(L,2);
+    if(lua_rawget(L,-2)==LUA_TNIL){
+        lua_pop(L,1);
+        return false;
+    }
+    return true;
+}
+static inline void saveExistedMember(lua_State* L){
+    if(lua_getuservalue(L,1)==LUA_TNIL){
+        lua_pop(L,1);
+        lua_newtable(L);
+        lua_pushvalue(L,-1);
+        lua_setuservalue(L,1);
+    }
+    lua_pushvalue(L,2);
+    lua_pushvalue(L,-3);
+    lua_rawset(L,-3);
+    lua_pop(L,1);
+}
+#else
+#define tryExistedMember(L) false
+#define saveExistedMember(L)
+#endif
 
 int getFieldOrMethod(lua_State *L) {
     bool isStatic = isJavaTypeOrObject(L,1);
@@ -2487,6 +2523,8 @@ int getFieldOrMethod(lua_State *L) {
         ERROR( "Invaild type to get a field or method:%s", luaL_typename(L, 2));
     }
     MemberStart:
+    if(tryExistedMember(L))
+        return 1;
     FakeString name(lua_tostring(L, 2));
     auto member=type->ensureMember(env,(const String&)name,isStatic);
     FieldArray* fieldArr=nullptr;
@@ -2571,6 +2609,7 @@ int getFieldOrMethod(lua_State *L) {
                 auto getter= type->findMockMember(env, name, true);
                 if(getter){
                     pushMember(context,L,getter,1,false,0,true);
+                    saveExistedMember(L);
                     lua_call(L,0,1);
                     return 1;
                 } else
@@ -2579,6 +2618,7 @@ int getFieldOrMethod(lua_State *L) {
             return 0;
         }
         pushMember(context, L,member,1, isStatic, fieldCount, isMethod);
+        saveExistedMember(L);
     }
     return 1;
 }
@@ -2758,6 +2798,7 @@ int setFieldOrArray(lua_State *L) {
             auto setter= type->findMockMember(env, name, false);
             if(setter){
                 pushMember(context, L, setter, 1, false, 0, true);
+                saveExistedMember(L);
                 lua_pushvalue(L,3);
                 lua_call(L,1,0);
                 return 0;
@@ -2781,6 +2822,15 @@ int setFieldOrArray(lua_State *L) {
     return 0;
 
 
+}
+
+int typeEquals(lua_State *L){
+    JavaType **type1 = (JavaType **) testUData(L, 1, TYPE_KEY);
+    JavaType **type2 = (JavaType **) testUData(L, 2, TYPE_KEY);
+    if (type1 == nullptr || type2 == nullptr) {
+        lua_pushboolean(L, false);
+    } else lua_pushboolean(L,*type1==*type2);
+    return 1;
 }
 
 int objectEquals(lua_State *L) {
