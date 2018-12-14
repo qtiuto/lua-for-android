@@ -2517,7 +2517,7 @@ int getFieldOrMethod(lua_State *L) {
         }
     }
     if (unlikely(!luaL_isstring(L, 2))){
-        if(!isStatic&&(lua_isnumber(L,2)||testType(L,2,OBJECT_KEY))){
+        if(!isStatic){
             return pushMapValue(L,context,env,obj->object);
         }
         ERROR( "Invaild type to get a field or method:%s", luaL_typename(L, 2));
@@ -2609,7 +2609,6 @@ int getFieldOrMethod(lua_State *L) {
                 auto getter= type->findMockMember(env, name, true);
                 if(getter){
                     pushMember(context,L,getter,1,false,0,true);
-                    saveExistedMember(L);
                     lua_call(L,0,1);
                     return 1;
                 } else
@@ -2798,7 +2797,6 @@ int setFieldOrArray(lua_State *L) {
             auto setter= type->findMockMember(env, name, false);
             if(setter){
                 pushMember(context, L, setter, 1, false, 0, true);
-                saveExistedMember(L);
                 lua_pushvalue(L,3);
                 lua_call(L,1,0);
                 return 0;
