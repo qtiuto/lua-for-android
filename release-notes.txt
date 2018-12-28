@@ -1,4 +1,4 @@
-version 1.3.0
+version 1.3.0:
 1. change proxy callback syntax and add default handler for proxy
 2. support vararg java functions
 3. bug fix for too many java objects
