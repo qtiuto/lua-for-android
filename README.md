@@ -45,7 +45,8 @@ Module app is a lua editor for running test in android.
  
 ## Documentation
 
-##Restrict
+###Restrict
+
   Make sure your code won't keep more than 10000 java object in global table or referred by global table.
   Jni actually has global reference number limit (51200) and to avoid meeting this limit. I set a custom
   limit for the number of java object a lua state can hold.
