@@ -45,7 +45,7 @@ Module app is a lua editor for running test in android.
  
 ## Documentation
    
-   For documentation,see [wiki]((../../wiki/Home))
+   For documentation,see [wiki](../../wiki/Home).
      
 ## Email: 
  <qtiuto@gmail.com>     
