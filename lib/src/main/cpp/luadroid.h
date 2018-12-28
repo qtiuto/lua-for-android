@@ -27,7 +27,7 @@ if(unlikely(env->ExceptionCheck())){\
 #define INVALID_OBJECT reinterpret_cast<jobject >(-1)
 
 inline void cleanArgs(jvalue *args, int argSize, Vector<ValidLuaObject> &arr, JNIEnv *env) {
-    for (int i =argSize-1; i !=-1; --i) {
+    for (int i =argSize; i--; ) {
         if (arr[i].shouldRelease) {
             jobject ref = args[i].l;
             if (ref != INVALID_OBJECT)
@@ -55,18 +55,35 @@ namespace std {
     };
 
 }
+enum class ContextStorage{
+    PARSED_FUNC,
+    LOADED_FUNC,
+    PARSED_TABLE,
+    LEN
+};
 //class JavaType;
 class Member;
 class ScriptContext;
 struct ThreadContext{
     TJNIEnv* env;
     ScriptContext* scriptContext;
+    int pushedCount;
 private:
     Import* import;
     jthrowable pendingJavaError;
+    void* storage[(int)ContextStorage::LEN];
     inline JClass getTypeNoCheck(const String &className) const;
     inline JavaType* ensureShortArrayType(const char *typeName) ;
 public:
+
+    template <typename T>
+    T* getValue(ContextStorage index){
+        return (T*)storage[(int)index];
+    }
+
+    void setValue(ContextStorage index, void *value){
+        storage[(int)index]=value;
+    }
 
     void setPendingException( const String &msg);
 
@@ -105,11 +122,6 @@ public:
         env->Throw(p);
         env->DeleteLocalRef(p);
     }
-    ScriptContext *changeScriptContext(ScriptContext *newScriptContext) {
-        ScriptContext *old = scriptContext;
-        scriptContext = newScriptContext;
-        return old;
-    }
 
     Import *changeImport(Import *newImport) {
         Import *old = import;
@@ -134,7 +146,8 @@ public:
     JavaType *ensureType(const char *typeName);
     jobject proxy(JavaType *main, Vector<JavaType *> *interfaces,
                   const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
-                  bool shared= false, long nativeInfo=0,jobject superObject= nullptr);
+                  BaseFunction* defaultFunc= nullptr,
+                  bool shared = false, long nativeInfo = 0, jobject superObject = nullptr);
     jvalue luaObjectToJValue( ValidLuaObject &luaObject, JavaType *type,jobject real= nullptr);
 
     jobject luaObjectToJObject( ValidLuaObject &luaObject);

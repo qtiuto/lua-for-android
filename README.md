@@ -42,8 +42,13 @@ Module app is a lua editor for running test in android.
   end
   print(os.clock()-t)
   ```
-  
+ 
 ## Documentation
+
+##Restrict
+  Make sure your code won't keep more than 10000 java object in global table or referred by global table.
+  Jni actually has global reference number limit (51200) and to avoid meeting this limit. I set a custom
+  limit for the number of java object a lua state can hold.
      
 ### Functions
 
@@ -205,7 +210,19 @@ Module app is a lua editor for running test in android.
       ```lua
          ob,str=Type('Object','String') 
       ```
+  * **super**
+      Get an object representing the super object of current object.
+      This method is designed for calling super method in the proxy
+      callback. Or you can call use it to call override method.
+      `super(obj).instanceof(typeof(obj))` may still return true.
+      `super(obj).class` and `typeof(super(obj))` will return the super type.
+      `super(obj).getClass()` is the same as `obj.getClass()`.
       
+      Equals to `obj.super`
+  * **typeof**
+      Get the type of given obj
+      
+      Equals to `Type(obj.class)`        
   * **instanceof**:  
   
       To check whether the given object is an instance of the give type.
@@ -351,10 +368,10 @@ Module app is a lua editor for running test in android.
       ```lua
       proxy([class to extend or object of class to extend],
        [interfaces to implement]..., 
-       [method name,parameter types...,handler function]...,--or
-       [function] --for functional interface only
-       [shared classloader],--for extension type only
-       [initial args for constructor]...)--for extension type only
+       [method name,parameter types...,handler function]...,
+       [function] --for handling all the unspecified methods
+       [shared classloader],--for extending only
+       [initial args for constructor]...)--for extending only
       ```
       or 
       ```lua
@@ -366,15 +383,14 @@ Module app is a lua editor for running test in android.
        
        --super and interfaces can't be nil at the same time
        
-       methods=function (...) end,--function to handle the only method of a functional interface
-       --or 
-        methodName=function(...) end,--function to handle all method with the same name
+       methods={methodName=
+        function(...) end,--function to handle all method with the same name
         --or
         {
          [param types...,function (...) end]...--handle specific method
         },
-       } ,
-       
+       },
+       all=function(...) end --for handling all the unspecified methods
        --alternative,default is false for extension type only
        shared=true or false, 
        
@@ -391,7 +407,7 @@ Module app is a lua editor for running test in android.
       proxy(Type('Runanble'),'run',function() print 'ty' end).run()
       --or
       local obj=Type('ArrayList')(5)
-      proxy(obj,'equals',function(obj,thiz) return obj==thiz end).
+      proxy(obj,'equals',function(thiz,name,obj) return obj==thiz end).
       equals(obj)
       --or
       proxy{
@@ -404,17 +420,16 @@ Module app is a lua editor for running test in android.
       }
       ```
       
-     **Note:**
+      The callback function passed in will receive following args
+      The first is this object represent the obj itself,and the second
+      is the name, while the rest are the arguments passed in.
       
+     **Note:**
+       
        If you passed an object to extend,then the proxy object is 
        directly allocated and have all fields from the object to be
        copied into the return object without constructor call.
        See `ClassBuilder#cloneFromSuper` for more information
-       
-       A value representing the proxy object is appended after args during
-       function callback
-       
-       For extension usage,a value represents the super is appended
        
        Interface implementation is supported by **java.lang.reflect.Proxy**
        but class extension is supported by **dexmaker**, which may consume
@@ -423,10 +438,14 @@ Module app is a lua editor for running test in android.
        Whether the object is multi-thread supported is determined by
        whether localFunction is set in the constructor of ScriptContext
        
-       When the object is multi-thread supported, then when function is
-       saved, its upvalues will be copied in. However, since the global
-       values it refers to can't be determined, make sure the function
-       doesn't refers to any value it can't access in another thread.
+       When the object is multi-thread supported, then when functions  are
+       saved, their upvalues will be copied in. Make sure the function
+       doesn't refers to any global value it can't access in another thread.
+       
+       The function passed in for 'all' can't handler the following three method
+       **toString**,**hashCode**,**equals** for they may trigger infinite loop
+       when used by internal functions like **print**,**==**.Tho override them
+       specified it by yourself
     
 ### Multi-thread Support
 
@@ -581,12 +600,27 @@ Module app is a lua editor for running test in android.
    has the same weight, which method is chosen is unspecified. To clarify
    your intention, add a type before the table when calling a method.
    
-   User date is treated as integer.
-     
-
+   Light user data is treated as integer.
+   
+   Full user data is treated as null.
+   
+   If the method is vararg and its info is not remove by proguard, then
+   you can call it like you use do in java. e.g.
+   ```lua
+   using java.lang
+   String.format("%d,%d,%d,%d",1,3,4,6)
+   --or
+   String.format("%d,%d,%d,%d",{1,3,4,6})
+   ```  
+   
+   Passing a null as a vararg array is allowed,but its result is undefined.
+   If you want to pass a table or an array as the only argument for things like 
+   **Object... args**,  cast it to the **Object** first. or it will be regarded
+   as the argument for the vararg array.
+   
 ### Automatic Conversion
     
-   For field set and method call or proxy return,lua object will be converted
+   For field set and method call or **proxy** return,lua object will be converted
    automatically according to the type.Type check ha thse same rule in 
    method deduction.If type check failed,an exception may be thrown
      
@@ -601,11 +635,11 @@ Module app is a lua editor for running test in android.
      
    For object types,no conversion.
      
-   For function,like call proxy with only one type and one function
+   For function,like call **proxy** with only one type and one function
    provided.
      
    For table, if the table is convertible, it's converted by the table converter
-   else it's like call proxy with super set to the type and methods set to 
+   else it's like call **proxy** with **super** set to the type and methods set to 
    the table if it's valid to be converted to be proxied. Additionally, generic type
    check and conversion will be performed automatically, That's to say, 'Type' such as 
    List<Integer>,List<Short> or List<List<String>> will be supported.
@@ -666,13 +700,18 @@ Module app is a lua editor for running test in android.
    
 ### ClassBuilder Api
    Class Builder is imported default to support dynamic class generation.
-   Lua function callback rule is the same as proxy.
+   Lua function callback rule is the same as **proxy**.Any lua function that have
+   multi-returned results will only have the first result returned as the java
+   result.
    e.g.
    
    ```lua
     ClassBuilder.declare().addMethod("run:,"V",function () print "ggg" end)
    .newInstance(Type("Object")()).run()
    ```
+   
+   Lua Function should be generated for a real lua function rather than from 
+   a java implementation.
    
    It doesn't support generating static methods or constructors cause class object
    won't be freed in dalvik. When the mini sdk version of this project turn to 21,

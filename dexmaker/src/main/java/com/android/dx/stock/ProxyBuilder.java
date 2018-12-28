@@ -188,6 +188,7 @@ public final class ProxyBuilder<T> {
     private Set<Class<?>> interfaces = new HashSet<>();
     private Method[] methods;
     private boolean sharedClassLoader;
+    private boolean useCallSuper;
 
     private ProxyBuilder(Class<T> clazz) {
         baseClass = clazz;
@@ -284,7 +285,7 @@ public final class ProxyBuilder<T> {
     }
 
     private static <T, G extends T> void generateCodeForAllMethods(DexMaker dexMaker,
-                                                                   TypeId<G> generatedType, Method[] methodsToProxy, TypeId<T> superclassType) {
+                                                                   TypeId<G> generatedType, Method[] methodsToProxy, TypeId<T> superclassType,boolean callSuper) {
         TypeId<InvocationHandler> handlerType = TypeId.get(InvocationHandler.class);
         TypeId<Method[]> methodArrayType = TypeId.get(Method[].class);
         FieldId<G, InvocationHandler> handlerField =
@@ -420,21 +421,23 @@ public final class ProxyBuilder<T> {
              *     }
              */
             // TODO: don't include a super_ method if the target is abstract!
-            MethodId<G, ?> callsSuperMethod = generatedType.getMethod(
-                    resultType, superMethodName(method), argTypes);
-            Code superCode = dexMaker.declare(callsSuperMethod, PUBLIC);
-            Local<G> superThis = superCode.getThis(generatedType);
-            Local<?>[] superArgs = new Local<?>[argClasses.length];
-            for (int i = 0; i < superArgs.length; ++i) {
-                superArgs[i] = superCode.getParameter(i, argTypes[i]);
-            }
-            if (void.class.equals(returnType)) {
-                superCode.invokeSuper(superMethod, null, superThis, superArgs);
-                superCode.returnVoid();
-            } else {
-                Local<?> superResult = superCode.newLocal(resultType);
-                invokeSuper(superMethod, superCode, superThis, superArgs, superResult);
-                superCode.returnValue(superResult);
+            if (callSuper) {
+                MethodId<G, ?> callsSuperMethod = generatedType.getMethod(
+                        resultType, superMethodName(method), argTypes);
+                Code superCode = dexMaker.declare(callsSuperMethod, PUBLIC);
+                Local<G> superThis = superCode.getThis(generatedType);
+                Local<?>[] superArgs = new Local<?>[argClasses.length];
+                for (int i = 0; i < superArgs.length; ++i) {
+                    superArgs[i] = superCode.getParameter(i, argTypes[i]);
+                }
+                if (void.class.equals(returnType)) {
+                    superCode.invokeSuper(superMethod, null, superThis, superArgs);
+                    superCode.returnVoid();
+                } else {
+                    Local<?> superResult = superCode.newLocal(resultType);
+                    invokeSuper(superMethod, superCode, superThis, superArgs, superResult);
+                    superCode.returnValue(superResult);
+                }
             }
         }
     }
@@ -616,6 +619,11 @@ public final class ProxyBuilder<T> {
         return this;
     }
 
+    public ProxyBuilder<T> useCallSuper(boolean callSuper) {
+        this.useCallSuper = callSuper;
+        return this;
+    }
+
     public ProxyBuilder<T> withSharedClassLoader() {
         this.sharedClassLoader = true;
         return this;
@@ -708,7 +716,7 @@ public final class ProxyBuilder<T> {
             }
         });
 
-        generateCodeForAllMethods(dexMaker, generatedType, methodsToProxy, superType);
+        generateCodeForAllMethods(dexMaker, generatedType, methodsToProxy, superType,useCallSuper);
         dexMaker.declare(generatedType, generatedName + ".generated", PUBLIC, superType, getInterfacesAsTypeIds());
         if (sharedClassLoader) {
             dexMaker.setSharedClassLoader(baseClass.getClassLoader());

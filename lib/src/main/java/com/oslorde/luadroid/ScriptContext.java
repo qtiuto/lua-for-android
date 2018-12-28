@@ -2,9 +2,13 @@ package com.oslorde.luadroid;
 
 
 import android.os.Build;
-import android.util.*;
+import android.util.SparseArray;
+import android.util.SparseBooleanArray;
+import android.util.SparseIntArray;
+import android.util.SparseLongArray;
 import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
+import com.oslorde.luadroid.set.*;
 import dalvik.system.BaseDexClassLoader;
 import dalvik.system.DexFile;
 import org.json.JSONArray;
@@ -50,9 +54,27 @@ public class ScriptContext {
     private static final int CLASS_OBJECT =19;
     private static final boolean DIRECT_FIRST=isDirect(Enum.class.getDeclaredMethods()[0].getModifiers());
     private static final boolean STATIC_FIRST=Modifier.isStatic(ArrayList.class.getDeclaredFields()[0].getModifiers());
+    private static final Method[] EMPTY_METHODS= new Method[0];
+    private static final Map<Class,Method[]> sMethodCache =new LinkedHashMap<Class,Method[]>(64,0.75f,true){
+        @Override
+        protected boolean removeEldestEntry(Entry<Class, Method[]> eldest) {
+            return true;
+        }
+    };
+    private static final Map<Class,Field[]> sFieldCache =new LinkedHashMap<Class,Field[]>(64,0.75f,true){
+        @Override
+        protected boolean removeEldestEntry(Entry<Class, Field[]> eldest) {
+            return true;
+        }
+    };
+    private static final Comparator<String> sClassPrefixComparator = (o1, o2) -> {
+        int length = o2.length();
+        if (o1.length()> length +1&&o1.charAt(length)=='.'&&o1.startsWith(o2)&&o1.indexOf('.', length +1)==-1) return 0;
+        return o1.compareTo(o2);
+    };
+    static Method sEqualNameAndParameters;
     //Optimize  for the redundant call in new Class Api
     private static  Method sUnchecked;
-    private static final Method[] EMPTY_METHODS= new Method[0];
     private static Field mDexCookie;
     private static boolean sUseList;
 
@@ -63,6 +85,7 @@ public class ScriptContext {
                 else if(Build.VERSION.SDK_INT>=21){
                     sUseList=true;
                     sUnchecked=Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked",boolean.class,List.class);
+                    sEqualNameAndParameters=Method.class.getDeclaredMethod("equalNameAndParameters",Method.class);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -78,6 +101,11 @@ public class ScriptContext {
     private long nativePtr;
     private OutputStream outLogger;
     private OutputStream errLogger;
+    //Too many memory usages.
+    private LightSet<String> dexFiles;
+
+    //private native static void nativeClean(long ptr);
+    private ArrayList<String[]> classes;
 
     public ScriptContext() {
         this(true, false);
@@ -97,8 +125,6 @@ public class ScriptContext {
 
     private native static synchronized void nativeClose(long ptr);
 
-    //private native static void nativeClean(long ptr);
-
     private static native void registerLogger(long ptr, OutputStream out, OutputStream err);
 
     private static native Object[] runScript(long ptr, Object s, boolean isFile,
@@ -110,16 +136,20 @@ public class ScriptContext {
 
     private static native void addMember(long ptr, String name, String method, Object inst, Class type, boolean local);
 
-    private static native Object invokeLuaFunction(long ptr, boolean isInterface,
-                                                   long funcRef, Object proxy, int[] types, Object[] args);
+    private static native Object invokeLuaFunction(long ptr, long funcRef,boolean multiRet, Object proxy, String name,int[] types, Object[] args);
+
+    private static native Object invokeSuper(Object thiz,Method m,int mid,Object[] args);//Only for calling ObjectMethod
 
     private static native Object constructChild(long ptr, Class proxyClass, long nativeInfo);
 
-    private native static void releaseFunc(long ptr);
+    private native static void referFunc(long ptr,boolean deRefer);
 
     private static native int getClassType(long ptr,Class c);
 
+    private static native boolean sameSigMethod(Method m,Method f,Method worker);
+
     private static native String[][] getBootClassList();
+
     private static native String[][] getClassList(Object cookie);
 
     /**
@@ -238,9 +268,11 @@ public class ScriptContext {
         }
         return ret;
     }
+
     private static  boolean isDirect(int modifier){
         return (modifier&Modifier.STATIC)!=0||(modifier&Modifier.PRIVATE)!=0;
     }
+
     //Optimize for android only, cause dex file use binary order to store members
     //Only receive members from declare call;
     private static long binarySearchMethod(Method[] methods, String name, boolean isDirect){
@@ -345,18 +377,7 @@ public class ScriptContext {
         }
         return null;
     }
-    private static final Map<Class,Method[]> sMethodCache =new LinkedHashMap<Class,Method[]>(64,0.75f,true){
-        @Override
-        protected boolean removeEldestEntry(Entry<Class, Method[]> eldest) {
-            return true;
-        }
-    };
-    private static final Map<Class,Field[]> sFieldCache =new LinkedHashMap<Class,Field[]>(64,0.75f,true){
-        @Override
-        protected boolean removeEldestEntry(Entry<Class, Field[]> eldest) {
-            return true;
-        }
-    };
+
     private static Field[] getDeclaredFields(Class c){
         synchronized (sFieldCache){
             Field [] ret =sFieldCache.get(c);
@@ -456,7 +477,7 @@ public class ScriptContext {
     private static Object[] findMembers(Class cl, String name, boolean isField, boolean isStatic) {
         if (isField) {
             ArrayList<Object> retList = new ArrayList<>();
-            Set<Class> fieldSet = new HashSet<>();
+            LightSet<Class> fieldSet = new LightSet<>(1);
             checkAndAddFields(cl,name, isStatic, retList, fieldSet);
             return retList.toArray();
         }
@@ -464,7 +485,7 @@ public class ScriptContext {
             return convertConstructors(cl.getDeclaredConstructors());
         }
         ArrayList<Object> retList = new ArrayList<>();
-        Set<SameMethodEntry> methodSet = new HashSet<>();
+        LightNodeSet<SameMethodEntry> methodSet = new LightNodeSet<>();
         if (!isStatic) {
             if (cl.isInterface() || cl.isArray()) {
                 checkAndAddMethods(Object.class,name, false, retList, methodSet);
@@ -476,7 +497,7 @@ public class ScriptContext {
     }
 
     private static Object[] convertConstructors(Constructor[] constructors) {
-        Object[] ret=new Object[constructors.length*5];
+        Object[] ret=new Object[constructors.length*6];
         int i=0;
         for (Constructor m : constructors) {
             Class[] parameterTypes;
@@ -488,18 +509,24 @@ public class ScriptContext {
             ret[i++]=null;
             ret[i++]= parameterTypes;
             Type[] genericParameterTypes = m.getGenericParameterTypes();
-            for (int j=genericParameterTypes.length-1;j>=0;--j){
+            for (int j=genericParameterTypes.length;j--!=0;){
                 if(genericParameterTypes[j]==parameterTypes[j])
                     genericParameterTypes[j]=null;
             }
             ret[i++]= genericParameterTypes;
+            if(m.isVarArgs()&&parameterTypes[parameterTypes.length-1].isArray()){
+                Type t=genericParameterTypes[genericParameterTypes.length-1];
+                Class r=parameterTypes[parameterTypes.length-1];
+                if(t==r) ret[i++]=r.getComponentType();
+                else ret[i++]=((GenericArrayType)t).getGenericComponentType();
+            }else ret[i++]=null;
         }
         return ret;
     }
 
     private static void checkAndAddMethods(Class c,
             String name, boolean isStatic, ArrayList<Object> retList,
-            Set<SameMethodEntry> methodSet) {
+            LightNodeSet<SameMethodEntry> methodSet) {
             do{
                 Method[] methods=getDeclaredMethods(c);
                 //static method is always direct, add non-virtual methods for
@@ -520,9 +547,11 @@ public class ScriptContext {
             }while ((c=c.getSuperclass())!=null);
     }
 
-    private static void addFoundMethod(ArrayList<Object> retList, Set<SameMethodEntry> methodSet, Method[] methods, long index) {
+    private static void addFoundMethod(ArrayList<Object> retList, LightNodeSet<SameMethodEntry> methodSet, Method[] methods, long index) {
         int end=(int) index;
-        for (int i=(int) (index>>>32);i<end;++i) {
+        int st = (int) (index >>> 32);
+        retList.ensureCapacity(end-st+retList.size());
+        for (int i = st; i<end; ++i) {
             Method m=methods[i];
             SameMethodEntry entry =  SameMethodEntry.from(m);
             if(entry==null) continue;
@@ -540,13 +569,19 @@ public class ScriptContext {
                         genericParameterTypes[j]=null;
                 }
                 retList.add(genericParameterTypes);
+                if(m.isVarArgs()&&parameterTypes[parameterTypes.length-1].isArray()){
+                    Type t=genericParameterTypes[genericParameterTypes.length-1];
+                    Class r=parameterTypes[parameterTypes.length-1];
+                    if(t==null) retList.add(r.getComponentType());
+                    else retList.add(((GenericArrayType)t).getGenericComponentType());
+                }else retList.add(null);
             }
         }
     }
 
     private static void checkAndAddFields(Class c,
             String name, boolean isStatic, ArrayList<Object> retList,
-            Set<Class> fieldSet) {
+            LightSet<Class> fieldSet) {
         do{
             Field[] fields=getDeclaredFields(c);
             long index=-1;
@@ -629,30 +664,27 @@ public class ScriptContext {
     /*
      * * to check whether all the abstract methods of this class has been included;
      */
-    private static void checkAllAbstractMethod(Class cl, Map<MethodSetEntry,MethodSetEntry> methodSet,Map<Method,Long> methodList) {
+    private static void checkAllAbstractMethod(Class cl, MethodSet methodSet) {
         if (cl == Object.class) return;
-        List<Method> methods = new ArrayList<>(Arrays.asList(cl.getMethods()));
         Class thizClass = cl;
         do {
-            methods.addAll(Arrays.asList(getDeclaredMethods(cl)));
+            checkAbstract(cl, methodSet, thizClass);
+            for (Class c:cl.getInterfaces()){
+                checkAllAbstractMethod(c,methodSet);
+            }
             thizClass = thizClass.getSuperclass();
         } while (thizClass != Object.class && thizClass != null);
+    }
 
-        for (Method method : methods)
+    private static void checkAbstract(Class cl, MethodSet methodSet, Class thizClass) {
+        Method[] methods = getDeclaredMethods(thizClass);
+        for (Method method: methods){
             if (Modifier.isAbstract(method.getModifiers())){
-                MethodSetEntry key =  MethodSetEntry.from(method);
-                if(key==null) continue;
-                MethodSetEntry old=methodSet.get(key);
-                if (old==null)
-                    throw new LuaException("The class:" + cl.getName() + " has unimplemented method:" + method);
-                if(!old.m.equals(method)&& method.getDeclaringClass().isAssignableFrom(old.m.getDeclaringClass())){
-                    //only on true to avoid same method in irrelevant methods
-                    methodList.put(method,methodList.remove(old.m));
-                    methodSet.put(key,key);
+                if (!methodSet.contains(method)){
+                        throw new LuaException("The class:" + cl.getName() + " has unimplemented method:" + method);
                 }
             }
-
-
+        }
     }
 
     private static Class resolveType(Type type){
@@ -672,10 +704,10 @@ public class ScriptContext {
        throw new RuntimeException("Unexpected type:"+type);
     }
 
-    static Func getFunc(LuaFunction function,TypeId[] argTypes,TypeId returnType){
+    static Func getFunc(LuaFunction function,String name,TypeId[] argTypes,TypeId returnType){
         InvokeHandler handler= (InvokeHandler) Proxy.getInvocationHandler(function);
-        MethodInfo info=handler.methodMap.values().iterator().next();
-        Func func=handler.context().new Func(info.luaFuncInfo,argTypes,returnType);
+        MethodInfo info=handler.methodMap.firstValue();
+        Func func=handler.context().new Func(info.luaFuncInfo,name,argTypes,returnType);
         info.luaFuncInfo=0;
         return func;
     }
@@ -696,6 +728,54 @@ public class ScriptContext {
             retType = JAVA_OBJECT;
         }
         return retType;
+    }
+
+    private static Object getDexFileCookie(DexFile dexFile){
+        try {
+            if(mDexCookie ==null){
+                mDexCookie =dexFile.getClass().getDeclaredField("mCookie");
+                mDexCookie.setAccessible(true);
+            }
+            return mDexCookie.get(dexFile);
+        }catch (Exception ignored){
+
+        }
+        return null;
+    }
+
+    private static void setArray(Object array,int arrayType,int index,Object value){
+        switch (arrayType) {
+            case CLASS_INT:
+                ((int[])array)[index]= (int) value;
+                break;
+            case CLASS_SHORT:
+                ((short[])array)[index]= (short) value;
+                break;
+            case CLASS_BYTE:
+                ((byte[])array)[index]= (byte) value;
+                break;
+
+            case CLASS_FLOAT:
+                ((float[])array)[index]= (float) value;
+                break;
+            case CLASS_CHAR:
+                ((char[])array)[index]= (char) value;
+                break;
+            case CLASS_VOID:
+                throw new LuaException("unexpected array type");
+
+            case CLASS_BOOLEAN:
+                ((boolean[])array)[index]= (boolean) value;
+                break;
+            case CLASS_DOUBLE:
+                ((double[])array)[index]= (double) value;
+                break;
+            case CLASS_LONG:
+                ((long[])array)[index]= (long) value;
+                break;
+            default:
+                ((Object[])array)[index]=value;
+        }
     }
 
     /**
@@ -972,16 +1052,6 @@ public class ScriptContext {
         return factory.generate(v);
     }
 
-    //Too many memory usages.
-    private Set<String> dexFiles;
-    private ArrayList<String[]> classes;
-
-    private static final Comparator<String> sClassPrefixComparator = (o1, o2) -> {
-        int length = o2.length();
-        if (o1.length()> length +1&&o1.charAt(length)=='.'&&o1.startsWith(o2)&&o1.indexOf('.', length +1)==-1) return 0;
-        return o1.compareTo(o2);
-    };
-
     List<String> getClasses(){
         if(dexFiles==null) {
             try {
@@ -1027,7 +1097,6 @@ public class ScriptContext {
 
     }
 
-
     private void loadClassLoader(ClassLoader loader) throws Exception {
         synchronized (importLock){
             initLoader();
@@ -1065,7 +1134,7 @@ public class ScriptContext {
 
     private void initLoader() throws Exception {
         if (dexFiles == null) {
-            dexFiles = new HashSet<>();
+            dexFiles = new LightSet<>();
             classes = new ArrayList<>();
             String[] bootJars = System.getenv("BOOTCLASSPATH").split(":");
             if (Build.VERSION.SDK_INT <= 25) {
@@ -1079,24 +1148,12 @@ public class ScriptContext {
                 if (bootClassList != null) {
                     Collections.addAll(classes, bootClassList);
                 }
-                dexFiles.addAll(Arrays.asList(bootJars));
+                dexFiles.addAll(bootJars);
             }
             loadClassLoader(ScriptContext.class.getClassLoader());
         }
 
 
-    }
-    private static Object getDexFileCookie(DexFile dexFile){
-        try {
-            if(mDexCookie ==null){
-                mDexCookie =dexFile.getClass().getDeclaredField("mCookie");
-                mDexCookie.setAccessible(true);
-            }
-            return mDexCookie.get(dexFile);
-        }catch (Exception ignored){
-
-        }
-        return null;
     }
 
     //Classes in dex file are sorted before return, so no need to sort it
@@ -1199,41 +1256,6 @@ public class ScriptContext {
         } catch (NoSuchMethodException ignored) {
         }
         return false;
-    }
-
-    private static void setArray(Object array,int arrayType,int index,Object value){
-        switch (arrayType) {
-            case CLASS_INT:
-                ((int[])array)[index]= (int) value;
-                break;
-            case CLASS_SHORT:
-                ((short[])array)[index]= (short) value;
-                break;
-            case CLASS_BYTE:
-                ((byte[])array)[index]= (byte) value;
-                break;
-
-            case CLASS_FLOAT:
-                ((float[])array)[index]= (float) value;
-                break;
-            case CLASS_CHAR:
-                ((char[])array)[index]= (char) value;
-                break;
-            case CLASS_VOID:
-                throw new LuaException("unexpected array type");
-
-            case CLASS_BOOLEAN:
-                ((boolean[])array)[index]= (boolean) value;
-                break;
-            case CLASS_DOUBLE:
-                ((double[])array)[index]= (double) value;
-                break;
-            case CLASS_LONG:
-                ((long[])array)[index]= (long) value;
-                break;
-            default:
-                ((Object[])array)[index]=value;
-        }
     }
 
     private Type resolveKeyTableType(Type type){
@@ -1379,41 +1401,62 @@ public class ScriptContext {
         return null;
     }
 
-    private Object proxy(final Class<?> main,
-                         Class<?>[] leftInterfaces, Method[] methods,
-                         long[] values, boolean shared, long nativeInfo,Object superObject) throws Exception {
+    private Object proxy(final Class<?> main, Class<?>[] leftInterfaces, Method[] methods,
+                         long[] values,long defaultFunc, boolean shared, long nativeInfo,Object superObject) throws Exception {
         if (main == null) throw new IllegalArgumentException("No proxy class");
         if (values == null||methods==null) throw new IllegalArgumentException("No need to proxy");
+
         if (leftInterfaces != null) {
             for (Class cl : leftInterfaces) {
                 if (!cl.isInterface())
                     throw new IllegalArgumentException("Only one class can be extent");
             }
         }
-        Map<MethodSetEntry,MethodSetEntry> methodSet = new HashMap<>(values.length);
-        Map<Method,Long> methodList=new HashMap<>(values.length);
+        MethodSet methodSet = new MethodSet(values.length);
+        MethodMap<MethodInfo> methodMap=new MethodMap<>(values.length);
         if (methods.length != values.length) {
             throw new IllegalArgumentException("Java method count doesn't equal lua method count");
         }
         for (int i = 0, len = methods.length; i < len; ++i) {
             Method m = methods[i];
             if (m == null) throw new IllegalArgumentException("Method can't be null");
-            if(methodList.containsKey(m))  throw new IllegalArgumentException("Duplicate method passed in");
-            MethodSetEntry entry =  MethodSetEntry.from(m);
-            if(entry==null) continue;
-            methodSet.put(entry,entry);
-            methodList.put(m, values[i]);
+            if(methodMap.containsKey(m))  throw new IllegalArgumentException("Duplicate method passed in");
+            methodSet.add(m);
+            methodMap.put(m, MethodInfo.from(m,values[i],nativePtr));
         }
-        final boolean isInterface = main.isInterface();
-        checkAllAbstractMethod(main, methodSet,methodList);
-        if (leftInterfaces != null) {
-            for (Class cl : leftInterfaces) {
-                checkAllAbstractMethod(cl, methodSet,methodList);
+        boolean isInterface = main.isInterface();
+        if(defaultFunc==0){
+            if(!isInterface &&Modifier.isAbstract(main.getModifiers())){
+                Class thizClass=main;
+                do {
+                    for(Method m:getDeclaredMethods(thizClass)){
+                        int modifier=m.getModifiers();
+                        if(!Modifier.isStatic(modifier)&&!Modifier.isPrivate(modifier))
+                            methodSet.add(m);
+                    }
+                    thizClass = thizClass.getSuperclass();
+                } while (thizClass != Object.class && thizClass != null);
+            }
+            checkAllAbstractMethod(main, methodSet);
+            if (leftInterfaces != null) {
+                for (Class cl : leftInterfaces) {
+                    checkAllAbstractMethod(cl, methodSet);
+                }
             }
         }
-        InvokeHandler handler = new InvokeHandler(methodList, nativePtr, isInterface);
+
+        if(!methodMap.containsKey(ObjectMethods.sToString)){
+            methodMap.put(ObjectMethods.sToString,new MethodInfo(isInterface?-4:-1,null,null,null,0));
+        }
+        if(!methodMap.containsKey(ObjectMethods.sHashCode)){
+            methodMap.put(ObjectMethods.sHashCode,new MethodInfo(isInterface?-5:-2,null,null,null,0));
+        }
+        if(!methodMap.containsKey(ObjectMethods.sEquals)){
+            methodMap.put(ObjectMethods.sEquals,new MethodInfo(isInterface?-6:-3,null,null,null,0));
+        }
+        InvokeHandler handler = new InvokeHandler(methodMap, defaultFunc);
         try {
-            if (main.isInterface()) {
+            if (isInterface) {
                 Class[] interfaces = new Class[leftInterfaces == null ? 1 : leftInterfaces.length + 1];
                 interfaces[0] = main;
                 if (leftInterfaces != null)
@@ -1424,7 +1467,8 @@ public class ScriptContext {
                 if (leftInterfaces != null) builder.implementing(leftInterfaces);
                 if (shared) builder.withSharedClassLoader();
                 builder.parentClassLoader(main.getClassLoader());
-                Class proxyClass = builder.onlyMethods(methodList.keySet().toArray(new Method[0])).buildProxyClass();
+                if(defaultFunc==0)builder.onlyMethods(methodMap.keys());
+                Class proxyClass = builder.buildProxyClass();
                 Object ret =superObject==null?constructChild(nativePtr, proxyClass, nativeInfo)
                         :ClassBuilder.cloneFromSuper(proxyClass,superObject);
                 ProxyBuilder.setInvocationHandler(ret, handler);
@@ -1624,12 +1668,14 @@ public class ScriptContext {
         private static Method sToString;
         private static Method sHashCode;
         private static Method sEquals;
+        private static Method sMultiRet;
 
         static {
             try {
                 sEquals = Object.class.getMethod("equals", Object.class);
                 sHashCode = Object.class.getMethod("hashCode");
                 sToString = Object.class.getMethod("toString");
+                sMultiRet=LuaFunction.class.getMethod("invoke", Object[].class);
             } catch (NoSuchMethodException e) {
                 e.printStackTrace();
             }
@@ -1651,98 +1697,20 @@ public class ScriptContext {
             this.returnClassType=returnClassType;
         }
 
+        static MethodInfo from(Method m,long luaFuncInfo,long nativePtr){
+            Class returnType=m.getReturnType();
+            return new MethodInfo(luaFuncInfo, generateParamTypes(m.getParameterTypes())
+                    , returnType,m.getGenericReturnType(),getClassType(nativePtr, returnType));
+        }
+
         @Override
         protected void finalize() {
-            if (luaFuncInfo != 0)
-                releaseFunc(luaFuncInfo);
-        }
-    }
-    static class SameMethodEntry{
-        private final Class<?>[] paramTypes;
-        private final Class<?> returnType;
-        private SameMethodEntry(Method m){
-            paramTypes = m.getParameterTypes();
-            returnType = m.getReturnType();
-        }
-        //For method using the api in new api only
-        static SameMethodEntry from(Method m) {
-            try {
-                return new SameMethodEntry(m);
-            }catch (Throwable e){
-                return null;
-            }
-        }
-        @Override
-        public int hashCode() {
-            return  returnType.hashCode()^paramTypes.length^(paramTypes.length>0?paramTypes[paramTypes.length-1].hashCode():0);
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            SameMethodEntry other= (SameMethodEntry) obj;
-            if (returnType!=other.returnType)
-                return false;
-            /* Avoid unnecessary cloning */
-            Class<?>[] params1 = paramTypes;
-            Class<?>[] params2 = other.paramTypes;
-            if (params1.length == params2.length) {
-                for (int i = 0; i < params1.length; i++) {
-                    if (params1[i] != params2[i])
-                        return false;
-                }
-                return true;
-            }
-            return false;
+            if (luaFuncInfo != 0&&returnType!=null)
+                referFunc(luaFuncInfo,true);
         }
     }
 
-    static class MethodSetEntry {
-        final Method m;
-        private final String name;
-        private final Class<?>[] paramTypes;
-        private final Class<?> returnType;
 
-
-        MethodSetEntry(Method m) {
-            this.m = m;
-            name = m.getName();
-            paramTypes = m.getParameterTypes();
-            returnType = m.getReturnType();
-        }
-        static MethodSetEntry from(Method m) {
-            try {
-                return new MethodSetEntry(m);
-            }catch (Throwable e){
-                return null;
-            }
-        }
-        @Override
-        public int hashCode() {
-            return name.hashCode() ^ returnType.hashCode() ;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj instanceof MethodSetEntry) {
-                MethodSetEntry other = ((MethodSetEntry) obj);
-                if (name.equals(other.name)) {
-                    if (returnType!=other.returnType)
-                        return false;
-                    /* Avoid unnecessary cloning */
-                    Class<?>[] params1 = paramTypes;
-                    Class<?>[] params2 = other.paramTypes;
-                    if (params1.length == params2.length) {
-                        for (int i = 0; i < params1.length; i++) {
-                            if (params1[i] != params2[i])
-                                return false;
-                        }
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-    }
 
     /**
      * A compiled script for future call
@@ -1757,7 +1725,7 @@ public class ScriptContext {
         @Override
         protected void finalize() {
             if (address != 0)//anti android bug on object allocated but not initialize when a jni exception raised
-                releaseFunc(address);
+                referFunc(address,true);
         }
 
         /**
@@ -1791,49 +1759,93 @@ public class ScriptContext {
         }
     }
 
-    class InvokeHandler implements InvocationHandler {
-        private Map<Method, MethodInfo> methodMap = new HashMap<>();
-        private boolean isInterface;
-
-        InvokeHandler(Map<Method, Long> methodMap, long nativePtr, boolean isInterface) {
-            for (Map.Entry<Method, Long> entry : methodMap.entrySet()) {
-                Method key = entry.getKey();
-                this.methodMap.put(key, new MethodInfo(entry.getValue(), generateParamTypes(key.getParameterTypes())
-                        , key.getReturnType(),key.getGenericReturnType(),getClassType(nativePtr,key.getReturnType())));
+    static class SameMethodEntry extends BaseNode<SameMethodEntry> {
+        final Class<?>[] paramTypes;
+        final Class<?> returnType;
+        private SameMethodEntry(Method m){
+            paramTypes = m.getParameterTypes();
+            returnType = m.getReturnType();
+        }
+        //For method using the api in new api only
+        static SameMethodEntry from(Method m) {
+            try {
+                return new SameMethodEntry(m);
+            }catch (Throwable e){
+                return null;
             }
-            this.isInterface = isInterface;
+        }
+        @Override
+        public int hashCode() {
+            return  returnType.hashCode()^paramTypes.length^(paramTypes.length>0?paramTypes[paramTypes.length-1].hashCode():0);
+        }
 
+        @Override
+        public boolean equals(Object obj) {
+            SameMethodEntry other= (SameMethodEntry) obj;
+            if (returnType!=other.returnType)
+                return false;
+            /* Avoid unnecessary cloning */
+            return equalsParameters(paramTypes, other.paramTypes);
+        }
+    }
+
+    class InvokeHandler implements InvocationHandler {
+        private MethodMap<MethodInfo> methodMap;
+        private long defaultFuncInfo;
+
+        InvokeHandler(MethodMap<MethodInfo> methodMap,long defaultFuncInfo) {
+            this.defaultFuncInfo = defaultFuncInfo;
+            this.methodMap=methodMap;
         }
 
         void changeCallSite(Class c){
             Method m=getSingleInterface(c);
             if(m==null)
                 throw new IllegalArgumentException("Not a single interfaces");
-            Method entry= methodMap.keySet().iterator().next();
-            if(methodMap.size()!=1||entry.getDeclaringClass()!=LuaFunction.class)
-                throw new IllegalStateException("Unchangeable handler");
-            MethodInfo old=methodMap.remove(entry);
-            MethodInfo info=new MethodInfo(old.luaFuncInfo,generateParamTypes(m.getParameterTypes())
-                    ,m.getReturnType(),m.getGenericReturnType(),getClassType(nativePtr,m.getReturnType()));
-            old.luaFuncInfo=0;
-            methodMap.put(m,info);
+            if(methodMap.size()>0){
+                Method entry= methodMap.first();
+                if(methodMap.size()!=1||entry.getDeclaringClass()!=LuaFunction.class)
+                    throw new IllegalStateException("Unchangeable handler");
+                MethodInfo old=methodMap.remove(entry);
+                Class<?> returnType = m.getReturnType();
+                MethodInfo info=new MethodInfo(old.luaFuncInfo,generateParamTypes(m.getParameterTypes())
+                        , returnType,m.getGenericReturnType(),getClassType(nativePtr, returnType));
+                old.luaFuncInfo=0;
+                methodMap.put(m,info);
+            }
+
         }
 
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            MethodInfo info = methodMap.get(method);//avoid interfaces with the same name;
+            MethodInfo info = methodMap.get(method);
             if (info == null) {
-                if (method.equals(ObjectMethods.sEquals))
-                    return proxy == args[0];
-                else if (method.equals(ObjectMethods.sToString))
-                    return proxy.getClass().getName() + "@" + Integer.toHexString(System.identityHashCode(proxy));
-                else if (method.equals(ObjectMethods.sHashCode))
-                    return System.identityHashCode(proxy);
-                else throw new NoSuchMethodException(method.toGenericString());
+                if(defaultFuncInfo !=0){
+                    Class<?> returnType = method.getReturnType();
+                    info=new MethodInfo(defaultFuncInfo,generateParamTypes(method.getParameterTypes()), returnType,
+                            method.getGenericReturnType(),getClassType(nativePtr,returnType));
+                    methodMap.put(method,info);
+                    referFunc(defaultFuncInfo,false);
+                }else throw new NoSuchMethodException(method.toGenericString());
             }
             long funcRef = info.luaFuncInfo;
+            switch ((int)funcRef){
+                case -1:
+                    return invokeSuper(proxy,method,1,args);
+                case -2:
+                    return ((int[])invokeSuper(proxy,method,2,args))[0];
+                case -3:
+                    return ((boolean[])invokeSuper(proxy,method,3,args))[0];
+                case -4:
+                    return proxy.getClass().getName() + "@" + Integer.toHexString(System.identityHashCode(proxy));
+                case -5:
+                    return System.identityHashCode(proxy);
+                case -6:
+                    return proxy==args[0];
+            }
             int[] paramsTypes = info.paramsTypes;
-            Object ret = invokeLuaFunction(nativePtr, isInterface, funcRef, proxy, paramsTypes,
+            boolean multiRet=proxy instanceof LuaFunction &&method.equals(ObjectMethods.sMultiRet);
+            Object ret = invokeLuaFunction(nativePtr, funcRef,multiRet, proxy,  method.getName(),paramsTypes,
                     args);
             return fixValue(ret,info.returnClassType,info.returnType,info.genericReturnType);
         }
@@ -1846,18 +1858,27 @@ public class ScriptContext {
                     methodMap.values()) {
                 info.luaFuncInfo = 0;
             }
+            defaultFuncInfo=0;
         }
 
+        @Override
+        protected void finalize() throws Throwable {
+            super.finalize();
+            if(defaultFuncInfo!=0)
+                referFunc(defaultFuncInfo,true);
+        }
     }
 
     public class Func{
         long funcRef;
-        int[] argTypes;
+        String methodName;
         TypeId returnType;
         Class returnClass;
+        int[] argTypes;
         int classType;
-        private Func(long funcRef,TypeId[] argTypes,TypeId returnType){
+        private Func(long funcRef,String name,TypeId[] argTypes,TypeId returnType){
             this.funcRef=funcRef;
+            this.methodName=name;
             this.returnType=returnType;
             this.argTypes=new int[argTypes.length];
             for (int i = 0; i < argTypes.length; i++) {
@@ -1905,12 +1926,214 @@ public class ScriptContext {
                 }
                 classType=getClassType(nativePtr,returnClass);
             }
-            return fixValue(invokeLuaFunction(nativePtr,false,funcRef,thiz,argTypes,args),classType,returnClass,returnClass);
+            return fixValue(invokeLuaFunction(nativePtr, funcRef,false, thiz, methodName, argTypes, args),classType,returnClass,returnClass);
         }
 
         @Override
         protected void finalize() {
-            releaseFunc(funcRef);
+            referFunc(funcRef,true);
+        }
+    }
+
+    public static boolean equalsParameters(Class<?>[] params1, Class<?>[] params2) {
+        if (params1.length == params2.length) {
+            for (int i = 0; i < params1.length; i++) {
+                if (params1[i] != params2[i])
+                    return false;
+            }
+            return true;
+        }
+        return false;
+    }
+    public static boolean isMethodSigEquals(Method f, Method s){
+        if(f==s) return true;
+        if(sEqualNameAndParameters!=null){
+            return sameSigMethod(f,s,sEqualNameAndParameters);
+        }else return f.getName().equals(s.getName())&&f.getReturnType().equals(s.getReturnType())
+                &&equalsParameters(f.getParameterTypes(),s.getParameterTypes());
+    }
+    //Simple implementation
+    public static class MethodMap<V>{
+        static class Node<V>{
+            Method key;
+            V value;
+            Node<V> next;
+
+            Node(Method key, V value,Node<V> next) {
+                this.key = key;
+                this.value = value;
+                this.next=next;
+            }
+        }
+
+        private int size;
+        private int cap;
+        private int limit;
+        private Node<V>[] nodes;
+
+        public MethodMap(int expectedSize){
+            int trueCap=(expectedSize<<2)/3;
+            if(SetUtils.notPowerOfTwo(trueCap) ||expectedSize==0)
+                trueCap= SetUtils.binaryCeil(trueCap);
+            //noinspection unchecked
+            nodes= new Node[trueCap];
+            limit=(trueCap*3)>>2+1;
+            cap=trueCap;
+        }
+
+        static int hashMethod(Method method,int cap){
+            return method.getName().hashCode()&(cap-1);
+        }
+
+        private void rehash(){
+            int newCap=cap<<1;
+            //noinspection unchecked
+            Node<V>[] newNodes=new Node[newCap];
+            Node<V> next;
+            for (Node<V> node:nodes){
+                for(;node!=null;node=next){
+                    int index=hashMethod(node.key,newCap);
+                    next=node.next;
+                    node.next=newNodes[index];
+                    newNodes[index]=node;
+                }
+            }
+            nodes=newNodes;
+            cap=newCap;
+            limit=(newCap*3)>>2;
+        }
+
+        public V put(Method key, V value){
+            int index = hashMethod(key,cap);
+            Node<V> start = nodes[index];
+            for (Node<V> node = start; node != null; node = node.next) {
+                if (isMethodSigEquals(key, node.key)) {
+                    V old = node.value;
+                    node.value = value;
+                    return old;
+                }
+            }
+            nodes[index] = new Node<>(key, value, start);
+            if (++size > limit) rehash();
+            return null;
+        }
+
+        public V get(Method key){
+            for (Node<V> node = nodes[hashMethod(key,cap)]; node!=null; node=node.next){
+                if(isMethodSigEquals(key,node.key))
+                    return node.value;
+            }
+            return null;
+        }
+
+
+        public boolean containsKey(Method key){
+            for (Node<V> node = nodes[hashMethod(key,cap)]; node!=null; node=node.next){
+                if(isMethodSigEquals(key,node.key))
+                    return true;
+            }
+            return false;
+        }
+
+        public V remove(Method key){
+            int index = hashMethod(key,cap);
+            Node<V> node=nodes[index];
+            Node<V> prev=null;
+            for (;;){
+                if(node==null) return null;
+                if(isMethodSigEquals(key,node.key)){
+                    if(prev==null)
+                        nodes[index]=node.next;
+                    else prev.next= node.next;
+                    --size;
+                    return node.value;
+                } else {
+                    prev=node;
+                    node=node.next;
+                }
+            }
+        }
+
+        public int size(){
+            return size;
+        }
+
+        public Method first(){
+            for (Node node:nodes){
+                if(node!=null)
+                    return node.key;
+            }
+            return null;
+        }
+        public V firstValue(){
+            for (Node<V> node:nodes){
+                if(node!=null)
+                    return node.value;
+            }
+            return null;
+        }
+
+        public Iterable<V> values(){
+            return () -> new Iterator<V>() {
+                int index;
+                Node<V> next;
+                {
+                    Node<V>[] t=nodes;
+                    while (index < t.length && (next = t[index++]) == null);
+                }
+                @Override
+                public boolean hasNext() {
+                    return next!=null;
+                }
+
+                @Override
+                public V next() {
+                    Node<V> e=next;
+
+                    if ((next = e.next) == null ) {
+                        Node<V>[] t = nodes;
+                        while (index < t.length && (next = t[index++]) == null);
+                    }
+                    return e.value;
+                }
+            };
+        }
+        public Method[] keys() {
+            Method[] ret=new Method[size];
+            int index=0;
+            int i=0;
+            Node<V> next=null;
+            Node<V>[] t = nodes;
+            int length = t.length;
+            while (index < length && (next = t[index++]) == null);
+            while (next!=null){
+                ret[i++] = next.key;
+                if ((next = next.next) == null)
+                    while (index < length && (next = t[index++]) == null) ;
+            }
+            if(i!=size)
+                throw new RuntimeException("Bad keys");
+            return ret;
+        }
+    }
+
+    public static class MethodSet extends LightSet<Method> {
+        public MethodSet(int s){
+            super(s);
+        }
+        @Override
+        protected int hashKey(Method key) {
+            return key.getName().hashCode();
+        }
+
+        @Override
+        protected int hashNode(Node<Method> node) {
+            return hashKey(node.key);
+        }
+
+        @Override
+        protected boolean equals(Node<Method> node, Method key) {
+            return isMethodSigEquals(node.key,key);
         }
     }
 }

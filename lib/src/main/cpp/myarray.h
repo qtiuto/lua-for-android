@@ -19,14 +19,14 @@ class Array {
     }
 
     static inline void arrayMove(_Tp *from, _Tp *to, size_type count) {
-        while (count > 0) {
+        while (count) {
             --count;
             new (&to[count])_Tp(std::move(from[count]));
         }
     }
 
     static inline void arrayCopy(const _Tp *from, _Tp *to, size_type count) {
-        while (count > 0) {
+        while (count) {
             --count;
             new (&to[count])_Tp(from[count]);
         }

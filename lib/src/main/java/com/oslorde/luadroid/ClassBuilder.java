@@ -425,7 +425,7 @@ public class ClassBuilder {
         }
         if (code != null) {
             int pos = funcRefs.size();
-            funcRefs.add(ScriptContext.getFunc(func, argTypes,typeReturn));
+            funcRefs.add(ScriptContext.getFunc(func,name, argTypes,typeReturn));
             generateCode(code,pos,typeReturn,argTypes);
         }
         return this;

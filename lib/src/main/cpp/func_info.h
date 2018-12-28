@@ -83,7 +83,7 @@ struct Import {
         TypeInfo&operator=(const TypeInfo& o)= delete;
         TypeInfo(const TypeInfo&)= delete;
     };
-    class Empty{};
+
     typedef Map<String, TypeInfo> TypeCache;
     std::HashSet<String> packages;
     Vector<jobject> externalLoaders;
@@ -95,17 +95,13 @@ struct Import {
     }
 
     Import(Import &&other) : packages(std::move(other.packages)),
+                             externalLoaders(std::move(other.externalLoaders)),
                              stubbed(std::move(other.stubbed)) {
     }
 
-    Import(const Import &other) : packages(other.packages),stubbed(other.stubbed.capacity()) {
-        for(auto&& p:other.stubbed){
-            DeleteOrNotString pack;
-            if(p.second.pack.cached())
-                pack=DeleteOrNotString(*packages.find(FakeString(p.second.pack)));
-            else pack=DeleteOrNotString(p.second.pack, true);
-            stubbed.emplace(p.first, TypeInfo(p.second.type, std::move(pack)));
-        }
+    Import(const Import &other) : packages(other.packages),
+                                  externalLoaders(other.externalLoaders){
+        //No need to copy cache cause it's too large
         if(externalLoaders.size()>0){
             AutoJNIEnv env;
             for(auto iter=externalLoaders.begin();iter!=externalLoaders.end();++iter){

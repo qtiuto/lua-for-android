@@ -22,7 +22,7 @@ public class LanguageLua extends Language {
     private final static String package_debug = "debug|gethook|getinfo|getlocal|getmetatable|getregistry" +
             "|getupvalue|getuservalue|sethook|setlocal|setmetatable|setupvalue|setuservalue|traceback|upvalueid|upvaluejoin";
     private final static String package_io = "close|flush|input|lines|open|output|popen|read|stderr|stdin|stdout|tmpfile|type|write";
-    private final static String package_java = "type|newArray|proxy|instanceof|import|object|charString|charValue|new|sync|try|throw|using";
+    private final static String package_java = "type|newArray|proxy|instanceof|typeof|super|import|object|charString|charValue|new|sync|try|throw|using";
     private final static String package_lfs = "attributes|chdir|currentdir|dir|link|lock|mkdir|rmdir|symlinkattributes|touch|unlock|lock_dir";
     private final static String package_math = "abs|acos|asin|atan|atan2|ceil|cos|cosh|deg|exp|floor|fmod|frexp|huge|ldexp|log|" +
             "log10|max|maxinteger|min|mininteger|modf|pi|pow|rad|random|randomseed|sin|sinh|sqrt|tan|tanh|tointeger|type|ult";
@@ -31,7 +31,7 @@ public class LanguageLua extends Language {
     private final static String package_string = "byte|char|dump|find|format|gfind|gmatch|gsub|len|lower|match|pack|packsize|rep|reverse|sub|unpack|upper";
     private final static String package_table = "concat|foreach|foreachi|insert|maxn|move|pack|remove|sort|unpack";
     private final static String package_utf8 = "char|charpattern|codepoint|codes|len|offset";
-    private final static String extFunctionTarget = "Type|newArray|proxy|instanceof|import|object|charString|charValue|new|sync|try|throw|cross|using";
+    private final static String extFunctionTarget = "Type|newArray|proxy|instanceof|super|typeof|import|object|charString|charValue|new|sync|try|throw|cross|using";
     private final static String functionTarget = globalTarget + "|" + extFunctionTarget + "|" + packageName;
     private final static String[] keywords = keywordTarget.split("\\|");
     private final static String[] names = functionTarget.split("\\|");

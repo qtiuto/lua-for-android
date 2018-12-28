@@ -176,7 +176,7 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
         JClass cl = env->GetObjectClass(javaObject);
         contextClass = (jclass) env->NewGlobalRef(cl);
         sProxy = env->GetMethodID(cl, "proxy", "(Ljava/lang/Class;[Ljava/lang/Class;"
-                "[Ljava/lang/reflect/Method;[JZJLjava/lang/Object;)Ljava/lang/Object;");
+                "[Ljava/lang/reflect/Method;[JJZJLjava/lang/Object;)Ljava/lang/Object;");
         JavaType::sFindMembers = env->GetStaticMethodID(cl, "findMembers"
                 , "(Ljava/lang/Class;Ljava/lang/String;ZZ)[Ljava/lang/Object;");
 
@@ -425,12 +425,11 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
         luaObject.shouldRelease = true;
         if (type->isTableType(env)) {
             typedef Map<LazyTable *, jobject> PTable;
-            static ThreadLocal<PTable> parsedTable;
             bool isOwner = false;
-            PTable *current = parsedTable;
+            PTable *current = getValue<PTable>(ContextStorage::PARSED_TABLE);
             if (current == nullptr) {
                 current = new PTable();
-                parsedTable.rawSet(current);
+                setValue(ContextStorage::PARSED_TABLE, current);
                 isOwner = true;
             }
             auto &&iter = current->find(luaObject.lazyTable);
@@ -458,7 +457,7 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
             } else ret.l = type->convertTable(env, iter->second, real);
             if (isOwner) {
                 delete current;
-                parsedTable.rawSet(nullptr);
+                setValue(ContextStorage::PARSED_TABLE, nullptr);
             }
         } else if (type->isInterface(env)) {
             ret.l = luaObject.lazyTable->asInterface(this, type);
@@ -575,35 +574,35 @@ jobject ThreadContext::luaObjectToJObject(ValidLuaObject &luaObject) {
 
 jobject ThreadContext::proxy(JavaType *main, Vector<JavaType *> *interfaces,
                              const Vector<JObject> &principal,
-                             Vector<std::unique_ptr<BaseFunction>> &proxy, bool shared,
-                             long nativeInfo,jobject superObject) {
+                             Vector<std::unique_ptr<BaseFunction>> &proxy,BaseFunction* defaultFunc,
+                             bool shared, long nativeInfo, jobject superObject) {
     uint interfaceCount;
     JObjectArray interfaceArray;
     if (interfaces != nullptr && (interfaceCount =  interfaces->size())) {
         interfaceArray = env->NewObjectArray(interfaceCount, classType, nullptr);
-        for (uint i = interfaceCount - 1; i !=-1; --i) {
+        for (uint i = interfaceCount ;i-- ; ) {
             env->SetObjectArrayElement(interfaceArray, i,
                                        interfaces->at(i)->getType());
         }
     }
     uint principalCount =  principal.size();
-    JObjectArray principalArray;
+    static jclass sMethodClass=(jclass)env->NewGlobalRef(env->GetObjectClass(env->ToReflectedMethod(contextClass,sProxy, 0)));
+    JObjectArray principalArray = env->NewObjectArray(principalCount, sMethodClass, nullptr);
     if (principalCount ){
-        principalArray = env->NewObjectArray(principalCount, env->GetObjectClass(principal[0]), nullptr);
-        for (uint i = principalCount - 1; i != -1; --i) {
+        for (uint i = principalCount ; i--;) {
             env->SetObjectArrayElement(principalArray, i, principal[i]);
         }
     }
     int proxyCount = proxy.size();
     jlong buf[proxyCount];
-    for (jsize i = proxyCount - 1; i !=-1; --i) {
+    for (jsize i = proxyCount ; i--;) {
         buf[i] = (jlong) proxy[i].get();
     }
     JType<jlongArray> proxyArray = env->NewLongArray(proxyCount);
     env->SetLongArrayRegion(proxyArray, 0, proxyCount, buf);
-    jvalue args[]={{.l=main->getType()}, {.l=interfaceArray.get()},
-                   {.l=principalArray.get()}, {.l=proxyArray.get()},
-                   {.z=(jboolean)shared}, {.j=nativeInfo}, {.l=superObject}};
+    jvalue args[]={{.l=main->getType()}, {.l=interfaceArray},
+                   {.l=principalArray}, {.l=proxyArray},{.j=(jlong)defaultFunc},
+                   {.z=(jboolean)shared}, {.j=nativeInfo},{.l=superObject}};
     jobject ret = env->asJNIEnv()->CallObjectMethodA(
             scriptContext->javaRef, sProxy,args);//use jvalue to avoid stack limit in 32 bit mode
     HOLD_JAVA_EXCEPTION(this, {

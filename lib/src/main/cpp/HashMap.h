@@ -123,10 +123,9 @@ namespace std {
         void rehash(){
             size_t newSize=m_table_size<<1;
             HashNodePtr* buckets=new HashNodePtr[newSize]();
-            HashNodePtr* old = m_table;
             HashNodePtr* current=m_table;
             HashNodePtr item,next;
-            for (size_t i = m_table_size-1; i !=-1; i--) {
+            for (size_t i = m_table_size; i --; ) {
                 for (item = current[i]; item != NULL; item = next) {
                     size_t index = hashIndex(item->value, newSize);
                     next = item->next;
@@ -137,7 +136,7 @@ namespace std {
             m_table=buckets;
             m_table_size=newSize;
             m_limit <<=1;
-            delete [] old;
+            delete [] current;
         }
         inline void free(){
             if(m_table_size==0)
@@ -226,7 +225,7 @@ namespace std {
 
 
         void clear() noexcept {
-            for( size_t ii = m_table_size-1; ii !=-1 ; ii-- ) {
+            for( size_t ii = m_table_size; ii --;  ) {
                 HashNodePtr entry = m_table[ii];
                 if( entry != nullptr ) {
                     do {

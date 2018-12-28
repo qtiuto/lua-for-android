@@ -76,7 +76,7 @@ switch (typeID){
         return ret;
     }
     default:{
-        jobjectArray ret = env->NewObjectArray(size, type, nullptr).invalidate();
+        JObjectArray ret(env->NewObjectArray(size, type, nullptr)) ;
         for (uint32_t i = 0; i < len; ++i) {
             ValidLuaObject &luaObject = params[i];
             if (luaObject.type == T_NIL) {
@@ -88,7 +88,7 @@ switch (typeID){
                 cleanArg(env, value, luaObject.shouldRelease);
             }
         }
-        return ret;
+        return ret.invalidate();
     }
 }
 return nullptr;//unreachable statement;
@@ -131,9 +131,9 @@ Member* JavaType::ensureMember(TJNIEnv *env, const String &name, bool isStatic) 
         if (count == 0) {
             goto END;
         }
-        MethodArray methodArray((uint32_t) (count /5));
-        for (int i = 0; i < count; i += 5) {
-            MethodInfo &info = methodArray[i/5];
+        MethodArray methodArray((uint32_t) (count /6));
+        for (int i = 0; i < count; i += 6) {
+            MethodInfo &info = methodArray[i/6];
             JObject&& method = env->GetObjectArrayElement(methodInfoArray, i);
             info.id = env->FromReflectedMethod(method);
             info.returnType.rawType =  context->ensureType(
@@ -142,15 +142,20 @@ Member* JavaType::ensureMember(TJNIEnv *env, const String &name, bool isStatic) 
             info.returnType.realType= realRetType== nullptr? nullptr: env->NewGlobalRef (realRetType);
             JObjectArray&& params =env->GetObjectArrayElement(methodInfoArray, i + 3);
             JObjectArray&& genericParams =env->GetObjectArrayElement(methodInfoArray, i + 4);
+            auto&& varArgType=env->GetObjectArrayElement(methodInfoArray,i+5);
             int paramLen = env->GetArrayLength(params);
             Array<ParameterizedType> paramArray((uint32_t) paramLen);
-            for (int j = 0; j < paramLen; ++j) {
+            for (int j =  paramLen; j--;) {
                 paramArray[j].rawType = context->ensureType(
                         env, (JClass) env->GetObjectArrayElement(params, j));
                 auto&& obj = env->GetObjectArrayElement(genericParams, j);
                 paramArray[j].realType = obj== nullptr? nullptr: env->NewGlobalRef(obj);
             }
             info.params = std::move(paramArray);
+            if(varArgType.get()!= nullptr){
+                info.varArgType.rawType=info.params[info.params.size()-1].rawType->getComponentType(env);
+                info.varArgType.realType=env->NewGlobalRef(varArgType);
+            } else info.varArgType.rawType= nullptr;
         }
         member.methods=std::move(methodArray);
     }
@@ -162,28 +167,43 @@ Member* JavaType::ensureMember(TJNIEnv *env, const String &name, bool isStatic) 
 
 
 const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, Vector<JavaType *> &types,
-                                                   Vector<ValidLuaObject> *arguments) {
+                                                   Vector<ValidLuaObject> *arguments, bool* gotVarArg) {
     if (unlikely(!array)) return nullptr;
-    int paramsLen = (int) types.size();
+    uint paramsLen =  types.size();
     const MethodInfo *select = nullptr;
+    bool varArgMethod=false;
     uint scores[paramsLen];
     uint cacheScores[paramsLen];
     memset(scores, 0, sizeof(int) * paramsLen);
     memset(cacheScores, 0, sizeof(int) * paramsLen);
     for (const MethodInfo &info:*array) {
-        if (info.params.size() != paramsLen) goto bail;
+        int expectedArgLen=info.params.size();
+        bool isVarArg= false;
+        if (expectedArgLen!= paramsLen) {
+            if(info.varArgType.rawType&&arguments&&(expectedArgLen-1)<=paramsLen){
+                isVarArg= true;
+            } else goto bail;
+        }else if(info.varArgType.rawType){
+            auto && object=arguments->at(paramsLen-1);
+            auto&& type=types[paramsLen-1];
+            if(object.type==T_OBJECT||type){
+                type=(type?type:object.objectRef->type);
+                if(type!=info.params[paramsLen-1].rawType) isVarArg= true;
+            } else if(object.type!=T_TABLE) isVarArg= true;
+        }
 
         if (arguments == nullptr) {
-            for (int i = paramsLen - 1; i >= 0; --i) {
+            for (uint i = paramsLen ;  i--;) {
                 JavaType *expected = types[i];
                 if (expected != nullptr && info.params[i].rawType != expected)
                     goto bail;
             }
             goto over;
         }
-        for (int i = paramsLen - 1; i >= 0; --i) {
+        for (uint i = paramsLen ; i--; ) {
             const ValidLuaObject &luaObject = arguments->at(i);
-            JavaType *toCheck = info.params[i].rawType;
+            JavaType *toCheck = i>=expectedArgLen||(isVarArg&&i==expectedArgLen-1)?
+                    info.varArgType.rawType:info.params[i].rawType;
             JavaType *provided = types[i];
             switch (luaObject.type) {
                 case T_NIL:
@@ -538,12 +558,14 @@ const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, 
         }
         over:
         select = &info;
+        varArgMethod=isVarArg;
         memcpy(scores, cacheScores, paramsLen * sizeof(scores[0]));
         continue;
         bail:
         //memcpy(cacheScores, scores, paramsLen * sizeof(scores[0]));
         continue;
     }
+    if(gotVarArg) *gotVarArg=varArgMethod;
     return select;
 }
 
@@ -593,7 +615,7 @@ uint JavaType::weightObject(TJNIEnv* env,JavaType *target, JavaType *from) {
     auto key = std::make_pair<>(target, from);
     auto weightMap = context->weightMap;
     context->weightLock.lock();
-    auto iter = weightMap.find(key);
+    auto&& iter = weightMap.find(key);
     context->weightLock.unlock();
     if (iter != weightMap.end()) {
         return iter->second;

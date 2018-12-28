@@ -63,6 +63,10 @@ static int javaTry(lua_State *L)noexcept;
 
 static int javaUnBox(lua_State *L)noexcept;
 
+static int javaTypeOf(lua_State *L)noexcept;
+
+static int javaSuper(lua_State *L)noexcept;
+
 static int javaPut(lua_State *L)noexcept;
 
 static int javaGet(lua_State *L)noexcept;
@@ -99,13 +103,13 @@ static bool parseLuaObject(lua_State *L, ThreadContext *context, int idx,
 static bool parseCrossThreadLuaObject(lua_State *L, ThreadContext *infcontext, int idx,
                                       CrossThreadLuaObject &luaObject);
 
-static bool pushLuaObject(TJNIEnv *env, lua_State *L, ScriptContext *context,
+static bool pushLuaObject(TJNIEnv *env, lua_State *L, ThreadContext *context,
                           const CrossThreadLuaObject &luaObject);
 
 static inline void pushJavaType(lua_State *L,JavaType* type);
 
 static void
-loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptContext *context);
+loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ThreadContext *context);
 
 static void checkLuaType(TJNIEnv *env, lua_State *L, JavaType *expected, ValidLuaObject &luaObject);
 
@@ -139,8 +143,9 @@ jlong compile(TJNIEnv *env, jclass thisClass, jlong ptr, jstring script, jboolea
 jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll);
 void registerLogger(TJNIEnv *, jclass, jlong ptr, jobject out, jobject err);
 void nativeClose(JNIEnv *env, jclass thisClass, jlong ptr);
-void releaseFunc(JNIEnv *env, jclass thisClass, jlong ptr);
+void referFunc(JNIEnv *env, jclass thisClass, jlong ptr, jboolean deRefer);
 jint getClassType(TJNIEnv * env, jclass, jlong ptr,jclass clz);
+jboolean sameSigMethod(JNIEnv* env,jclass,jobject f,jobject s,jobject caller);
 void addJavaObject(TJNIEnv *env, jclass thisClass, jlong ptr, jstring _name, jobject obj,
                    jboolean local);
 void addJavaMember(TJNIEnv *env, jclass thisClass, jlong ptr, jstring jname, jstring member,
@@ -150,10 +155,9 @@ jobjectArray runScript(TJNIEnv *env, jclass thisClass, jlong ptr, jobject script
                        jobjectArray args);
 jobject constructChild(TJNIEnv *env, jclass thisClass, jlong ptr, jclass target,
                        jlong nativeInfo);
-jobject invokeLuaFunction(TJNIEnv *env, jclass thisClass, jlong ptr,
-                          jboolean isInterface,
-                          jlong funcRef, jobject proxy, jintArray argTypes,
-                          jobjectArray args);
+jobject invokeSuper(TJNIEnv* env,jclass c,jobject thiz,jobject method,jint id,jobjectArray args);
+jobject invokeLuaFunction(TJNIEnv *env, jclass thisClass, jlong ptr, jlong funcRef, jboolean multiRet, jobject proxy,
+                          jstring methodName, jintArray argTypes, jobjectArray args);
 }
 
 static const luaL_Reg javaInterfaces[] =
@@ -172,6 +176,8 @@ static const luaL_Reg javaInterfaces[] =
          {"throw",      javaThrow},
          {"try",        javaTry},
          {"unbox",      javaUnBox},
+         {"super",javaSuper},
+         {"typeof",javaTypeOf},
          {nullptr,      nullptr}};
 
 static const JNINativeMethod nativeMethods[] =
@@ -192,9 +198,11 @@ static const JNINativeMethod nativeMethods[] =
                                        "Ljava/lang/Class;Z)V",     (void *) addJavaMember},
          {"constructChild",    "(JLjava/lang/Class;J)"
                                        "Ljava/lang/Object;",       (void *) constructChild},
-         {"releaseFunc",       "(J)V",                             (void *) releaseFunc},
+         {"referFunc",       "(JZ)V",                             (void *) referFunc},
          {"getClassType",      "(JLjava/lang/Class;)I",            (void *) getClassType},
-         {"invokeLuaFunction", "(JZJLjava/lang/Object;"
+         {"sameSigMethod","(Ljava/lang/reflect/Method;Ljava/lang/reflect/Method;Ljava/lang/reflect/Method;)Z",(void *)sameSigMethod},
+         {"invokeSuper","(Ljava/lang/Object;Ljava/lang/reflect/Method;I[Ljava/lang/Object;)Ljava/lang/Object;",(void*)invokeSuper},
+         {"invokeLuaFunction", "(JJZLjava/lang/Object;Ljava/lang/String;"
                                        "[I[Ljava/lang/Object;)"
                                        "Ljava/lang/Object;", (void *) invokeLuaFunction}};
 
@@ -379,22 +387,37 @@ static bool newMetaTable(lua_State*L,const RegisterKey* key,const char* tname){
     lua_rawsetp(L, LUA_REGISTRYINDEX, key);
     return true;
 }
-
-static JavaObject *pushJavaObject(lua_State *L, TJNIEnv *env, ScriptContext *context, jobject obj, JavaType *given) {
+static int safeGC(lua_State*L){
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    return 1;
+}
+static inline void luaFullGC(lua_State *L) {
+    do{
+        lua_pushcfunction(L,safeGC);
+    } while(lua_pcall(L,0,0,0)!=LUA_OK);
+    return ;
+}
+static void pushJavaObject(lua_State *L, TJNIEnv *env, ScriptContext *context, jobject obj, JavaType *given) {
 #ifndef NDEBUG
     if(obj== nullptr){
         LOGE("Error put object");
-        return nullptr;
+        return ;
     }
 #endif
     JavaObject *objectRef = (JavaObject *) lua_newuserdata(L, sizeof(JavaObject));
     objectRef->object = env->NewGlobalRef(obj);
     objectRef->type = given?given:context->ensureType(env, (JClass) env->GetObjectClass(obj));
     setMetaTable(L, OBJECT_KEY);
-    return objectRef;
 }
-static inline  JavaObject *pushJavaObject(lua_State *L, ThreadContext *context, jobject obj){
-    return pushJavaObject(L, context->env, context->scriptContext, obj, nullptr);
+static inline  void pushJavaObject(lua_State *L, ThreadContext *context, jobject obj,JavaType* given= nullptr){
+    if(context->pushedCount++>10000){
+        luaFullGC(L);
+        if(context->pushedCount>10000){
+            lua_pushnil(L);
+            return;
+        }
+    }
+    pushJavaObject(L, context->env, context->scriptContext, obj,given);
 }
 
 static void appendInt(String& str,int i){
@@ -466,11 +489,6 @@ static int luaPCallHandler(lua_State *L) {
 static inline void pushErrorHandler(lua_State *L,ThreadContext* context){
     lua_pushlightuserdata(L,context);
     lua_pushcclosure(L,luaPCallHandler,1);
-}
-
-static int luaFullGC(lua_State *L) {
-    lua_gc(L, LUA_GCCOLLECT, 0);
-    return 0;
 }
 
 static int luaGetJava(lua_State *L) {
@@ -598,6 +616,7 @@ int JavaObject::objectGc(lua_State *L) {
     ThreadContext *context=(ThreadContext*) lua_touserdata(L, lua_upvalueindex(1));
     JavaObject *ref = (JavaObject *) lua_touserdata(L, -1);
     context->env->DeleteGlobalRef(ref->object);
+    context->pushedCount--;
     return 0;
 }
 
@@ -634,7 +653,7 @@ ScriptContext::~ScriptContext() {
         lua_State *L = pair.second;
         lua_getfield(L,LUA_REGISTRYINDEX,JAVA_CONTEXT);
         ThreadContext* context=(ThreadContext *)lua_touserdata(L, -1);
-        context->scriptContext= nullptr;
+        context->scriptContext= nullptr;//to mark it as freed
         lua_close(L);
     }
 
@@ -1160,15 +1179,15 @@ bool parseCrossThreadLuaObject(lua_State *L, ThreadContext *context, int idx,
     }
     return true;
 }
-static void pushTable(TJNIEnv *env, lua_State *L, ScriptContext *context, LuaTable<CrossThreadLuaObject> *table);
+static void pushTable(TJNIEnv *env, lua_State *L, ThreadContext *context, LuaTable<CrossThreadLuaObject> *table);
 
-static inline void pushMetaTable(TJNIEnv *env, lua_State *L, ScriptContext *context,
+static inline void pushMetaTable(TJNIEnv *env, lua_State *L, ThreadContext *context,
                                  LuaTable<CrossThreadLuaObject> *metaTable) {
     pushTable(env, L, context, metaTable);
     lua_setmetatable(L, -2);
 }
 
-static void pushTable(TJNIEnv *env, lua_State *L, ScriptContext *context, LuaTable<CrossThreadLuaObject> *table) {
+static void pushTable(TJNIEnv *env, lua_State *L, ThreadContext *context, LuaTable<CrossThreadLuaObject> *table) {
     lua_rawgetp(L, LUA_REGISTRYINDEX, table);
     if (lua_isnil(L, -1)) {
         lua_pop(L, -1);
@@ -1191,7 +1210,7 @@ static void pushTable(TJNIEnv *env, lua_State *L, ScriptContext *context, LuaTab
         lua_rawset(L, LUA_REGISTRYINDEX);
     }
 }
-bool pushLuaObject(TJNIEnv* env,lua_State *L, ScriptContext *context,
+bool pushLuaObject(TJNIEnv *env, lua_State *L, ThreadContext *context,
                    const CrossThreadLuaObject &luaObject) {
     switch (luaObject.type) {
         case T_NIL:
@@ -1216,7 +1235,7 @@ bool pushLuaObject(TJNIEnv* env,lua_State *L, ScriptContext *context,
             lua_pushstring(L, luaObject.string);
             break;
         case T_OBJECT:
-            pushJavaObject(L, env, context, luaObject.objectRef->object, nullptr);
+            pushJavaObject(L, context, luaObject.objectRef->object);
             break;
         case T_FUNCTION:
             loadLuaFunction(env, L, luaObject.func, context);
@@ -1347,22 +1366,18 @@ static int proxyByTable(lua_State *L) {
     auto env=context->env;
     Vector<std::unique_ptr<BaseFunction>> luaFuncs;
     Vector<JObject> agentMethods;
+    std::unique_ptr<BaseFunction> defaultFunc;
     lua_getfield(L, 1, "methods");
     if (lua_istable(L, -1)) {
         if (!readProxyMethods(L, context, interfaces, main, luaFuncs,
                               agentMethods)) {
             goto __ErrorHandle;
         }
-    } else if (lua_isfunction(L, -1)) {
-        JObject single(main->getSingleInterface(env));
-        if (unlikely(single == nullptr)) TopErrorHandle("All methods should be specified");
-        agentMethods.push_back(std::move(single));
-        if (context->isLocalFunction()) {
-            luaFuncs.emplace_back(saveLocalFunction(L, -1));
-        } else {
-            luaFuncs.emplace_back(saveLuaFunction(L, context, -1));
-        }
-
+    }
+    lua_getfield(L,1,"all");
+    if (lua_isfunction(L, -1)) {
+        defaultFunc=context->isLocalFunction()?(BaseFunction*)saveLocalFunction(L,-1):saveLuaFunction(L,context,-1);
+        defaultFunc->javaRefCount++;
     }
     lua_getfield(L, 1, "shared");
     bool shared;
@@ -1372,7 +1387,7 @@ static int proxyByTable(lua_State *L) {
     else shared = true;
     jobject proxy;
     if(superObject){
-       proxy = context->proxy( main, &interfaces, agentMethods, luaFuncs, shared,
+       proxy = context->proxy( main, &interfaces, agentMethods, luaFuncs,defaultFunc.get(), shared,
                                      0,superObject->object);
     } else{
         Vector<ValidLuaObject> constructArgs;
@@ -1399,7 +1414,7 @@ static int proxyByTable(lua_State *L) {
             }
         }
         void *constructInfo[] = {&constructArgs, &argTypes};
-        proxy = context->proxy( main, &interfaces, agentMethods, luaFuncs, shared,
+        proxy = context->proxy( main, &interfaces, agentMethods, luaFuncs,defaultFunc.get(), shared,
                                (long) &constructInfo);
     }
     if (proxy == INVALID_OBJECT) {
@@ -1409,6 +1424,7 @@ static int proxyByTable(lua_State *L) {
     for (auto &ptr:luaFuncs) {
         ptr.release();
     }
+    defaultFunc.release();
     pushJavaObject( L, context, JObject(env, proxy));
     return 1;
 }
@@ -1532,6 +1548,7 @@ int javaProxy(lua_State *L) {
     const char *curMethod = nullptr;
     Vector<JObject> agentMethods;
     Vector<std::unique_ptr<BaseFunction>> luaFuncs;
+    std::unique_ptr<BaseFunction> defaultFunc;
     bool isLocalFunction = context->isLocalFunction();
     for (int j = i; j <= top; ++j) {
         if (luaL_isstring(L, j)) {
@@ -1562,29 +1579,23 @@ int javaProxy(lua_State *L) {
                 } else
                     agentMethods.push_back(
                             env->ToReflectedMethod(matchType->getType(), info->id, JNI_FALSE));
-            } else if (likely(curMethodTypes.size() == 0)) {
-                JObject single(main->getSingleInterface(env));
-                if (unlikely(single == nullptr)) TopErrorHandle("methods should be specified");
-                agentMethods.push_back(std::move(single));
-            } else {
-                TopErrorHandle("Lambda class should not specify types");
+            } else{
+                if(curMethodTypes.size()>0)
+                    TopErrorHandle("No name specified for the proxy method");
+                else break;
             }
-            BaseFunction *function;
-            if (isLocalFunction) {
-                function = saveLocalFunction(L, j);
-            } else {
-                function = saveLuaFunction(L, context, j);
-            }
+            BaseFunction *function=isLocalFunction?(BaseFunction*)saveLocalFunction(L,j):saveLuaFunction(L,context,j);
             function->javaRefCount++;
             luaFuncs.emplace_back(function);
             curMethodTypes.clear();
             i = j + 1;//add stack index on success;
-            if(!curMethod) break;
         } else
             break;
     }
-    if (luaFuncs.size() == 0) {
-        TopErrorHandle("No proxy method");
+    if(lua_isfunction(L,i)){
+        defaultFunc=isLocalFunction?(BaseFunction*)saveLocalFunction(L,i):saveLuaFunction(L,context,i);
+        defaultFunc->javaRefCount++;
+        ++i;
     }
 
     if (context->hasErrorPending()){
@@ -1599,7 +1610,7 @@ int javaProxy(lua_State *L) {
         }
     jobject proxy;
     if(superObject){
-        proxy = context->proxy(main, &interfaces, agentMethods, luaFuncs, shared,
+        proxy = context->proxy(main, &interfaces, agentMethods, luaFuncs,defaultFunc.get(), shared,
                                0,superObject->object);
     } else{
         Vector<ValidLuaObject> constructArgs;
@@ -1622,7 +1633,7 @@ int javaProxy(lua_State *L) {
             constructArgs.push_back(std::move(luaObject));
         }
         void *constructInfo[] = {&constructArgs, &argTypes};
-        proxy = context->proxy( main, &interfaces, agentMethods, luaFuncs, shared,
+        proxy = context->proxy( main, &interfaces, agentMethods, luaFuncs,defaultFunc.get(), shared,
                                (long) &constructInfo);
     }
     if (proxy == INVALID_OBJECT) {
@@ -1632,6 +1643,7 @@ int javaProxy(lua_State *L) {
     for (auto &ptr:luaFuncs) {
         ptr.release();
     }
+    defaultFunc.release();
     pushJavaObject( L, context, JObject(env, proxy));
     return 1;
 
@@ -1870,7 +1882,7 @@ int javaNew(lua_State *L) {
             types.release();
             throwJavaError(L,context);
         }
-        pushJavaObject(L, env, context->scriptContext, obj.get(), type);
+        pushJavaObject(L, context, obj.get(), type);
     } else
         ERROR("Primitive type can't make a new instance");
     return 1;
@@ -1903,6 +1915,22 @@ static int javaUnBox(lua_State* L){
         default:
             break;
     }
+    return 1;
+}
+
+static int javaTypeOf(lua_State *L){
+    JavaObject* obj=checkJavaObject(L,1);
+    pushJavaType(L,obj->type);
+    return 1;
+}
+
+static int javaSuper(lua_State *L){
+    JavaObject* obj=checkJavaObject(L,1);
+    ThreadContext* context=getContext(L);
+    ScriptContext *scriptContext = context->scriptContext;
+    TJNIEnv *env = context->env;
+    pushJavaObject(L, context, obj->object,
+                   scriptContext->ensureType(env, env->GetSuperclass(obj->type->getType())));
     return 1;
 }
 
@@ -2297,7 +2325,7 @@ int javaGet(lua_State *L) {
     ThreadContext *context =* (ThreadContext**)lua_touserdata(L,1);
     const char *name = luaL_tolstring(L, 2, nullptr);
     CrossThreadLuaObject *object = context->scriptContext->getLuaObject(name);
-    if (object == nullptr||!pushLuaObject(context->env, L, context->scriptContext, *object)) {
+    if (object == nullptr||!pushLuaObject(context->env, L, context, *object)) {
         lua_pushnil(L);
     }
     return 1;
@@ -2329,14 +2357,15 @@ int callMethod(lua_State *L) {
     readArguments(L, context, types, objects, start,top);
     auto env=context->env;
     auto&& array=flag->member->methods;
-    auto info = type->deductMethod(env,&array, types, &objects.asVector());
+    bool gotVarMethod;
+    auto info = type->deductMethod(env,&array, types, &objects.asVector(),&gotVarMethod);
     if (unlikely(info == nullptr)) {
         TopErrorHandle("No matched found for the method %s;->%s",type->name(env).str(),
                        getMethodName(env,type->getType(),array[0].id,isStatic).str());
     }
-    int argCount = objects.asVector().size();
+    int argCount = info->params.size();
     jvalue args[argCount];
-    for (int i = argCount - 1; i != -1; --i) {
+    for (int i = argCount-gotVarMethod ; i-- !=0; ) {
         ValidLuaObject &object = _objects[i];
         ParameterizedType &tp = info->params[i];
         args[i] = context->luaObjectToJValue(object, tp.rawType,tp.realType);
@@ -2345,6 +2374,17 @@ int callMethod(lua_State *L) {
             pushJavaException(L,context);
             goto __ErrorHandle;
         }
+    }
+    if(gotVarMethod){
+        uint varCount=types.asVector().size()-argCount+1;
+        FakeVector<ValidLuaObject> varArgs(_objects+argCount-1,varCount,varCount);
+        jarray arr = info->varArgType.rawType->newArray(context, varCount, varArgs);
+        if(arr== nullptr){
+            cleanArgs(args, argCount-1, objects, env);
+            pushJavaException(L,context);
+            goto __ErrorHandle;
+        }
+        args[argCount - 1].l= arr;
     }
     int retCount = 1;
     auto returnType=info->returnType.rawType;
@@ -2405,7 +2445,8 @@ int callMethod(lua_State *L) {
         pushJavaException(L,context);
         goto __ErrorHandle;
     });
-    cleanArgs(args, argCount, objects, env);
+    cleanArgs(args, argCount-gotVarMethod, objects, env);
+    if(gotVarMethod) env->DeleteLocalRef(args[argCount-1].l);
     return retCount;
 }
 static int pushMapValue(lua_State *L,ThreadContext* context,TJNIEnv* env,jobject obj){
@@ -2585,12 +2626,19 @@ int getFieldOrMethod(lua_State *L) {
             if(strcmp(name,"class")==0){
                 pushJavaObject(L,context,type->getType());
                 return 1;
-            }else if(!isStatic&&strcmp(name,"instanceof")==0){
-                lua_pushlightuserdata(L,context);
-                lua_pushvalue(L,1);
-                lua_pushcclosure(L,isInstanceOfCall,2);
-                return 1;
-            }else if(isStatic){
+            }else if(!isStatic){
+                if(strcmp(name,"instanceof")==0){
+                    lua_pushlightuserdata(L,context);
+                    lua_pushvalue(L,1);
+                    lua_pushcclosure(L,isInstanceOfCall,2);
+                    return 1;
+                }else  if(strcmp(name,"super")==0){
+                    pushJavaObject(L,context,obj->object,
+                                   context->scriptContext->ensureType(env,env->GetSuperclass(type->getType())));
+                    return 1;
+                }
+                
+            }else {
                 if(strcmp(name,"new")==0){
                     lua_pushvalue(L,1);
                     lua_pushcclosure(L,newCall,1);
@@ -2876,15 +2924,15 @@ int funcWriter(lua_State *, const void *p, size_t sz, void *ud) {
 
 FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIndex) {
     typedef Vector<std::pair<int, FuncInfo *>> MY_VECTOR;
-    static ThreadLocal <MY_VECTOR> parsedFuncs;
     bool isOwner = false;
-    MY_VECTOR* current=parsedFuncs.get();
+    MY_VECTOR* current= context->getValue<MY_VECTOR>(ContextStorage::PARSED_FUNC);
     if (current == nullptr) {
-        current = new MY_VECTOR();
+        current = new MY_VECTOR(128);
         isOwner = true;
-        parsedFuncs.rawSet(current);
+        context->setValue(ContextStorage::PARSED_FUNC, current);
     }
-    for (auto &pair:*current) {
+    funcIndex=funcIndex<0?lua_gettop(L)+funcIndex+1:funcIndex;
+    for (auto &&pair:*current) {
         if (lua_rawequal(L, -1, pair.first))
             return pair.second;
     }
@@ -2934,19 +2982,18 @@ FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIndex) {
     ret->setImport(context->getImport());
     if (isOwner) {
         delete current;
-        parsedFuncs.rawSet(nullptr);
+        context->setValue(ContextStorage::PARSED_FUNC, nullptr);
     }
     return ret;
 }
 
-void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptContext *context) {
+void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ThreadContext *context) {
     typedef Map<const FuncInfo *, int> MY_MAP;
-    static ThreadLocal<MY_MAP> loadedFuncs;
     bool isOwner = false;
-    MY_MAP* current=loadedFuncs;
+    MY_MAP* current= context->getValue<MY_MAP>(ContextStorage::LOADED_FUNC);
     if (current==nullptr) {
         current = new MY_MAP();
-        loadedFuncs.rawSet(current);
+        context->setValue(ContextStorage::LOADED_FUNC, current);
         isOwner = true;
     }
     const auto &iter = current->find(info);
@@ -2967,7 +3014,7 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
     current->emplace(info, funcIndex);
     auto &upvalues = info->getUpValues();
 
-    for (int i = upvalues.size() - 1; i >= 0; --i) {
+    for (int i = upvalues.size(); i--;) {
         CrossThreadLuaObject &luaObject = upvalues[i];
         if (!pushLuaObject(env, L, context, luaObject))continue;
         lua_setupvalue(L, funcIndex, i + 1);//start at the second;
@@ -2980,7 +3027,7 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ScriptCon
 #endif
     if (isOwner) {
         delete current;
-        loadedFuncs.rawSet(nullptr);
+        context->setValue(ContextStorage::LOADED_FUNC, nullptr);
     }
 }
 
@@ -3112,11 +3159,17 @@ void nativeClose(JNIEnv *, jclass, jlong ptr) {
     }
 }
 
-void releaseFunc(JNIEnv *, jclass, jlong ptr) {
+void referFunc(JNIEnv *, jclass, jlong ptr, jboolean deRefer) {
     BaseFunction *info = (BaseFunction *) ptr;
-    if (--info->javaRefCount == 0) {
+    if(!deRefer){
+      info->javaRefCount++;
+    } else if (--info->javaRefCount == 0) {
         delete info;
     }
+}
+jboolean sameSigMethod(JNIEnv* env,jclass,jobject f,jobject s,jobject caller){
+    static jmethodID mid=env->FromReflectedMethod(caller);
+    return env->CallBooleanMethod(f,mid,s);
 }
 
 jint getClassType(TJNIEnv * env, jclass, jlong ptr,jclass clz) {
@@ -3161,8 +3214,7 @@ jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) 
         info->javaRefCount++;
         retVal = reinterpret_cast<jlong >(info);
     }
-    lua_pushcfunction(L, luaFullGC);
-    lua_pcall(L, 0, 0, 0);
+    luaFullGC(L);
     s.invalidate();
     return retVal;
 }
@@ -3215,7 +3267,7 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
         if (resultSize > 0) {
             result = env->asJNIEnv()->NewObjectArray(resultSize, scriptContext->ObjectClass->getType(),
                                                      NULL);
-            for (int i = resultSize - 1; i >= 0; --i) {
+            for (int i = resultSize ; i--;) {
                 ValidLuaObject object;
                 parseLuaObject(L, context, handlerIndex + i + 1, object);
                 jobject value = context->luaObjectToJObject(object);
@@ -3226,16 +3278,38 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     }
     over:
     lua_settop(L, top);
-    lua_pushcfunction(L, luaFullGC);
-    lua_pcall(L, 0, 0, 0);
-
+    luaFullGC(L);
     context->restore(oldImport);
     return result;
 }
 
-jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
-                          jboolean isInterface,
-                          jlong funcRef, jobject proxy, jintArray argTypes, jobjectArray args) {
+jobject invokeSuper(TJNIEnv* env,jclass c,jobject thiz,jobject method,jint id,jobjectArray args){
+    jmethodID mid = env->FromReflectedMethod(method);
+    JClass superclass(env->GetSuperclass(env->GetObjectClass(thiz)));
+    switch (id) {
+        case 1://toString
+            return env->asJNIEnv()->CallNonvirtualObjectMethod(thiz, superclass, mid);
+        case 2://hashCode
+        {
+            jintArray ret = env->asJNIEnv()->NewIntArray(1);
+            int retVal = env->CallNonvirtualIntMethod(thiz, superclass, mid);
+            env->SetIntArrayRegion(ret,0,1,&retVal);
+            return ret;
+        }
+        case 3://equals
+        {
+            jbooleanArray ret = env->asJNIEnv()->NewBooleanArray(1);
+            jboolean retVal = env->CallNonvirtualBooleanMethod(thiz, superclass, mid,env->GetObjectArrayElement(args,0).get());
+            env->SetBooleanArrayRegion(ret,0,1,&retVal);
+            return ret;
+        }
+        default:
+            return nullptr;
+    }
+}
+
+jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr, jlong funcRef, jboolean multiRet, jobject proxy, jstring methodName,
+                          jintArray argTypes, jobjectArray args) {
     ScriptContext *scriptContext = (ScriptContext *) ptr;
     ThreadContext* context=scriptContext->getThreadContext();
     Import *oldImport= nullptr;
@@ -3249,7 +3323,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
     if (!reinterpret_cast<BaseFunction *>(funcRef)->isLocal()) {
         FuncInfo *funcInfo = (FuncInfo *) funcRef;
         oldImport = context->changeImport(funcInfo->getImport());
-        loadLuaFunction(env, L, funcInfo, scriptContext);
+        loadLuaFunction(env, L, funcInfo, context);
     } else {
         oldImport = context->getImport();
         LocalFunctionInfo *info = reinterpret_cast<LocalFunctionInfo *>(funcRef);
@@ -3261,6 +3335,10 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
             return 0;
         }
     }
+    pushJavaObject(L, context, proxy);
+    JString name(env,methodName);
+    lua_pushstring(L,name.str());
+    name.invalidate();
     int len = env->GetArrayLength(argTypes);
     jint *arr = env->GetIntArrayElements(argTypes, nullptr);
     for (int i = 0; i < len; ++i) {
@@ -3302,19 +3380,12 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
     }
     env->ReleaseIntArrayElements(argTypes, arr, JNI_ABORT);
 
-    pushJavaObject(L, context, proxy);
-    if (!isInterface) {
-        pushJavaObject(L, env, scriptContext, proxy, scriptContext->ensureType(
-                        env, env->GetSuperclass(env->GetObjectClass(proxy))));
-    }
-    len += 1 + !isInterface;
+    len += 2;
     int err = lua_pcall(L, len, LUA_MULTRET, handlerIndex);
     jobject ret = nullptr;
     int retCount;
     if (err != LUA_OK)recordLuaError(context, L, err);
     else if ((retCount = lua_gettop(L) - handlerIndex) != 0) {
-        bool multiRet =
-                env->IsInstanceOf(proxy, context->FunctionType()->getType()) && isInterface;
         if (multiRet) {
             JObjectArray result(
                     env->NewObjectArray(retCount, scriptContext->ObjectClass->getType(), NULL));
@@ -3328,14 +3399,13 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr,
             ret = result.invalidate();
         } else {
             ValidLuaObject object;
-            parseLuaObject(L, context, -1, object);
+            parseLuaObject(L, context, handlerIndex+1, object);//only return the first result
             ret = context->luaObjectToJObject(object);
             if (ret == INVALID_OBJECT) ret = nullptr;
         }
     }
     lua_settop(L, handlerIndex - 1);
-    lua_pushcfunction(L, luaFullGC);
-    lua_pcall(L, 0, 0, 0);
+    luaFullGC(L);
     context->restore(oldImport);
     return ret;
 }

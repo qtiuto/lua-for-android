@@ -353,7 +353,7 @@ public class LuaLexer {
     private static int[] zzUnpackTrans() {
         int[] result = new int[5610];
         int offset = 0;
-        offset = zzUnpackTrans(ZZ_TRANS_PACKED_0, offset, result);
+        zzUnpackTrans(ZZ_TRANS_PACKED_0, offset, result);
         return result;
     }
 
@@ -886,7 +886,7 @@ public class LuaLexer {
                     case 108:
                         break;
                     case 38: {
-                        longCommentOrStringHandler.setCurrentExtQuoteStart(yytext().toString());
+                        longCommentOrStringHandler.setCurrentExtQuoteStart(yytext());
                         yybegin(XLONGSTRING_BEGIN);
                         return LuaTokenTypes.LONGSTRING_BEGIN;
                     }
@@ -1005,7 +1005,7 @@ public class LuaLexer {
                     case 128:
                         break;
                     case 58: {
-                        longCommentOrStringHandler.setCurrentExtQuoteStart(yytext().toString());
+                        longCommentOrStringHandler.setCurrentExtQuoteStart(yytext());
                         yybegin(XLONGCOMMENT);
                         return LuaTokenTypes.LONGCOMMENT_BEGIN;
                     }

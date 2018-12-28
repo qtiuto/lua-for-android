@@ -35,14 +35,14 @@ import dalvik.system.BaseDexClassLoader;
 import dalvik.system.DexClassLoader;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.*;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
 
 import static com.android.dx.rop.code.AccessFlags.ACC_CONSTRUCTOR;
 import static java.lang.reflect.Modifier.PRIVATE;
@@ -402,7 +402,7 @@ public final class DexMaker {
             checksum += sum;
         }
 
-        return "Generated_" + checksum + ".jar";
+        return "Generated_" + checksum + ".dex";
     }
 
     public void setSharedClassLoader(ClassLoader classLoader) {
@@ -483,22 +483,12 @@ public final class DexMaker {
         }
 
         byte[] dex = generate();
-
-        /*
-         * This implementation currently dumps the dex to the filesystem. It
-         * jars the emitted .dex for the benefit of Gingerbread and earlier
-         * devices, which can't load .dex files directly.
-         *
-         * TODO: load the dex from memory where supported.
-         */
-        result.createNewFile();
-        JarOutputStream jarOut = new JarOutputStream(new FileOutputStream(result));
-        JarEntry entry = new JarEntry(DexFormat.DEX_IN_JAR_NAME);
-        entry.setSize(dex.length);
-        jarOut.putNextEntry(entry);
-        jarOut.write(dex);
-        jarOut.closeEntry();
-        jarOut.close();
+        RandomAccessFile file=new RandomAccessFile(result,"rw");
+        file.setLength(dex.length);
+        FileChannel channel=file.getChannel();
+        channel.map(FileChannel.MapMode.READ_WRITE,0,dex.length).put(ByteBuffer.wrap(dex));
+        channel.close();
+        file.close();
         return generateClassLoader(result, dexCache, parent);
     }
 

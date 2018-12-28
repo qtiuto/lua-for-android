@@ -9,10 +9,10 @@ class FakeVector {
     typedef Vector<_Tp,cacheCount> TrueType;
     typedef typename  TrueType::size_type size_type;
     _Tp *array;
-    size_type _size = 0;
-    size_type _capacity = 0;
+    size_type _size ;
+    size_type _capacity ;
 public:
-    FakeVector(_Tp* array,size_type capacity):array(array),_capacity(capacity){}
+    FakeVector(_Tp* array,size_type capacity,size_type size=0):array(array),_capacity(capacity),_size(size){}
 
     inline operator  TrueType &(){
         return asVector();
@@ -23,7 +23,7 @@ public:
     }
 
     void release(){
-        for (int i = _size-1; i !=-1 ; --i) {
+        for (int i = _size; i -- ;) {
             forceRelease(array[i]);
         }
     }

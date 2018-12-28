@@ -50,11 +50,14 @@ struct MethodInfo {
     jmethodID id;
     ParameterizedType returnType;
     Array<ParameterizedType> params;
+    ParameterizedType varArgType;
     MethodInfo()= default;
-    MethodInfo(MethodInfo&& other):id(other.id),returnType(std::move(other.returnType)),params(std::move(other.params)){};
+    MethodInfo(MethodInfo&& other):id(other.id),returnType(std::move(other.returnType))
+            ,params(std::move(other.params)),varArgType(std::move(other.varArgType)){};
     MethodInfo& operator=(MethodInfo&& other){
         this->~MethodInfo();
         id=other.id;
+        varArgType=std::move(other.varArgType);
         returnType=std::move(other.returnType);
         params=std::move(other.params);
         return *this;
@@ -165,7 +168,7 @@ public:
     Member* ensureMember(TJNIEnv *env, const String &name, bool isStatic);
 
     const MethodInfo *deductMethod(TJNIEnv* env,const MethodArray* array, Vector<JavaType *> &types,
-                                   Vector<ValidLuaObject> *arguments);
+                                   Vector<ValidLuaObject> *arguments, bool* gotVarArg= nullptr);
     const MethodInfo *findMethod(TJNIEnv* env,const String &name, bool isStatic, Vector<JavaType *> &types,
                                  Vector<ValidLuaObject> *arguments){
         return deductMethod(env,ensureMethod(env,name,isStatic),types,arguments);

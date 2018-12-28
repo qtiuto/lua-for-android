@@ -1,17 +1,17 @@
 apply plugin: 'com.android.library'
-/*apply plugin: "guru.stefma.bintrayrelease"
+apply plugin: "guru.stefma.bintrayrelease"
 
 androidArtifact { // 2
     artifactId = "dexmaker"
 }
 publish {
-    version = "1.0.0"
+    version = "1.1.0"
     group = "com.oslorde"
     userOrg = 'karven'
     desc = 'dexmaker for luadroid'
     website = 'https://github.com/qtiuto/lua-for-android'
     bintrayUser ='karven'
-}*/
+}
 
 android {
     compileSdkVersion 28
@@ -20,7 +20,7 @@ android {
         minSdkVersion 14
         targetSdkVersion 28
         versionCode 1
-        versionName "1.0"
+        versionName "1.1.0"
 
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
