@@ -43,7 +43,9 @@ Module app is a lua editor for running test in android.
   print(os.clock()-t)
   ```
  
-## [Documentation](wiki/Home)
+## Documentation
+   
+   For documentation,see [wiki]((../../wiki/Home))
      
 ## Email: 
  <qtiuto@gmail.com>     
