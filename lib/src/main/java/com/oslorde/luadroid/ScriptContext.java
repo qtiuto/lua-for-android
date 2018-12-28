@@ -1482,8 +1482,8 @@ public class ScriptContext {
 
     /**
      *
-     * @param outLogger
-     * @param errLogger
+     * @param outLogger where output message writes in
+     * @param errLogger where error message writes in
      */
     public void setLogger(OutputStream outLogger, OutputStream errLogger) {
         this.errLogger = errLogger;
@@ -1493,7 +1493,7 @@ public class ScriptContext {
 
     /**
      *
-     * @param errLogger
+     * @param errLogger where error message writes in
      */
     public void setErrLogger(OutputStream errLogger) {
         this.errLogger = errLogger;
@@ -1502,7 +1502,7 @@ public class ScriptContext {
 
     /**
      *
-     * @param outLogger
+     * @param outLogger where output message writes in
      */
     public void setOutLogger(OutputStream outLogger) {
         this.outLogger = outLogger;
@@ -1945,7 +1945,7 @@ public class ScriptContext {
         }
         return false;
     }
-    public static boolean isMethodSigEquals(Method f, Method s){
+    static boolean isMethodSigEquals(Method f, Method s){
         if(f==s) return true;
         if(sEqualNameAndParameters!=null){
             return sameSigMethod(f,s,sEqualNameAndParameters);
@@ -1953,7 +1953,7 @@ public class ScriptContext {
                 &&equalsParameters(f.getParameterTypes(),s.getParameterTypes());
     }
     //Simple implementation
-    public static class MethodMap<V>{
+    static class MethodMap<V>{
         static class Node<V>{
             Method key;
             V value;
@@ -1971,7 +1971,7 @@ public class ScriptContext {
         private int limit;
         private Node<V>[] nodes;
 
-        public MethodMap(int expectedSize){
+        MethodMap(int expectedSize){
             int trueCap=(expectedSize<<2)/3;
             if(SetUtils.notPowerOfTwo(trueCap) ||expectedSize==0)
                 trueCap= SetUtils.binaryCeil(trueCap);
@@ -2117,8 +2117,8 @@ public class ScriptContext {
         }
     }
 
-    public static class MethodSet extends LightSet<Method> {
-        public MethodSet(int s){
+    static class MethodSet extends LightSet<Method> {
+        MethodSet(int s){
             super(s);
         }
         @Override

@@ -112,7 +112,7 @@ public class ClassBuilder {
     }
 
     /**
-     * declare a public class extending Object with generated name
+     * Declare a public class extending Object with generated name
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
 
@@ -121,21 +121,21 @@ public class ClassBuilder {
     }
 
     /**
-     * declare a public class extending Object
+     * Declare a public class extending Object
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
     public static ClassBuilder declare(String name){
         return declare(name,Modifier.PUBLIC,null);
     }
     /**
-     * declare a public class without interface
+     * Declare a public class without interface
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
     public static ClassBuilder declare(String name, Class<?> superType){
         return declare(name,Modifier.PUBLIC,superType);
     }
     /**
-     * declare a class extending Object
+     * Declare a class extending Object
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
     public static ClassBuilder declare(String name, int flag){
@@ -143,21 +143,21 @@ public class ClassBuilder {
     }
 
     /**
-     * declare a class without interface
+     * Declare a class without interface
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
     public static ClassBuilder declare(String name, int flag, Class<?> superType){
         return declare(name,flag,superType,new Object[0]);
     }
     /**
-     * declare a public class
+     * Declare a public class
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
     public static ClassBuilder declare(String name,  Class<?> superType,Object... interfaces){
         return declare(name,Modifier.PUBLIC,superType,interfaces);
     }
     /**
-     * declare a public class extending Object
+     * Declare a public class extending Object
      * @see ClassBuilder#declare(String, int, Class, Object[])
      */
     public static ClassBuilder declare(String name, Object... interfaces){
@@ -165,14 +165,14 @@ public class ClassBuilder {
     }
 
     /**
-     * @param name class name,can be null
-     * @param flag class modifiers,{@link java.lang.reflect.Modifier}
-     * @param superType class to extend,null is treated as Object.class
-     *                  if the class is interface and no interfaces
+     * @param name Class name,can be null
+     * @param flag Class modifiers,{@link java.lang.reflect.Modifier}
+     * @param superType Class to extend,null is treated as Object.class.
+     *                  If the class is interface and no interfaces provided,
      *                  then the class is the only interface.
-     *                  otherwise,interface is not allowed as super class
-     * @param interfaces interfaces to implement,nullable for lua call
-     * @return a builder to constructor a class
+     *                  Otherwise,interface is not allowed as super class
+     * @param interfaces Interfaces to implement,nullable for lua call
+     * @return A builder to constructor a class
      */
     public static ClassBuilder declare(String name, int flag, Class<?> superType, Object... interfaces) {
         if (name == null) name = generateClassName();
@@ -290,7 +290,7 @@ public class ClassBuilder {
         return name;
     }
     /**
-     * @param methodInfo a map contains args mapped by order or name
+     * @param methodInfo A map contains args mapped by order or name
      * @see ClassBuilder#addMethod(String, int, Object, Object[], LuaFunction, List, List)
      */
     public ClassBuilder addMethod(Map methodInfo) {
@@ -315,8 +315,8 @@ public class ClassBuilder {
                 , paraAnnoList);
     }
     /**
-     * add public method with implementation
-     * @throws IllegalArgumentException if no implementation provided
+     * Add public method with implementation
+     * @throws IllegalArgumentException If no implementation provided
      * @see ClassBuilder#addMethod(String, int, Object, Object[], LuaFunction, List, List)
      */
     public ClassBuilder addMethod(String name,  Object returnType,
@@ -325,14 +325,14 @@ public class ClassBuilder {
         return addMethod(name,Modifier.PUBLIC,returnType,paramTypes,func);
     }
     /**
-     * add a public method which has implementation, no param and return void
+     * Add a public method which has implementation, no param and return void
      * @see ClassBuilder#addMethod(String, Object, Object[], LuaFunction)
      */
     public ClassBuilder addMethod(String name,LuaFunction function){
         return addMethod(name,void.class,null,function);
     }
     /**
-     * add public method with implementation and no param
+     * Add public method with implementation and no param
      * @see ClassBuilder#addMethod(String, Object, Object[], LuaFunction)
      */
     public ClassBuilder addMethod(String name, Object returnType,LuaFunction function){
@@ -346,7 +346,7 @@ public class ClassBuilder {
         return addMethod(name,Modifier.PUBLIC,void.class);
     }
     /**
-     * add a public abstract method with no param
+     * Add a public abstract method with no param
      * @see ClassBuilder#addMethod(String, int, Object, Object[], LuaFunction, List, List)
      */
     public ClassBuilder addMethod(String name, Object returnType){
@@ -354,7 +354,7 @@ public class ClassBuilder {
     }
 
     /**
-     * add an abstract method with no param
+     * Add an abstract method with no param
      * @see ClassBuilder#addMethod(String, int, Object, Object[], LuaFunction, List, List)
      */
     public ClassBuilder addMethod(String name, int flag, Object returnType){
@@ -385,16 +385,16 @@ public class ClassBuilder {
     }
 
     /**
-     * @param name method name.
-     * @param flag method modifiers,{@link Modifier}.
-     * @param returnType method return type.
+     * @param name Method name.
+     * @param flag Method modifiers,{@link Modifier}.
+     * @param returnType Method return type.
      * @param paramTypes parameter types,nullable if no arg.
-     * @param func function to implement the lua function,auto wrap,nullable for abstract methods
-     * @param annotations method annotations,nullable, represented by an array of table
+     * @param func Function to implement the lua function,auto wrap,nullable for abstract methods
+     * @param annotations Method annotations,nullable, represented by an array of table
      *                    with its first element as annotation class the left
      *                    as key and value. If the annotation has the second value only,
      *                    it's treated as "value".All annotations is set to runtime type.
-     * @param paramAnnotations parameter annotations,represented by an array of annotations,nullable.
+     * @param paramAnnotations Parameter annotations,represented by an array of annotations,nullable.
      */
     public ClassBuilder addMethod(String name, int flag, Object returnType,
                           Object[] paramTypes, LuaFunction func, List<Map<Object, Object>> annotations,
@@ -483,14 +483,14 @@ public class ClassBuilder {
     }
 
     /**
-     * add a public field
+     * Add a public field
      * @see ClassBuilder#addField(String, int, Object, Object, List)
      */
     public ClassBuilder addField(String name, Object fieldType) {
         return addField(name, Modifier.PUBLIC, fieldType, null, null);
     }
     /**
-     * add a public static field
+     * Add a public static field
      * @see ClassBuilder#addField(String, int, Object, Object, List)
      */
     public ClassBuilder addStaticField(String name,  Object fieldType) {
@@ -511,12 +511,12 @@ public class ClassBuilder {
     }
 
     /**
-     *add a field to this class, static or not.
-     * @param name field name.
-     * @param flag field modifiers,{@link Modifier}.
-     * @param fieldType field type
-     * @param staticValue value can be set as static,such as enum,class,string,number
-     * @param annotations field annotations,for more see {@link ClassBuilder#addMethod(String, int, Object, Object[], LuaFunction, List, List)}
+     *Add a field to this class, static or not.
+     * @param name Field name.
+     * @param flag Field modifiers,{@link Modifier}.
+     * @param fieldType Field type
+     * @param staticValue Value can be set as static,such as enum,class,string,number
+     * @param annotations Field annotations,for more see {@link ClassBuilder#addMethod(String, int, Object, Object[], LuaFunction, List, List)}
      */
     public ClassBuilder addField(String name, int flag, Object fieldType, Object staticValue, List<Map<Object, Object>> annotations) {
         FieldId id = type.getField(getTypeId(fieldType), name);
@@ -529,7 +529,7 @@ public class ClassBuilder {
         return this;
     }
     /**
-     * @param fieldInfo a map contains args mapped by order or name
+     * @param fieldInfo A map contains args mapped by order or name
      * @see ClassBuilder#addField(String, int, Object, Object, List)
      */
     public ClassBuilder addField(Map fieldInfo) {
@@ -542,9 +542,9 @@ public class ClassBuilder {
     }
 
     /**
-     * @return the class to build
-     * @throws IOException if failed to generate class
-     * @throws ClassNotFoundException if failed to load class
+     * @return The class to build
+     * @throws IOException If failed to generate class
+     * @throws ClassNotFoundException If failed to load class
      */
 
     public Class build() throws IOException, ClassNotFoundException {
@@ -576,10 +576,10 @@ public class ClassBuilder {
 
 
     /**
-     *set handlers for methods
-     * @param ob instance of generated type
-     * @throws NoSuchFieldException if it's not a generated type
-     * @throws IllegalAccessException  ignored
+     *Set handlers for methods
+     * @param ob Instance of generated type
+     * @throws NoSuchFieldException If it's not a generated type
+     * @throws IllegalAccessException  Ignored
      */
     public void setup(Object ob) throws NoSuchFieldException, IllegalAccessException {
         Field field = ob.getClass().getDeclaredField(FUNC_REFS);
@@ -588,7 +588,7 @@ public class ClassBuilder {
     }
 
     /**
-     * build the class,alloc a object of class it and copy field of superObject to it.
+     * Build the class,alloc a object of class it and copy fields of superObject to it.
      * No constructor is called in this method
      * the object is setup automatically
      * @see ClassBuilder#cloneFromSuper(Class, Object)
@@ -600,11 +600,11 @@ public class ClassBuilder {
     }
 
     /**
-     * alloc a object of class c and copy field of superObject to it.
+     * Alloc a object of class c and copy fields of superObject to it.
      * No constructor is called in this method
-     * @param c class from build
-     * @param superObject an instance of the superType
-     * @return an instance of class c
+     * @param c Class from build
+     * @param superObject An instance of the superType
+     * @return An instance of class c
      * @throws Exception
      */
 
