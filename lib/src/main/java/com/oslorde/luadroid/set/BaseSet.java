@@ -74,6 +74,24 @@ abstract class BaseSet<N extends BaseNode<N>,K>{
         return true;
     }
 
+    public boolean remove(K key){
+        int index = hashKey(key,cap);
+        if(nodes==null){
+            //noinspection unchecked
+            return false;
+        }
+        N start = nodes[index];
+        N prev=null;
+        for (N node = start; node != null; node = node.next) {
+            if (equals(node,key)) {
+                if(prev==null) nodes[index]=node.next;
+                else prev.next=node.next;
+            }
+            prev=node;
+        }
+        return false;
+    }
+
     abstract N onNewNode(K key,N next);
 
     public boolean contains(K key){

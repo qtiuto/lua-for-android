@@ -8,7 +8,10 @@ import android.util.SparseIntArray;
 import android.util.SparseLongArray;
 import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
-import com.oslorde.luadroid.set.*;
+import com.oslorde.luadroid.set.BaseNode;
+import com.oslorde.luadroid.set.LightNodeSet;
+import com.oslorde.luadroid.set.LightSet;
+import com.oslorde.luadroid.set.SetUtils;
 import dalvik.system.BaseDexClassLoader;
 import dalvik.system.DexFile;
 import org.json.JSONArray;
@@ -1139,9 +1142,14 @@ public class ScriptContext {
             String[] bootJars = System.getenv("BOOTCLASSPATH").split(":");
             if (Build.VERSION.SDK_INT <= 25) {
                 for (String path : bootJars) {
-                    DexFile dexFile;
-                    dexFile = new DexFile(path);
-                    addDexFile(dexFile);
+                    File file = new File(path);
+                    if(!file.exists()) continue;
+                    try {
+                        //fix for https://github.com/qtiuto/lua-for-android/issues/3
+                        DexFile dexFile = new DexFile(file);
+                        addDexFile(dexFile);
+                    }catch (Exception ignored){
+                    }
                 }
             } else {
                 String[][] bootClassList = getBootClassList();
@@ -1149,6 +1157,10 @@ public class ScriptContext {
                     Collections.addAll(classes, bootClassList);
                 }
                 dexFiles.addAll(bootJars);
+                for (String path:bootJars){
+                    if(!new File(path).exists())
+                        dexFiles.remove(path);//rare case
+                }
             }
             loadClassLoader(ScriptContext.class.getClassLoader());
         }
