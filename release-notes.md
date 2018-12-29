@@ -1,3 +1,7 @@
+version 1.3.1:
+
+fix using bugs for platforms that defines bad BOOTCLASSPATH
+
 version 1.3.0:
 
 1. change proxy callback syntax and add default handler for proxy
@@ -9,6 +13,3 @@ version 1.3.0:
 4. bug fix for extending super class
 
 4. other little changes
-
-version 1.3.1:
-fix using bugs for platforms that defines bad BOOTCLASSPATH
