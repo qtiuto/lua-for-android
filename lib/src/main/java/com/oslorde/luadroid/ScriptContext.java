@@ -1201,11 +1201,9 @@ public class ScriptContext {
                     File file = new File(path);
                     if(!file.exists()) continue;
                     try {
-                        //fix for https://github.com/qtiuto/lua-for-android/issues/3
                         DexFile dexFile = new DexFile(file);
                         addDexFile(dexFile);
                     }catch (Exception ignored){
-                        ignored.printStackTrace();
                     }
                 }
             } else {
