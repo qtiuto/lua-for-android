@@ -318,7 +318,7 @@ namespace art {
 
 
         // Do nothing
-        virtual ~DexFile();
+        virtual ~DexFile(){}
 
 
         // The base address of the memory mapping.

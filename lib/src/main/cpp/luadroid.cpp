@@ -3112,15 +3112,15 @@ static void registerNativeMethods(JNIEnv *env) {
     env->RegisterNatives(scriptClass, nativeMethods,
                          sizeof(nativeMethods) / sizeof(JNINativeMethod));
     int sdk=getSDK();
-    if(sdk>25){
+    if(sdk>=23){
         DexResolver::init();
         JNINativeMethod method[]={JNINativeMethod{"getBootClassList","()[[Ljava/lang/String;",(void*)DexResolver::getAllBootClasses}};
         env->RegisterNatives(scriptClass,method,1);
     }
-    if(sdk>=21){
-        JNINativeMethod method[]={JNINativeMethod{"getClassList","(Ljava/lang/Object;)[[Ljava/lang/String;",(void*)DexResolver::getClassList}};
-        env->RegisterNatives(scriptClass,method,1);
-    }
+
+    JNINativeMethod method[]={JNINativeMethod{"getClassList","(Ljava/lang/Object;)[[Ljava/lang/String;",(void*)DexResolver::getClassList}};
+    env->RegisterNatives(scriptClass,method,1);
+
     env->DeleteLocalRef(scriptClass);
 }
 

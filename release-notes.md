@@ -1,6 +1,6 @@
 version 1.3.1:
 
-fix using bugs for platforms that defines bad BOOTCLASSPATH
+fix using bugs for android api <21 23-25
 
 version 1.3.0:
 

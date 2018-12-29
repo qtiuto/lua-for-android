@@ -17,11 +17,16 @@ import dalvik.system.DexFile;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.File;
-import java.io.OutputStream;
+import java.io.*;
 import java.lang.reflect.*;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * For running a lua context
@@ -1132,7 +1137,6 @@ public class ScriptContext {
                 loader=loader.getParent();
             }
         }
-
     }
 
     private void initLoader() throws Exception {
@@ -1140,7 +1144,59 @@ public class ScriptContext {
             dexFiles = new LightSet<>();
             classes = new ArrayList<>();
             String[] bootJars = System.getenv("BOOTCLASSPATH").split(":");
-            if (Build.VERSION.SDK_INT <= 25) {
+            ByteBuffer buffer=null;
+            ByteBuffer tmp=null;
+            if(Build.VERSION.SDK_INT<21){
+                for (String path:bootJars){
+                    File odexSrc=new File(path.replaceAll("\\..*",".odex"));
+                    if(!odexSrc.exists())
+                        odexSrc=new File("/data/dalvik-cache/"+path.replace('/','@')+"@classes.dex");
+                    if(odexSrc.exists()){
+                        FileInputStream in=new FileInputStream(odexSrc);
+                        FileChannel channel=in.getChannel();
+                        MappedByteBuffer byteBuffer=channel.map(FileChannel.MapMode.READ_ONLY,0,channel.size());
+                        String[][] list=getClassList(byteBuffer);
+                        Collections.addAll(classes, list);
+                        channel.close();
+                        in.close();
+                    }else if(path.matches(".+(\\.jar|\\.zip|\\.apk)$")){
+                        ZipFile zipFile;
+                        ZipEntry entry;
+                        try{
+                            zipFile = new ZipFile(path);
+                            entry = zipFile.getEntry("classes.dex");
+                            if(entry==null){
+                                zipFile.close();
+                                continue;
+                            }
+                        }catch (Exception e){//will it be a bad file?
+                            continue;
+                        }
+
+                        InputStream stream =zipFile.getInputStream(entry);
+                        if(tmp==null){
+                            tmp=ByteBuffer.allocate(1024);
+                            tmp.order(ByteOrder.LITTLE_ENDIAN);
+                        }
+                        int size = (int)entry.getSize();
+                        if(buffer==null||buffer.capacity()<size){
+                            buffer=ByteBuffer.allocateDirect(size);
+                        }
+                        int read;
+                        while ((read=stream.read(tmp.array()))>0){
+                            tmp.position(0);
+                            tmp.limit(read);
+                            buffer.put(tmp);
+                        }
+                        buffer.position(0);
+                        String[][] list=getClassList(buffer);
+                        if(list!=null) Collections.addAll(classes, list);
+                        stream.close();
+                        zipFile.close();
+                    }
+                }
+            }
+            else if (Build.VERSION.SDK_INT <23) {
                 for (String path : bootJars) {
                     File file = new File(path);
                     if(!file.exists()) continue;
@@ -1149,6 +1205,7 @@ public class ScriptContext {
                         DexFile dexFile = new DexFile(file);
                         addDexFile(dexFile);
                     }catch (Exception ignored){
+                        ignored.printStackTrace();
                     }
                 }
             } else {
@@ -1157,11 +1214,8 @@ public class ScriptContext {
                     Collections.addAll(classes, bootClassList);
                 }
                 dexFiles.addAll(bootJars);
-                for (String path:bootJars){
-                    if(!new File(path).exists())
-                        dexFiles.remove(path);//rare case
-                }
             }
+            System.gc();//free memory
             loadClassLoader(ScriptContext.class.getClassLoader());
         }
 
