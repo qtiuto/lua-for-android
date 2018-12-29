@@ -9,3 +9,6 @@ version 1.3.0:
 4. bug fix for extending super class
 
 4. other little changes
+
+version 1.3.1:
+fix using bugs for platforms that defines bad BOOTCLASSPATH

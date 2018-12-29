@@ -870,7 +870,7 @@ void readArguments(lua_State *L, ThreadContext *context, FakeVector<JavaType *> 
         ValidLuaObject luaObject;
         if (!parseLuaObject(L, context, i, luaObject)) {
             forceRelease(types, objects);
-            ERROR( "Arg unexpected for array");
+            ERROR( "Arg unexpected");
         }
         if (checkLuaTypeNoThrow(context->env, L, paramType, luaObject)) {
             forceRelease(luaObject);
@@ -1737,6 +1737,7 @@ int javaUsing(lua_State*L){
         if(env->IsInstanceOf(loader->object,loaderClass)){
             static jmethodID  loadClassLoader=env->GetMethodID(contextClass,"loadClassLoader","(Ljava/lang/ClassLoader;)V");
             env->CallVoidMethod(context->scriptContext->javaRef,loadClassLoader,loader->object);
+            HOLD_JAVA_EXCEPTION(context,{ return 0;});
             import->externalLoaders.push_back(env->NewGlobalRef(loader->object));
         }
     }
