@@ -33,69 +33,69 @@ return 0;\
 }})
 #define luaL_isstring(L, i) (lua_type(L,i)==LUA_TSTRING)
 
-static int javaType(lua_State *L)noexcept;
+static int javaType(lua_State *L);
 
-static int javaInstanceOf(lua_State *L)noexcept;
+static int javaInstanceOf(lua_State *L);
 
-static int javaNew(lua_State *L)noexcept;
+static int javaNew(lua_State *L);
 
-static int javaNewArray(lua_State *L)noexcept;
+static int javaNewArray(lua_State *L);
 
-static int javaImport(lua_State *L)noexcept;
+static int javaImport(lua_State *L);
 
 static int javaUsing(lua_State*L);
 
 static int javaIterate(lua_State*L);
 
-static int javaCharValue(lua_State *L)noexcept;
+static int javaCharValue(lua_State *L);
 
-static int javaCharString(lua_State *L)noexcept;
+static int javaCharString(lua_State *L);
 
-static int javaToJavaObject(lua_State *L)noexcept;
+static int javaToJavaObject(lua_State *L);
 
-static int javaProxy(lua_State *L)noexcept;
+static int javaProxy(lua_State *L);
 
-static int javaSync(lua_State *L)noexcept;
+static int javaSync(lua_State *L);
 
-static int javaThrow(lua_State *L)noexcept;
+static int javaThrow(lua_State *L);
 
-static int javaTry(lua_State *L)noexcept;
+static int javaTry(lua_State *L);
 
-static int javaUnBox(lua_State *L)noexcept;
+static int javaUnBox(lua_State *L);
 
-static int javaTypeOf(lua_State *L)noexcept;
+static int javaTypeOf(lua_State *L);
 
-static int javaSuper(lua_State *L)noexcept;
+static int javaSuper(lua_State *L);
 
-static int javaPut(lua_State *L)noexcept;
+static int javaPut(lua_State *L);
 
-static int javaGet(lua_State *L)noexcept;
+static int javaGet(lua_State *L);
 
-static int concatString(lua_State *L)noexcept;
+static int concatString(lua_State *L);
 
-static int objectEquals(lua_State *L)noexcept;
+static int objectEquals(lua_State *L);
 
-static int typeEquals(lua_State *L)noexcept;
+static int getObjectLength(lua_State *L);
 
-static int javaTypeToString(lua_State *L) noexcept;
+static int javaTypeToString(lua_State *L) ;
 
-static int javaObjectToString(lua_State *L)noexcept;
+static int javaObjectToString(lua_State *L);
 
-static int getFieldOrMethod(lua_State *L)noexcept;
+static int getFieldOrMethod(lua_State *L);
 
-static int setFieldOrArray(lua_State *L)noexcept;
+static int setFieldOrArray(lua_State *L);
 
-static int setField(lua_State *L)noexcept;
+static int setField(lua_State *L);
 
-static int getField(lua_State *L)noexcept;
+static int getField(lua_State *L);
 
-static int callMethod(lua_State *L)noexcept;
+static int callMethod(lua_State *L);
+
+static int callInitializer(lua_State *L);
 
 static ThreadContext *getContext(lua_State *L);
 
 static FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIdx);
-
-static int newArray(lua_State *L, int start, ThreadContext *context, JavaType *type);
 
 static bool parseLuaObject(lua_State *L, ThreadContext *context, int idx,
                            ValidLuaObject &luaObject);
@@ -128,8 +128,6 @@ readArguments(lua_State *L, ThreadContext *context, FakeVector<JavaType *> &type
 static void parseTryTable(lua_State *L);
 
 static void recordLuaError(ThreadContext *context, lua_State *L, int ret);
-
-static int getObjectLength(lua_State *L);
 
 static LocalFunctionInfo *saveLocalFunction(lua_State *L, int i);
 
@@ -220,9 +218,11 @@ static __thread jmp_buf errorJmp;
 #define JAVA_OBJECT "java_object"
 #define JAVA_TYPE "java_type"
 #define JAVA_CONTEXT "java_context"
+#define JAVA_MEMBER "java_member"
 class RegisterKey{};
 static const RegisterKey* OBJECT_KEY= reinterpret_cast<const RegisterKey *>(javaInterfaces);
 static const RegisterKey* TYPE_KEY=OBJECT_KEY+1;
+static const RegisterKey* MEMBER_KEY=OBJECT_KEY+2;
 
 
 #if  LUA_VERSION_NUM == 502
@@ -266,16 +266,26 @@ static void luaL_setfuncs(lua_State *L, const luaL_Reg *l, int nup) {
     lua_pop(L, nup);  /* remove upvalues */
 }
 
-static inline int lua_rawgetp(lua_State* L,int index,const void* p){
+static inline void lua_rawgetp(lua_State* L,int index,const void* p){
+#ifndef __LP64__
+    lua_rawgeti(L,index,(int)p);
+#else
     lua_pushlightuserdata(L,(void*)p);
     lua_rawget(L,index);
-    return 0;
+#endif
 }
 static inline void lua_rawsetp(lua_State* L,int index,const void* p){
+#ifndef __LP64__
+    lua_rawseti(L,index,(int)p);
+#else
+    if(index<0&&index>LUA_REGISTRYINDEX){
+        index=lua_gettop(L)+index+1;
+    }
     lua_pushlightuserdata(L,(void*)p);
     lua_pushvalue(L,-2);
     lua_rawset(L,index);
     lua_pop(L,1);
+#endif
 }
 static inline size_t lua_rawlen(lua_State*L,int index){
     return lua_objlen(L,index);
@@ -378,7 +388,7 @@ static bool newMetaTable(lua_State*L,const RegisterKey* key,const char* tname){
     lua_rawgetp(L,LUA_REGISTRYINDEX,key);
     if(!lua_isnil(L,-1)) return false;
     lua_pop(L,1);
-    lua_createtable(L, 0, 2);  /* create metatable */
+    lua_newtable(L);  /* create metatable */
     if(tname){
         lua_pushstring(L, tname);
         lua_setfield(L, -2, "__name");  /* metatable.__name = tname */
@@ -391,12 +401,14 @@ static int safeGC(lua_State*L){
     lua_gc(L, LUA_GCCOLLECT, 0);
     return 1;
 }
+
 static inline void luaFullGC(lua_State *L) {
     do{
         lua_pushcfunction(L,safeGC);
     } while(lua_pcall(L,0,0,0)!=LUA_OK);
     return ;
 }
+
 static void pushJavaObject(lua_State *L, TJNIEnv *env, ScriptContext *context, jobject obj, JavaType *given) {
 #ifndef NDEBUG
     if(obj== nullptr){
@@ -409,6 +421,7 @@ static void pushJavaObject(lua_State *L, TJNIEnv *env, ScriptContext *context, j
     objectRef->type = given?given:context->ensureType(env, (JClass) env->GetObjectClass(obj));
     setMetaTable(L, OBJECT_KEY);
 }
+
 static inline  void pushJavaObject(lua_State *L, ThreadContext *context, jobject obj,JavaType* given= nullptr){
     if(context->pushedCount++>10000){
         luaFullGC(L);
@@ -534,7 +547,7 @@ void ScriptContext::config(lua_State *L) {
         }
         lua_pushlightuserdata(L,context);
         lua_pushcclosure(L, javaType,1);
-        lua_setglobal(L, "Type");
+        lua_setglobal(L, "type_");
     }
     {
         *(ThreadContext**)lua_newuserdata(L, sizeof(void*))=context;
@@ -565,9 +578,6 @@ void ScriptContext::config(lua_State *L) {
         lua_pushlightuserdata(L,context);
         lua_pushcclosure(L, javaTypeToString,1);
         lua_setfield(L, index, "__tostring");
-        lua_pushlightuserdata(L,context);
-        lua_pushcclosure(L, typeEquals,1);
-        lua_setfield(L, index, "__eq");
     }
     if (newMetaTable(L,OBJECT_KEY, JAVA_OBJECT)) {
         int index = lua_gettop(L);
@@ -591,6 +601,10 @@ void ScriptContext::config(lua_State *L) {
         lua_pushlightuserdata(L,context);
         lua_pushcclosure(L, getObjectLength,1);
         lua_setfield(L, index, "__len");
+        
+        lua_pushlightuserdata(L,context);
+        lua_pushcclosure(L, callInitializer,1);
+        lua_setfield(L, index, "__call");
         //concat is simple
         lua_pushcfunction(L, concatString);
         lua_setfield(L, index, "__concat");
@@ -664,12 +678,25 @@ ScriptContext::~ScriptContext() {
 }
 
 static inline void pushJavaType(lua_State *L,JavaType* type){
-    *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = type;
-    setMetaTable(L, TYPE_KEY);
+    lua_rawgetp(L, LUA_REGISTRYINDEX, type);
+    if( lua_isnil(L,-1)){
+        lua_pop(L,1);
+        *((JavaType **) lua_newuserdata(L, sizeof(JavaType *))) = type;
+        setMetaTable(L, TYPE_KEY);
+        lua_pushvalue(L,-1);
+        lua_rawsetp(L,LUA_REGISTRYINDEX,type);
+    }
+
 }
 
 static inline ThreadContext *getContext(lua_State *L) {
     return  (ThreadContext *) lua_touserdata(L, lua_upvalueindex(1));
+}
+
+static inline MemberInfo* getMemberInfo(lua_State* L){
+    MemberInfo *ret = (MemberInfo *) lua_touserdata(L, FLAG_INDEX);
+    return ret?ret:(MemberInfo*)lua_touserdata(L,1);
+
 }
 
 static bool parseLuaObject(lua_State *L, ThreadContext *context, int idx,
@@ -939,61 +966,58 @@ void pushArrayElement(lua_State *L, ThreadContext *context, const JavaObject *ob
     HOLD_JAVA_EXCEPTION(context,{throwJavaError(L,context);});
 }
 
-static void pushRawMethod(ThreadContext *context,lua_State *L,const Member* member,int toIndex, bool isStatic) {
-    MemberFlag *flag = (MemberFlag *) lua_newuserdata(L, sizeof(MemberFlag));
-    flag->member=member;
-    flag->context=context;
-    flag->isStatic = isStatic;
-    flag->isNotOnlyMethod = false;
-    flag->isField = false;
-    flag->isDuplicatedField = false;
+static inline void pushRawMethod(lua_State *L,int toIndex) {
     lua_pushvalue(L, toIndex);
     lua_pushcclosure(L, callMethod, 2);
 }
 
 void pushMember(ThreadContext *context, lua_State *L,const Member* member,int tOIndex, bool isStatic, int fieldCount, bool isMethod) {
-    if (fieldCount == 0) {
-        pushRawMethod(context,L,member,tOIndex, isStatic);
-        return;
-    }
-    lua_newuserdata(L, 0);//value represent the java member
-    lua_createtable(L, 0, 3);//metatable;
-    int tableIndex = lua_gettop(L);
-    MemberFlag *flag = (MemberFlag *) lua_newuserdata(L, sizeof(MemberFlag));
+    MemberInfo *flag = (MemberInfo *) lua_newuserdata(L, sizeof(MemberInfo));
+    if(isStatic) flag->type=*(JavaType**)lua_touserdata(L,tOIndex);
+    else flag->object=(JavaObject*)lua_touserdata(L,tOIndex);
     flag->member=member;
     flag->context=context;
     flag->isStatic = isStatic;
-    flag->isNotOnlyMethod = true;
+    flag->isNotOnlyMethod = fieldCount!=0;
     flag->isDuplicatedField = fieldCount > 1;
-    int flagIndex = lua_gettop(L);
-    if (fieldCount > 0) {
-        lua_pushstring(L, "__index");
-        lua_pushvalue(L, flagIndex);
-        lua_pushvalue(L, tOIndex);
-        lua_pushcclosure(L, getField, 2);
-        lua_rawset(L, tableIndex);
+    if (fieldCount == 0) {
+        pushRawMethod(L,tOIndex);
+        return;
+    }
+#if LUA_VERSION_NUM>=502
+    lua_pushvalue(L,tOIndex);
+    lua_setuservalue(L,-2);
+    if(newMetaTable(L,MEMBER_KEY,JAVA_MEMBER))
+#else
+    lua_createtable(L, 1, 3);//metatable;
+    lua_pushvalue(L,tOIndex);
+    lua_rawseti(L,-2,1);
+#endif
+    {
+        int tableIndex = lua_gettop(L);
+        if (fieldCount > 0) {
+            lua_pushstring(L, "__index");
+            lua_pushcclosure(L, getField, 0);
+            lua_rawset(L, tableIndex);
 
-        lua_pushstring(L, "__newindex");
-        lua_pushvalue(L, flagIndex);
-        lua_pushvalue(L, tOIndex);
-        lua_pushcclosure(L, setField, 2);
-        lua_rawset(L, tableIndex);
+            lua_pushstring(L, "__newindex");
+            lua_pushcclosure(L, setField, 0);
+            lua_rawset(L, tableIndex);
+        }
+
+        if (isMethod) {
+            lua_pushstring(L, "__call");
+            lua_pushcclosure(L, callMethod, 0);
+            lua_rawset(L, tableIndex);
+        }
+
+#if LUA_VERSION_NUM >=502 //It ok to alert for once init
+        lua_pushstring(L,"__metatable");
+        lua_pushstring(L,"Can't change java metatable");
+        lua_rawset(L,tableIndex);
+#endif
     }
 
-    if (isMethod) {
-        lua_pushstring(L, "__call");
-        lua_pushvalue(L, flagIndex);
-        lua_pushvalue(L, tOIndex);
-        lua_pushcclosure(L, callMethod, 2);
-        lua_rawset(L, tableIndex);
-    }
-
-    lua_pop(L, 1);//pop flag
-
-    //to improve performance,comment out below code
-    /*lua_pushstring(L,"__metatable");
-    lua_pushboolean(L,0);
-    lua_rawset(L,tableIndex);*/
 
     lua_setmetatable(L, -2);
 }
@@ -1721,13 +1745,8 @@ int javaUsing(lua_State*L){
 #endif
             }
             if(!qualifyJavaName(name))continue;
-            lua_getglobal(L,name.data());
-            JavaType** existed= (JavaType **)lua_touserdata(L, -1);
-            if(existed== nullptr||*existed!=type){
-                pushJavaType(L,type);
-                lua_setglobal(L,name.data());
-            }
-            lua_pop(L,1);//avoid stack overflow
+            pushJavaType(L,type);
+            lua_setglobal(L,name.data());
         }
         
     } else {
@@ -1823,7 +1842,7 @@ int javaCharString(lua_State *L) {
     return 1;
 }
 
-int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
+int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type,JavaType* arrayType= nullptr) {
     jlong size = 0;
     if (type->isVoid()) {
         ERROR( "Type Error:array for void.class can't be created");
@@ -1859,7 +1878,7 @@ int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type) {
         forceRelease(elements);
         throwJavaError(L,context);
     }
-    pushJavaObject(L, context, ret);
+    pushJavaObject(L, context, ret,arrayType);
     return 1;
 }
 int javaNew(lua_State *L) {
@@ -1868,7 +1887,7 @@ int javaNew(lua_State *L) {
     auto env=context->env;
     auto component = type->getComponentType(env);
     if (component != nullptr) {
-        return newArray(L, 2, context, component);
+        return newArray(L, 2, context, component,type);
     } else if(!type->isPrimitive()){
         int top=lua_gettop(L);
         uint expectedSize = uint (top - 1);
@@ -2332,6 +2351,7 @@ int javaGet(lua_State *L) {
     return 1;
 }
 
+
 static JString getMemberName(TJNIEnv *env, const JObject &member) {
     static jmethodID getName=env->GetMethodID(env->GetObjectClass(member), "getName", "()Ljava/lang/String;");
     return (JString) env->CallObjectMethod(member,getName);
@@ -2342,22 +2362,22 @@ static JString getMethodName(TJNIEnv* env, jclass c, jmethodID id, jboolean isSt
     return getMemberName(env, member);
 }
 int callMethod(lua_State *L) {
-    MemberFlag *flag = (MemberFlag *) lua_touserdata(L, FLAG_INDEX);
-    ThreadContext* context=flag->context;
+    MemberInfo *memberInfo =getMemberInfo(L);
+    ThreadContext* context=memberInfo->context;
     SetErrorJMP();
-    bool isStatic = flag->isStatic;
-    JavaObject *objRef = isStatic ? nullptr : (JavaObject *) lua_touserdata(L, OBJ_INDEX);
-    JavaType *type = isStatic ? *(JavaType **) lua_touserdata(L, OBJ_INDEX) : objRef->type;
-    int start=1 + flag->isNotOnlyMethod;
+    bool isStatic = memberInfo->isStatic;
+    JavaObject *objRef = isStatic ? nullptr : memberInfo->object;
+    JavaType *type = isStatic ? memberInfo->type : objRef->type;
+    int start=1 + memberInfo->isNotOnlyMethod;
     int top=lua_gettop(L);
-    uint expectedSize = uint(top - (flag->isNotOnlyMethod));
+    uint expectedSize = uint(top - (memberInfo->isNotOnlyMethod));
     JavaType* _types[expectedSize];
     ValidLuaObject _objects[expectedSize];
     FakeVector<JavaType *> types(_types,expectedSize);
     FakeVector<ValidLuaObject> objects(_objects,expectedSize);
     readArguments(L, context, types, objects, start,top);
     auto env=context->env;
-    auto&& array=flag->member->methods;
+    auto&& array=memberInfo->member->methods;
     bool gotVarMethod;
     auto info = type->deductMethod(env,&array, types, &objects.asVector(),&gotVarMethod);
     if (unlikely(info == nullptr)) {
@@ -2506,35 +2526,82 @@ static int newCall(lua_State* L){
     lua_call(L,len+1,1);
     return 1;
 }
-#if LUA_VERSION_NUM >=502
-static inline bool tryExistedMember(lua_State* L){
-    if(lua_getuservalue(L,1)==LUA_TNIL){
-        lua_pop(L,1);
-        return false;
-    }
-    lua_pushvalue(L,2);
-    if(lua_rawget(L,-2)==LUA_TNIL){
-        lua_pop(L,1);
-        return false;
-    }
-    return true;
+
+static int callExtendingMethod(lua_State* L){
+    lua_pushvalue(L,lua_upvalueindex(1));
+    lua_pushvalue(L,lua_upvalueindex(2));
+    lua_insert(L,1);
+    lua_insert(L,1);
+    lua_call(L,lua_gettop(L)-1,1);
+    return 1;
 }
-static inline void saveExistedMember(lua_State* L){
-    if(lua_getuservalue(L,1)==LUA_TNIL){
+
+static inline void saveExistedMember(lua_State* L,bool isStatic, bool force){
+#if LUA_VERSION_NUM>=502
+    lua_getuservalue(L,1);
+#else
+    char* ptr= reinterpret_cast<char *>(lua_touserdata(L,1))+isStatic
+    lua_rawgetp(L,LUA_REGISTRYINDEX,ptr);
+#endif
+    if(lua_isnil(L,-1)){
+        if(!force)
+            return;
         lua_pop(L,1);
         lua_newtable(L);
         lua_pushvalue(L,-1);
+#if LUA_VERSION_NUM>=502
         lua_setuservalue(L,1);
+#else 
+        lua_rawsetp(L,LUA_REGISTRYINDEX,ptr);
+#endif
     }
     lua_pushvalue(L,2);
-    lua_pushvalue(L,-3);
+    lua_pushvalue(L,3);
     lua_rawset(L,-3);
     lua_pop(L,1);
+
 }
+
+static inline bool tryExistedMember(lua_State* L,JavaType* type,bool isStatic){
+#if LUA_VERSION_NUM>=502
+    lua_getuservalue(L,1);
 #else
-#define tryExistedMember(L) false
-#define saveExistedMember(L)
+    lua_rawgetp(L,LUA_REGISTRYINDEX,reinterpret_cast<char *>(lua_touserdata(L,1))+isStatic);
 #endif
+
+    if(lua_isnil(L,-1)){
+        lua_pop(L,1);
+        goto Handle_Object;
+    }
+
+    lua_pushvalue(L,2);
+    lua_rawget(L,-2);
+    if(lua_isnil(L,1)){
+        lua_pop(L,2);//nil and table
+        goto Handle_Object;
+    }
+    return true;
+    Handle_Object:
+    if(isStatic)
+        return false;
+    lua_rawgetp(L,LUA_REGISTRYINDEX,reinterpret_cast<char *>(type)+2);
+    if(lua_isnil(L,-1)){
+        lua_pop(L,1);//nil
+        return false;
+    }
+    lua_pushvalue(L,2);
+    lua_rawget(L,-2);
+    if(lua_isnil(L,-1)){
+        lua_pop(L,2);//nil and table
+        return false;
+    }
+    lua_pushvalue(L,1);
+    lua_pushcclosure(L,callExtendingMethod,2);
+    lua_remove(L,-2);
+    saveExistedMember(L,isStatic, true);
+    return true;
+}
+
 
 int getFieldOrMethod(lua_State *L) {
     bool isStatic = isJavaTypeOrObject(L,1);
@@ -2565,7 +2632,7 @@ int getFieldOrMethod(lua_State *L) {
         ERROR( "Invaild type to get a field or method:%s", luaL_typename(L, 2));
     }
     MemberStart:
-    if(tryExistedMember(L))
+    if(tryExistedMember(L,type,isStatic))
         return 1;
     FakeString name(lua_tostring(L, 2));
     auto member=type->ensureMember(env,(const String&)name,isStatic);
@@ -2623,32 +2690,34 @@ int getFieldOrMethod(lua_State *L) {
             }}
         PushField();
     } else {
+        bool force= true;
         if (!isMethod && unlikely(fieldCount == 0)) {
             if(strcmp(name,"class")==0){
                 pushJavaObject(L,context,type->getType());
-                return 1;
+                goto SAVE_AND_EXIT;
             }else if(!isStatic){
                 if(strcmp(name,"instanceof")==0){
                     lua_pushlightuserdata(L,context);
                     lua_pushvalue(L,1);
                     lua_pushcclosure(L,isInstanceOfCall,2);
-                    return 1;
+                    force=false;
+                    goto SAVE_AND_EXIT;
                 }else  if(strcmp(name,"super")==0){
                     pushJavaObject(L,context,obj->object,
                                    context->scriptContext->ensureType(env,env->GetSuperclass(type->getType())));
-                    return 1;
+                    goto SAVE_AND_EXIT;
                 }
                 
             }else {
                 if(strcmp(name,"new")==0){
                     lua_pushvalue(L,1);
                     lua_pushcclosure(L,newCall,1);
-                    return 1;
+                    goto SAVE_AND_EXIT;
                 }else if(strcmp(name,"assignableFrom")==0){
                     lua_pushlightuserdata(L,context);
                     lua_pushlightuserdata(L,type);
                     lua_pushcclosure(L,isAssignableFromCall,2);
-                    return 1;
+                    goto SAVE_AND_EXIT;
                 }
             }
             if(isStatic)
@@ -2666,7 +2735,8 @@ int getFieldOrMethod(lua_State *L) {
             return 0;
         }
         pushMember(context, L,member,1, isStatic, fieldCount, isMethod);
-        saveExistedMember(L);
+        SAVE_AND_EXIT:
+        saveExistedMember(L,isStatic,force);
     }
     return 1;
 }
@@ -2686,61 +2756,61 @@ int getObjectLength(lua_State *L) {
 }
 
 int getField(lua_State *L) {
-    MemberFlag *flag = (MemberFlag *) lua_touserdata(L, FLAG_INDEX);
+    MemberInfo *memberInfo =getMemberInfo(L);
     SetErrorJMP();
 #ifndef NDEBUG
-    if (unlikely(!flag->isField)) {
+    if (unlikely(!memberInfo->isField)) {
         LOGE( "Not a field");
     }
 #endif
-    bool isStatic = flag->isStatic;
-    JavaObject *obj = isStatic ? nullptr : (JavaObject *) lua_touserdata(L, OBJ_INDEX);
-    JavaType *type = isStatic ? *(JavaType **) lua_touserdata(L, OBJ_INDEX) : obj->type;
+    bool isStatic = memberInfo->isStatic;
+    JavaObject *obj = isStatic ? nullptr :memberInfo->object;
+    JavaType *type = isStatic ? memberInfo->type : obj->type;
 
-    auto env=flag->context->env;
+    auto env=memberInfo->context->env;
     JavaType **fieldTypeRef;
-    if (unlikely(flag->isDuplicatedField) && (fieldTypeRef = (JavaType **) testUData(L, 2, TYPE_KEY)) ==
+    if (unlikely(memberInfo->isDuplicatedField) && (fieldTypeRef = (JavaType **) testUData(L, 2, TYPE_KEY)) ==
                                    nullptr) {
         TopErrorHandle( "The class has duplicated field named %s while no type specified", getMemberName(env, env->
-                ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str());
+                ToReflectedField(type->getType(),memberInfo->member->fields[0].id,isStatic)).str());
     }
-    auto&& info = type->deductField(env,&flag->member->fields,
-                                flag->isDuplicatedField ? *fieldTypeRef:nullptr);
+    auto&& info = type->deductField(env,&memberInfo->member->fields,
+                                memberInfo->isDuplicatedField ? *fieldTypeRef:nullptr);
     if(info== nullptr){
         TopErrorHandle( "The class doesn't have a field name %s with type %s", getMemberName(env, env->
-                ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str(),(*fieldTypeRef)->name(env).str());
+                ToReflectedField(type->getType(),memberInfo->member->fields[0].id,isStatic)).str(),(*fieldTypeRef)->name(env).str());
     }
     JavaType *fieldType = info->type.rawType;
-    auto context=flag->context;
+    auto context=memberInfo->context;
     PushField();
     return 1;
 }
 
 int setField(lua_State *L) {
-    MemberFlag *flag = (MemberFlag *) lua_touserdata(L, FLAG_INDEX);
-    ThreadContext* context=flag->context;
+    MemberInfo* memberInfo=getMemberInfo(L);
+    ThreadContext* context=memberInfo->context;
     SetErrorJMP();
 #ifndef NDEBUG
-    if (unlikely(!flag->isField)) {
+    if (unlikely(!memberInfo->isField)) {
         LOGE( "Not a field");
     }
 #endif
-    bool isStatic = flag->isStatic;
-    JavaObject *objRef = isStatic ? nullptr : (JavaObject *) lua_touserdata(L, OBJ_INDEX);
-    JavaType *type = isStatic ? *(JavaType **) lua_touserdata(L, OBJ_INDEX) : objRef->type;
+    bool isStatic = memberInfo->isStatic;
+    JavaObject *objRef = isStatic ? nullptr : memberInfo->object;
+    JavaType *type = isStatic ? memberInfo->type : objRef->type;
 
     auto env=context->env;
     JavaType **fieldTypeRef;
-    if (unlikely(flag->isDuplicatedField) && (fieldTypeRef = (JavaType **)
+    if (unlikely(memberInfo->isDuplicatedField) && (fieldTypeRef = (JavaType **)
             testUData(L, 2, TYPE_KEY)) == nullptr) {
         TopErrorHandle( "The class has duplicated field named %s while no type specified", getMemberName(env, env->
-                ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str());
+                ToReflectedField(type->getType(),memberInfo->member->fields[0].id,isStatic)).str());
     }
-    auto info = type->deductField(env,&flag->member->fields,
-                                flag->isDuplicatedField ? *fieldTypeRef  :nullptr);
+    auto info = type->deductField(env,&memberInfo->member->fields,
+                                memberInfo->isDuplicatedField ? *fieldTypeRef  :nullptr);
     if(info== nullptr){
         TopErrorHandle( "The class doesn't have a field name %s with type %s", getMemberName(env, env->
-                ToReflectedField(type->getType(),flag->member->fields[0].id,isStatic)).str(),(*fieldTypeRef)->name(env).str());
+                ToReflectedField(type->getType(),memberInfo->member->fields[0].id,isStatic)).str(),(*fieldTypeRef)->name(env).str());
     }
     JavaType *fieldType = info->type.rawType;
     ValidLuaObject luaObject;
@@ -2789,6 +2859,8 @@ int setFieldOrArray(lua_State *L) {
     JavaType *type = isStatic ? *(JavaType**) lua_touserdata(L,1) : objRef->type;
     ThreadContext *context = getContext(L);
     auto env=context->env;
+    if(type->isPrimitive())
+        ERROR("Primitive type is not allowed to be set");
     if (!isStatic) {
         JavaType *component = objRef->type->getComponentType(env);
         if (component != nullptr) {
@@ -2852,10 +2924,22 @@ int setFieldOrArray(lua_State *L) {
             }
             setMapValue(L,context,env,objRef->object);
             return 0;
+        }else if(lua_isfunction(L,3)){
+            char *key = reinterpret_cast<char*>(type) + 2;
+            lua_rawgetp(L, LUA_REGISTRYINDEX, key);
+            if(lua_isnil(L,-1)){
+                lua_pop(L,1);
+                lua_newtable(L);
+                lua_pushvalue(L,-1);
+                lua_rawsetp(L,LUA_REGISTRYINDEX,key);
+            }
+            lua_replace(L,1);
+            lua_rawset(L,1);
+            return 0;
         }
         ERROR("No such field");
     }
-    if (arr->size() > 1) ERROR("The name %s repsents not only one field", name.data());
+    if (arr->size() > 1) ERROR("The name %s represents not only one field", name.data());
     auto &&info = arr->begin();
     JavaType *fieldType = info->type.rawType;
     ValidLuaObject luaObject;
@@ -2869,15 +2953,6 @@ int setFieldOrArray(lua_State *L) {
     return 0;
 
 
-}
-
-int typeEquals(lua_State *L){
-    JavaType **type1 = (JavaType **) testUData(L, 1, TYPE_KEY);
-    JavaType **type2 = (JavaType **) testUData(L, 2, TYPE_KEY);
-    if (type1 == nullptr || type2 == nullptr) {
-        lua_pushboolean(L, false);
-    } else lua_pushboolean(L,*type1==*type2);
-    return 1;
 }
 
 int objectEquals(lua_State *L) {
@@ -2912,6 +2987,20 @@ int javaObjectToString(lua_State *L) {
     JString str = env->CallObjectMethod(ob->object, objectToString);
     HOLD_JAVA_EXCEPTION(context,{throwJavaError(L,context);});
     lua_pushstring(L, str);
+    return 1;
+}
+
+static int callInitializer(lua_State *L){
+    if(lua_gettop(L)!=2) return 0;
+    if(!lua_istable(L,2)) return 0;
+    lua_pushnil(L);
+    while (lua_next(L,2)){
+        lua_pushvalue(L,-2);
+        lua_pushvalue(L,-2);
+        lua_settable(L,1);
+        lua_pop(L,1);
+    }
+    lua_pop(L,1);
     return 1;
 }
 

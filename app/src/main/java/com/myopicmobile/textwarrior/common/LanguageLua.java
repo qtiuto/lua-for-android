@@ -31,7 +31,7 @@ public class LanguageLua extends Language {
     private final static String package_string = "byte|char|dump|find|format|gfind|gmatch|gsub|len|lower|match|pack|packsize|rep|reverse|sub|unpack|upper";
     private final static String package_table = "concat|foreach|foreachi|insert|maxn|move|pack|remove|sort|unpack";
     private final static String package_utf8 = "char|charpattern|codepoint|codes|len|offset";
-    private final static String extFunctionTarget = "Type|newArray|proxy|instanceof|super|typeof|import|object|charString|charValue|new|sync|try|throw|cross|using";
+    private final static String extFunctionTarget = "type_|newArray|proxy|instanceof|super|typeof|import|object|charString|charValue|new|sync|try|throw|cross|using";
     private final static String functionTarget = globalTarget + "|" + extFunctionTarget + "|" + packageName;
     private final static String[] keywords = keywordTarget.split("\\|");
     private final static String[] names = functionTarget.split("\\|");

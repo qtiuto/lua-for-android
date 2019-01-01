@@ -71,7 +71,7 @@ public class MainActivity extends Activity {
             StringBuilder scriptBuilder=new StringBuilder();
             for (String type:primitiveTypes){
                 scriptBuilder.append(type).append('=')
-                        .append(" Type '").append(type).append("'\n");
+                        .append(" type_ '").append(type).append("'\n");
             }
             context.run(scriptBuilder.toString());
             context.run("package.path='./?.lua;./?/init.lua;/sdcard/?.lua;/sdcard/?/init.lua'\n" +

@@ -7,6 +7,7 @@
 #include "fake_dlfcn.h"
 #include "dex_file.h"
 #include <errno.h>
+#include <fcntl.h>
 #include "vector_base.h"
 #ifdef __LP64__
 #define libPath "lib64"
@@ -492,7 +493,7 @@ namespace DexResolver {
             for (int i = 0; i < 1024; i+=4) {
                 if(*(JavaVM**)(((uint8_t*)(runtime))+i)==vm){
                     actual=i-(offsetof(Runtime,java_vm_)-offsetof(Runtime,class_linker_));
-                    LOGE("Expected=%d,actual=%d",actual,offsetof(Runtime,class_linker_));
+                    LOGE("Expected=%d,actual=%d",(int)actual,(int)offsetof(Runtime,class_linker_));
                     break;
                 }
             }
@@ -503,6 +504,16 @@ namespace DexResolver {
             return  &(*reinterpret_cast<decltype(&runtime->class_linker_)>(reinterpret_cast<uint8_t *>(runtime)+actual))->boot_class_path_;
         }
     }
+
+#if defined (__x86_64) || defined (__x86_64__)
+#define ARCH "x86_64"
+#elif defined(__i386__) || defined(__i386) || defined(__X86__)
+#define ARCH "x86"
+#elif defined(__aarch64__)
+#define ARCH "arm64"
+#elif defined(__arm__)
+#define ARCH
+#endif
 
     jobjectArray getAllBootClasses(JNIEnv *env, jclass) {
         if (sRuntime == nullptr) {

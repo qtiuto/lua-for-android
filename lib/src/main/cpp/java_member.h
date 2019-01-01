@@ -5,11 +5,14 @@
 #include "java_type.h"
 
 #define FLAG_INDEX lua_upvalueindex(1)
-#define OBJ_INDEX lua_upvalueindex(2)
 struct Member;
-struct MemberFlag {
+struct MemberInfo {
     const Member* member;
     ThreadContext* context;
+    union {
+        JavaObject* object;
+        JavaType* type;
+    };
     bool isStatic;
     union {
         bool isField;

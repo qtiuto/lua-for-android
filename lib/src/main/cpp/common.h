@@ -72,6 +72,10 @@ public:
     const char *data() const { return pointer; }
 
     const char *c_str() const { return pointer; }
+
+    const char * * operator&() {
+        return &pointer;
+    }
 };
 
 inline long long getTime() {

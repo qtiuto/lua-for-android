@@ -762,7 +762,6 @@ public class ScriptContext {
             case CLASS_BYTE:
                 ((byte[])array)[index]= (byte) value;
                 break;
-
             case CLASS_FLOAT:
                 ((float[])array)[index]= (float) value;
                 break;
