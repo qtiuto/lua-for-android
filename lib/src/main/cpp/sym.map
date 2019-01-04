@@ -1,6 +1,8 @@
 {
   global:
   JNI_OnLoad;
+  lua_*;
+  luaL_*;
   local:
     *;
 };
