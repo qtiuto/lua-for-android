@@ -24,7 +24,11 @@
 */
 #define wgkey(n)        (&(n)->i_key.nk)
 
-#define invalidateTMcache(t)    ((t)->flags = 0)
+#define invalidateTMcache(t)    ({(t)->flags = 0;\
+if((t)->optimizedMeta){\
+  luaM_freearray(L,(t)->optimizedMeta,(t)->optimizedMeta->value_.i);\
+  (t)->optimizedMeta=NULL;\
+}})
 
 
 /* true when 't' is using 'dummynode' as its hash part */

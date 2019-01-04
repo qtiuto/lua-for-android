@@ -856,6 +856,32 @@ LUA_API void lua_rawsetp(lua_State *L, int idx, const void *p) {
     lua_unlock(L);
 }
 
+static void optimizeMetaTable(lua_State *L,Table *mt){
+    int startCount;
+    int i;
+    for(i=(TM_N>>1);i--;){
+        if(!ttisnil(luaH_getshortstr(mt,G(L)->tmname[i])))
+            break;
+    }
+    startCount=i+1;
+    for(i=(TM_N>>1);i<TM_N;++i){
+        if(!ttisnil(luaH_getshortstr(mt,G(L)->tmname[i])))
+            break;
+    }
+    int count = startCount + TM_N - i;
+    if(!count)
+        return;;
+    ++count;
+    mt->optimizedMeta=luaM_malloc(L,(count)* sizeof(TValue));
+    mt->optimizedMeta->value_.i=count;
+    mt->optimizedMeta->tt_=LUA_TNUMBER;
+    for (;i<TM_N;++i) {
+        mt->optimizedMeta[count-(TM_N-i)]=*luaH_getshortstr(mt,G(L)->tmname[i]);
+    }
+    for ( i = startCount; i!=0 ;--i ) {
+        mt->optimizedMeta[i]=*luaH_getshortstr(mt,G(L)->tmname[i-1]);
+    }
+}
 
 LUA_API int lua_setmetatable(lua_State *L, int objindex) {
     TValue *obj;
@@ -868,6 +894,7 @@ LUA_API int lua_setmetatable(lua_State *L, int objindex) {
     else {
         api_check(L, ttistable(L->top - 1), "table expected");
         mt = hvalue(L->top - 1);
+        optimizeMetaTable(L,mt);
     }
     switch (ttnov(obj)) {
         case LUA_TTABLE: {

@@ -499,6 +499,7 @@ typedef struct Table {
     Node *node;
     Node *lastfree;  /* any free position is before this position */
     struct Table *metatable;
+    TValue* optimizedMeta;//
     GCObject *gclist;
 } Table;
 

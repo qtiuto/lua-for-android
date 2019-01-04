@@ -420,6 +420,7 @@ Table *luaH_new(lua_State *L) {
     GCObject *o = luaC_newobj(L, LUA_TTABLE, sizeof(Table));
     Table *t = gco2t(o);
     t->metatable = NULL;
+    t->optimizedMeta=NULL;
     t->flags = cast_byte(~0);
     t->array = NULL;
     t->sizearray = 0;
@@ -432,6 +433,9 @@ void luaH_free(lua_State *L, Table *t) {
     if (!isdummy(t))
         luaM_freearray(L, t->node, cast(size_t, sizenode(t)));
     luaM_freearray(L, t->array, t->sizearray);
+    if(t->optimizedMeta){
+        luaM_freearray(L,t->optimizedMeta, t->optimizedMeta->value_.i);
+    }
     luaM_free(L, t);
 }
 
