@@ -423,12 +423,14 @@ static void pushJavaObject(lua_State *L, TJNIEnv *env, ScriptContext *context, j
 }
 
 static inline  void pushJavaObject(lua_State *L, ThreadContext *context, jobject obj,JavaType* given= nullptr){
-    if(context->pushedCount++>10000){
+
+    if(((++context->pushedCount)&0x1FF)==0){// multi of 512
         luaFullGC(L);
-        if(context->pushedCount>10000){
-            lua_pushnil(L);
-            return;
-        }
+    }
+
+    if(context->pushedCount>>13){//>=8192
+        lua_pushnil(L);
+        return;
     }
     pushJavaObject(L, context->env, context->scriptContext, obj,given);
 }
@@ -2520,10 +2522,8 @@ static int isAssignableFromCall(lua_State* L){
 static int newCall(lua_State* L){
     int len=lua_gettop(L);
     lua_pushvalue(L,lua_upvalueindex(1));
-    luaL_getmetafield(L,-1,"__call");
     lua_insert(L,1);
-    lua_insert(L,2);
-    lua_call(L,len+1,1);
+    lua_call(L,len,1);//fast call the type;
     return 1;
 }
 
@@ -2576,7 +2576,7 @@ static inline bool tryExistedMember(lua_State* L,JavaType* type,bool isStatic){
 
     lua_pushvalue(L,2);
     lua_rawget(L,-2);
-    if(lua_isnil(L,1)){
+    if(lua_isnil(L,-1)){
         lua_pop(L,2);//nil and table
         goto Handle_Object;
     }
@@ -3030,7 +3030,7 @@ FuncInfo *saveLuaFunction(lua_State *L, ThreadContext *context, int funcIndex) {
     bool isCFunc = lua_iscfunction(L, -1) == 1;
     FuncInfo *ret;
     if (!isCFunc) {
-        Vector<char> holder;
+        Vector<char> holder(256);
 #if LUA_VERSION_NUM >= 503
 #define STRIP ,1
 #else
@@ -3109,7 +3109,7 @@ void loadLuaFunction(TJNIEnv *env, lua_State *L, const FuncInfo *info, ThreadCon
         if (!pushLuaObject(env, L, context, luaObject))continue;
         lua_setupvalue(L, funcIndex, i + 1);//start at the second;
     }
-#if LUA_VERSION_NUM>502
+#if LUA_VERSION_NUM>=502
     if(info->globalIndex>0){
         lua_rawgeti(L,LUA_REGISTRYINDEX,LUA_RIDX_GLOBALS);
         lua_setupvalue(L,funcIndex,info->globalIndex);
@@ -3220,7 +3220,6 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
         return -1;
     }
     registerNativeMethods(env);
-
     return JNI_VERSION_1_4;
 }
 
@@ -3309,6 +3308,31 @@ jlong compile(TJNIEnv *env, jclass, jlong ptr, jstring script, jboolean isFile) 
     return retVal;
 }
 
+jobject invokeSuper(TJNIEnv* env,jclass c,jobject thiz,jobject method,jint id,jobjectArray args){
+    jmethodID mid = env->FromReflectedMethod(method);
+    JClass superclass(env->GetSuperclass(env->GetObjectClass(thiz)));
+    switch (id) {
+        case 1://toString
+            return env->asJNIEnv()->CallNonvirtualObjectMethod(thiz, superclass, mid);
+        case 2://hashCode
+        {
+            jintArray ret = env->asJNIEnv()->NewIntArray(1);
+            int retVal = env->CallNonvirtualIntMethod(thiz, superclass, mid);
+            env->SetIntArrayRegion(ret,0,1,&retVal);
+            return ret;
+        }
+        case 3://equals
+        {
+            jbooleanArray ret = env->asJNIEnv()->NewBooleanArray(1);
+            jboolean retVal = env->CallNonvirtualBooleanMethod(thiz, superclass, mid,env->GetObjectArrayElement(args,0).get());
+            env->SetBooleanArrayRegion(ret,0,1,&retVal);
+            return ret;
+        }
+        default:
+            return nullptr;
+    }
+}
+
 jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean isFile,
                        jobjectArray args) {
     ScriptContext *scriptContext = (ScriptContext *) ptr;
@@ -3368,35 +3392,10 @@ jobjectArray runScript(TJNIEnv *env, jclass, jlong ptr, jobject script, jboolean
     }
     over:
     lua_settop(L, top);
-    luaFullGC(L);
     context->restore(oldImport);
     return result;
 }
 
-jobject invokeSuper(TJNIEnv* env,jclass c,jobject thiz,jobject method,jint id,jobjectArray args){
-    jmethodID mid = env->FromReflectedMethod(method);
-    JClass superclass(env->GetSuperclass(env->GetObjectClass(thiz)));
-    switch (id) {
-        case 1://toString
-            return env->asJNIEnv()->CallNonvirtualObjectMethod(thiz, superclass, mid);
-        case 2://hashCode
-        {
-            jintArray ret = env->asJNIEnv()->NewIntArray(1);
-            int retVal = env->CallNonvirtualIntMethod(thiz, superclass, mid);
-            env->SetIntArrayRegion(ret,0,1,&retVal);
-            return ret;
-        }
-        case 3://equals
-        {
-            jbooleanArray ret = env->asJNIEnv()->NewBooleanArray(1);
-            jboolean retVal = env->CallNonvirtualBooleanMethod(thiz, superclass, mid,env->GetObjectArrayElement(args,0).get());
-            env->SetBooleanArrayRegion(ret,0,1,&retVal);
-            return ret;
-        }
-        default:
-            return nullptr;
-    }
-}
 
 jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr, jlong funcRef, jboolean multiRet, jobject proxy, jstring methodName,
                           jintArray argTypes, jobjectArray args) {
@@ -3407,7 +3406,7 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr, jlong funcRef, jboole
         context->restore(oldImport);
         return 0;
     }
-    lua_State *L = scriptContext->getLua();
+    auto L=scriptContext->getLua();
     pushErrorHandler(L,context);
     int handlerIndex = lua_gettop(L);
     if (!reinterpret_cast<BaseFunction *>(funcRef)->isLocal()) {
@@ -3495,7 +3494,6 @@ jobject invokeLuaFunction(TJNIEnv *env, jclass, jlong ptr, jlong funcRef, jboole
         }
     }
     lua_settop(L, handlerIndex - 1);
-    luaFullGC(L);
     context->restore(oldImport);
     return ret;
 }
