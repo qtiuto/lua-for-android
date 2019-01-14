@@ -290,6 +290,8 @@ static inline void lua_rawsetp(lua_State* L,int index,const void* p){
 static inline size_t lua_rawlen(lua_State*L,int index){
     return lua_objlen(L,index);
 }
+#define lua_setuservalue lua_setfenv
+#define lua_getuservalue lua_getfenv
 
 #if LUAJIT_VERSION_NUM<20100 //beta3 only
 
@@ -506,6 +508,50 @@ static inline void pushErrorHandler(lua_State *L,ThreadContext* context){
     lua_pushcclosure(L,luaPCallHandler,1);
 }
 
+static int getCurrentLibDirectoryLib(lua_State* L){
+    const char *name = lua_tostring(L, 1);
+    ScriptContext* context=getContext(L)->scriptContext;
+
+    if(context->libDir.empty()){
+        Dl_info info;
+        dladdr((const void*)lua_newstate,&info);
+        if(info.dli_fname== nullptr)
+            return 0;
+        const char* s=strrchr(info.dli_fname,'/');
+        if(s== nullptr){
+            char *cwd = getcwd(nullptr, 0);
+            context->libDir= cwd;
+            free(cwd);
+        } else{
+            unsigned int len = uint(s - info.dli_fname + 1);
+            context->libDir.append(info.dli_fname, len);
+        }
+    }
+
+    String destFile=context->libDir+"lib"+name+".so";
+    if(access(destFile.data(),F_OK)!=0){
+        destFile=context->libDir+name+".so";
+    }
+    if(access(destFile.data(),F_OK)!=0){
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    void* handle=dlopen(destFile.data(),RTLD_NOW);
+    if(handle== nullptr){
+        lua_pushfstring(L,"\n\tOpen library %s failed:%s",name,dlerror());
+        return 1;
+    }
+    String funcName="luaopen_";
+    funcName+=name;
+    lua_CFunction  function= (lua_CFunction)(dlsym(handle, funcName.data()));
+    if(function== nullptr){
+        lua_pushfstring(L,"\n\tNo function %s in file %s",funcName.data(),destFile.data());
+        return 1;
+    }
+    lua_pushcfunction(L,function);
+    return 1;
+}
+
 static int luaGetJava(lua_State *L) {
     int size = sizeof(javaInterfaces) / sizeof(luaL_Reg) - 1;
     lua_createtable(L, 0, size);
@@ -625,6 +671,18 @@ void ScriptContext::config(lua_State *L) {
     luaL_openlibs(L);
     luaL_requiref(L,LFS_LIBNAME,luaopen_lfs, true);
 
+    const char* loaderName;
+#if LUA_VERSION_NUM>=502
+    loaderName="searchers";
+#else
+    loaderName="loaders";
+#endif
+    lua_getglobal(L,"package");
+    lua_getfield(L,-1,loaderName);
+    int nextSearcher=lua_rawlen(L,-1);
+    lua_pushlightuserdata(L,context);
+    lua_pushcclosure(L,getCurrentLibDirectoryLib,1);
+    lua_rawseti(L,-2,nextSearcher);
     lua_settop(L, top);
 }
 
@@ -1912,32 +1970,36 @@ int javaNew(lua_State *L) {
 
 static int javaUnBox(lua_State* L){
     ThreadContext *context = getContext(L);
-    JavaObject* object= checkJavaObject(L,1);
-    switch (object->type->getTypeID()){
-        case JavaType::BOX_BOOLEAN:
-            lua_pushboolean(L,context->env->CallBooleanMethod(object->object,booleanValue));
-            break;
-        case JavaType::BOX_BYTE:
-        case JavaType::BOX_SHORT:
-        case JavaType::BOX_INT:
-        case JavaType::BOX_LONG:
-            lua_pushinteger(L,context->env->CallLongMethod(object->object,longValue));
-            break;
-        case JavaType::BOX_FLOAT:
-        case JavaType::BOX_DOUBLE:
-            lua_pushnumber(L,context->env->CallDoubleMethod(object->object,doubleValue));
-            break;
-        case JavaType::BOX_CHAR: {
-            jchar c = context->env->CallCharMethod(object->object, charValue);
-            char s[4] ;
-            strncpy16to8(s,(const char16_t *) &c, 1);
-            lua_pushstring(L, s);
-            break;
+    int n=lua_gettop(L);
+    for (int i = 1; i <=n ; ++i) {
+        JavaObject* object=(JavaObject*) testUData(L,i,OBJECT_KEY);
+        if(object== nullptr) continue;
+        switch (object->type->getTypeID()){
+            case JavaType::BOX_BOOLEAN:
+                lua_pushboolean(L,context->env->CallBooleanMethod(object->object,booleanValue));
+                break;
+            case JavaType::BOX_BYTE:
+            case JavaType::BOX_SHORT:
+            case JavaType::BOX_INT:
+            case JavaType::BOX_LONG:
+                lua_pushinteger(L,context->env->CallLongMethod(object->object,longValue));
+                break;
+            case JavaType::BOX_FLOAT:
+            case JavaType::BOX_DOUBLE:
+                lua_pushnumber(L,context->env->CallDoubleMethod(object->object,doubleValue));
+                break;
+            case JavaType::BOX_CHAR: {
+                jchar c = context->env->CallCharMethod(object->object, charValue);
+                char s[4] ;
+                strncpy16to8(s,(const char16_t *) &c, 1);
+                lua_pushstring(L, s);
+                break;
+            }
+            default:
+                break;
         }
-        default:
-            break;
     }
-    return 1;
+    return n;
 }
 
 static int javaTypeOf(lua_State *L){
@@ -2536,38 +2598,26 @@ static int callExtendingMethod(lua_State* L){
     return 1;
 }
 
-static inline void saveExistedMember(lua_State* L,bool isStatic, bool force){
-#if LUA_VERSION_NUM>=502
+static inline void saveExistedMember(lua_State* L, bool force){
     lua_getuservalue(L,1);
-#else
-    char* ptr= reinterpret_cast<char *>(lua_touserdata(L,1))+isStatic
-    lua_rawgetp(L,LUA_REGISTRYINDEX,ptr);
-#endif
     if(lua_isnil(L,-1)){
         if(!force)
             return;
         lua_pop(L,1);
         lua_newtable(L);
         lua_pushvalue(L,-1);
-#if LUA_VERSION_NUM>=502
         lua_setuservalue(L,1);
-#else 
-        lua_rawsetp(L,LUA_REGISTRYINDEX,ptr);
-#endif
+
     }
     lua_pushvalue(L,2);
     lua_pushvalue(L,3);
     lua_rawset(L,-3);
     lua_pop(L,1);
-
 }
 
+
 static inline bool tryExistedMember(lua_State* L,JavaType* type,bool isStatic){
-#if LUA_VERSION_NUM>=502
     lua_getuservalue(L,1);
-#else
-    lua_rawgetp(L,LUA_REGISTRYINDEX,reinterpret_cast<char *>(lua_touserdata(L,1))+isStatic);
-#endif
 
     if(lua_isnil(L,-1)){
         lua_pop(L,1);
@@ -2584,7 +2634,7 @@ static inline bool tryExistedMember(lua_State* L,JavaType* type,bool isStatic){
     Handle_Object:
     if(isStatic)
         return false;
-    lua_rawgetp(L,LUA_REGISTRYINDEX,reinterpret_cast<char *>(type)+2);
+    lua_rawgetp(L,LUA_REGISTRYINDEX,reinterpret_cast<char *>(type)+1);
     if(lua_isnil(L,-1)){
         lua_pop(L,1);//nil
         return false;
@@ -2598,7 +2648,7 @@ static inline bool tryExistedMember(lua_State* L,JavaType* type,bool isStatic){
     lua_pushvalue(L,1);
     lua_pushcclosure(L,callExtendingMethod,2);
     lua_remove(L,-2);
-    saveExistedMember(L,isStatic, true);
+    saveExistedMember(L, true);
     return true;
 }
 
@@ -2736,7 +2786,7 @@ int getFieldOrMethod(lua_State *L) {
         }
         pushMember(context, L,member,1, isStatic, fieldCount, isMethod);
         SAVE_AND_EXIT:
-        saveExistedMember(L,isStatic,force);
+        saveExistedMember(L,force);
     }
     return 1;
 }
@@ -2924,8 +2974,8 @@ int setFieldOrArray(lua_State *L) {
             }
             setMapValue(L,context,env,objRef->object);
             return 0;
-        }else if(lua_isfunction(L,3)){
-            char *key = reinterpret_cast<char*>(type) + 2;
+        }else if(lua_isfunction(L,3)&&type->ensureMethod(env,name,false)== nullptr){
+            char *key = reinterpret_cast<char*>(type) + 1;
             lua_rawgetp(L, LUA_REGISTRYINDEX, key);
             if(lua_isnil(L,-1)){
                 lua_pop(L,1);
@@ -3139,8 +3189,6 @@ LuaTable<ValidLuaObject> *LazyTable::getTable(ThreadContext *context) {
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
         luaTable = new LuaTable<ValidLuaObject>();
-        uint len =(uint) lua_rawlen(L, index);
-        luaTable->get().reserve(len);
         lua_pushvalue(L, index);
         lua_pushlightuserdata(L, luaTable);
         lua_rawset(L, LUA_REGISTRYINDEX);
