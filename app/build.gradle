@@ -42,4 +42,5 @@ dependencies {
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
     //implementation(name: 'jna', ext: 'aar')
     implementation project(':lib')
+    implementation project(':luaffi')
 }
