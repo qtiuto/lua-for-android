@@ -116,7 +116,12 @@ int get_extern(struct jit* jit, uint8_t* addr, int idx, int type)
      * jump instruction */
     off = *(uint8_t**) jmp - addr;
 
-    if (MIN_BRANCH <= off && off <= MAX_BRANCH) {
+    if (MIN_BRANCH <= off && off <= MAX_BRANCH
+        // thumb address must be called by extern jump rather than direct jump
+#ifdef ARCH_ARM
+        &&(((*(uintptr_t*) jmp)&1)==0
+#endif
+            ) {
         return (int32_t) off;
     } else {
         return (int32_t)(jmp + sizeof(uint8_t*) - addr);
