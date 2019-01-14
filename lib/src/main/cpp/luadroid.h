@@ -224,10 +224,11 @@ public:
     JavaType *const CharacterClass;
     JavaType *const FloatClass;
     JavaType *const DoubleClass;
+    JavaType *const ObjectClass;
     Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
     SpinLock weightLock;
     jobject const javaRef;
-    JavaType *const ObjectClass;
+    String libDir;
 
     JavaType *ensureType(TJNIEnv *env, jclass type);
 
