@@ -14,8 +14,11 @@ Currently, lua 5.3.5 is in **lua** dir and luajit 2.1.0 beta-3 is in **luajit** 
 Load the lib by LibLoader.java in the module app or add `System.loadLibrary("luadroid.so")`
 to your code.
      
-Module lib is the true library that you can embedded into your code.
-Module app is a lua editor for running test in android.
+Module **lib** is the true library that you can embedded into your code.
+
+Module **app** is a lua editor for running test in android.
+
+Module **luaffi** is the ffi lib for luadroid to invoke c apis, and it requires luadroid.so to be statically linked
      
 ## Performance
 
