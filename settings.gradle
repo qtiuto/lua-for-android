@@ -1,1 +1,1 @@
-include ':app', ':lib', 'dexmaker'
+include ':app', ':lib', ':luaffi', 'dexmaker'

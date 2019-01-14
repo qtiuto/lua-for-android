@@ -80,7 +80,7 @@ public class ScriptContext {
         if (o1.length()> length +1&&o1.charAt(length)=='.'&&o1.startsWith(o2)&&o1.indexOf('.', length +1)==-1) return 0;
         return o1.compareTo(o2);
     };
-    static Method sEqualNameAndParameters;
+    private static Method sEqualNameAndParameters;
     //Optimize  for the redundant call in new Class Api
     private static  Method sUnchecked;
     private static Field mDexCookie;
