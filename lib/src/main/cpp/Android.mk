@@ -10,10 +10,9 @@ LOCAL_SRC_FILES  := java_type.cpp luadroid.cpp log_wrapper.cpp script_context.cp
 LOCAL_C_INCLUDES := $(LOCAL_PATH)
 LOCAL_STATIC_LIBRARIES :=$(LUA_LIB)
 ifneq ($(APP_OPTIM),debug)
-LOCAL_CFLAGS  += -Os -fno-math-errno
+LOCAL_CFLAGS  += -Os -fno-math-errno -fvisibility=hidden
 LOCAL_CPPFLAGS += -Os
 LOCAL_LDFLAGS += -Wl,--gc-sections
-LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/sym.map
 endif
 LOCAL_LDLIBS := -ldl -llog -latomic
 LOCAL_MODULE :=luadroid

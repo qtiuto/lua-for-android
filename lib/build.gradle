@@ -39,8 +39,8 @@ android {
         release {
             externalNativeBuild{
                 ndkBuild{
-                    cFlags '-ffunction-sections' ,'-fdata-sections' ,'-fvisibility=hidden'
-                    cppFlags '-ffunction-sections' ,'-fdata-sections', '-fvisibility=hidden'
+                    cFlags '-ffunction-sections' ,'-fdata-sections'
+                    cppFlags '-ffunction-sections' ,'-fdata-sections'
                 }
             }
             minifyEnabled true
