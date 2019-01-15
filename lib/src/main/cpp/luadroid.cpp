@@ -16,7 +16,7 @@
 #include <lua.h>
 #include <dex/DexResolver.h>
 #include <assert.h>
-
+#include <dlfcn.h>
 #if LUA_VERSION_NUM < 503
 #include "int64_support.h"
 #endif
