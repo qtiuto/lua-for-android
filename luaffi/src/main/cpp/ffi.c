@@ -28,6 +28,41 @@ int abi_key;
 int next_unnamed_key;
 int niluv_key;
 int asmname_key;
+typedef enum {
+    TM_INDEX,
+    TM_NEWINDEX,
+    TM_CALL,
+    TM_NEW,
+    TM_GC,
+    TM_LEN,
+    TM_ADD,
+    TM_SUB,
+    TM_MUL,
+    TM_MOD,
+    TM_POW,
+    TM_DIV,
+    TM_IDIV,
+    /*TM_BAND,
+    TM_BOR,
+    TM_BXOR,
+    TM_SHL,
+    TM_SHR,
+    TM_BNOT,*/
+    TM_UNM,
+    TM_EQ,
+    TM_LT,
+    TM_LE,
+    TM_CONCAT,
+    TM_TO_STRING,
+    TM_PAIRS,
+    TM_IPAIRS,
+    TM_N        /* number of elements in the enum */
+} TMK;
+static const char* tm_fields[]={
+        "__index","__newindex","__call","__new",
+        "__gc","__len","__add","__sub", "__mul",
+        "__mod","__pow","__div","__idiv", "__unm","__eq","__lt","__le","__concat",
+        "__tostring","__pairs","__ipairs"};
 
 void push_upval(lua_State* L, int* key)
 {
@@ -1327,8 +1362,7 @@ static int do_new(lua_State* L, int is_cast)
         lua_pushvalue(L, -3);
 
         /* user_mt.__gc */
-        lua_pushliteral(L, "__gc");
-        lua_rawget(L, -4);
+        lua_rawgeti(L, -4,TM_GC);
 
         lua_rawset(L, -3); /* gc_upval[cdata] = user_mt.__gc */
         lua_pop(L, 2); /* user_mt and gc_upval */
@@ -1579,8 +1613,7 @@ static int cdata_call(lua_State* L)
     cfunction* p = (cfunction*) check_cdata(L, 1, &ct);
 
     if (push_user_mt(L, -1, &ct)) {
-        lua_pushliteral(L, "__call");
-        lua_rawget(L, -2);
+        lua_rawgeti(L, -2,TM_CALL);
 
         if (!lua_isnil(L, -1)) {
             lua_insert(L, 1);
@@ -1621,6 +1654,21 @@ static int cdata_call(lua_State* L)
 
 static int user_mt_key;
 
+static void compile_user_mt(lua_State* L,int user_mt){
+    if(lua_isnil(L,user_mt))
+        return;
+    lua_createtable(L,TM_N,0);
+    for (int i = TM_N; i-- ;) {
+        lua_getfield(L,user_mt,tm_fields[i]);
+        if(lua_isnil(L,-1)){
+            lua_pop(L,1);
+            continue;
+        }
+        lua_rawseti(L,-2,i);
+    }
+    lua_replace(L,user_mt);
+}
+
 static int ffi_metatype(lua_State* L)
 {
     struct ctype ct;
@@ -1630,7 +1678,7 @@ static int ffi_metatype(lua_State* L)
     if (lua_type(L, 2) != LUA_TTABLE && lua_type(L, 2) != LUA_TNIL) {
         return luaL_argerror(L, 2, "metatable must be a table or nil");
     }
-
+    compile_user_mt(L,2);
     lua_pushlightuserdata(L, &user_mt_key);
     lua_pushvalue(L, 2);
     lua_rawset(L, 3); /* user[user_mt_key] = mt */
@@ -1753,8 +1801,7 @@ static int cdata_newindex(lua_State* L)
             goto err;
         }
 
-        lua_pushliteral(L, "__newindex");
-        lua_rawget(L, -2);
+        lua_rawgeti(L, -2,TM_NEWINDEX);
 
         if (lua_isnil(L, -1)) {
             goto err;
@@ -1826,8 +1873,7 @@ static int cdata_index(lua_State* L)
             goto err;
         }
 
-        lua_pushliteral(L, "__index");
-        lua_rawget(L, -2);
+        lua_rawgeti(L, -2,TM_INDEX);
 
         if (lua_isnil(L, -1)) {
             goto err;
@@ -2073,13 +2119,12 @@ static void push_number(lua_State* L, int64_t val, int ct_usr, const struct ctyp
     }
 }
 
-static int call_user_op(lua_State* L, const char* opfield, int idx, int ct_usr, const struct ctype* ct)
+static int call_user_op(lua_State* L, TMK key, int idx, int ct_usr, const struct ctype* ct)
 {
     idx = lua_absindex(L, idx);
 
     if (push_user_mt(L, ct_usr, ct)) {
-        lua_pushstring(L, opfield);
-        lua_rawget(L, -2);
+        lua_rawgeti(L, -2,key);
         if (!lua_isnil(L, -1)) {
             int top = lua_gettop(L);
             lua_pushvalue(L, idx);
@@ -2101,7 +2146,7 @@ static int cdata_unm(lua_State* L)
     lua_settop(L, 1);
     p = to_cdata(L, 1, &ct);
 
-    ret = call_user_op(L, "__unm", 1, 2, &ct);
+    ret = call_user_op(L, TM_UNM, 1, 2, &ct);
     if (ret >= 0) {
         return ret;
     }
@@ -2123,14 +2168,13 @@ static int cdata_unm(lua_State* L)
 
 /* returns -ve if no binop was called otherwise returns the number of return
  * arguments */
-static int call_user_binop(lua_State* L, const char* opfield, int lidx, int lusr, const struct ctype* lt, int ridx, int rusr, const struct ctype* rt)
+static int call_user_binop(lua_State* L, TMK key, int lidx, int lusr, const struct ctype* lt, int ridx, int rusr, const struct ctype* rt)
 {
     lidx = lua_absindex(L, lidx);
     ridx = lua_absindex(L, ridx);
 
     if (push_user_mt(L, lusr, lt)) {
-        lua_pushstring(L, opfield);
-        lua_rawget(L, -2);
+        lua_rawgeti(L, -2,key);
 
         if (!lua_isnil(L, -1)) {
             int top = lua_gettop(L);
@@ -2144,8 +2188,7 @@ static int call_user_binop(lua_State* L, const char* opfield, int lidx, int lusr
     }
 
     if (push_user_mt(L, rusr, rt)) {
-        lua_pushstring(L, opfield);
-        lua_rawget(L, -2);
+        lua_rawgeti(L, -2,key);
 
         if (!lua_isnil(L, -1)) {
             int top = lua_gettop(L);
@@ -2170,7 +2213,7 @@ static int cdata_concat(lua_State* L)
     to_cdata(L, 1, &lt);
     to_cdata(L, 2, &rt);
 
-    ret = call_user_binop(L, "__concat", 1, 3, &lt, 2, 4, &rt);
+    ret = call_user_binop(L, TM_CONCAT, 1, 3, &lt, 2, 4, &rt);
     if (ret >= 0) {
         return ret;
     }
@@ -2186,7 +2229,7 @@ static int cdata_len(lua_State* L)
     lua_settop(L, 1);
     to_cdata(L, 1, &ct);
 
-    ret = call_user_op(L, "__len", 1, 2, &ct);
+    ret = call_user_op(L, TM_LEN, 1, 2, &ct);
     if (ret >= 0) {
         return ret;
     }
@@ -2222,7 +2265,7 @@ static int cdata_pairs(lua_State* L)
     lua_settop(L, 1);
     to_cdata(L, 1, &ct);
 
-    ret = call_user_op(L, "__pairs", 1, 2, &ct);
+    ret = call_user_op(L, TM_PAIRS, 1, 2, &ct);
     if (ret >= 0) {
         return ret;
     }
@@ -2244,7 +2287,7 @@ static int cdata_ipairs(lua_State* L)
     lua_settop(L, 1);
     to_cdata(L, 1, &ct);
 
-    ret = call_user_op(L, "__ipairs", 1, 2, &ct);
+    ret = call_user_op(L, TM_IPAIRS, 1, 2, &ct);
     if (ret >= 0) {
         return ret;
     }
@@ -2271,7 +2314,7 @@ static int cdata_add(lua_State* L)
     rp = to_cdata(L, 2, &rt);
     assert(lua_gettop(L) == 4);
 
-    ret = call_user_binop(L, "__add", 1, 3, &lt, 2, 4, &rt);
+    ret = call_user_binop(L, TM_ADD, 1, 3, &lt, 2, 4, &rt);
     if (ret >= 0) {
         return ret;
     }
@@ -2338,7 +2381,7 @@ static int cdata_sub(lua_State* L)
     lp = to_cdata(L, 1, &lt);
     rp = to_cdata(L, 2, &rt);
 
-    ret = call_user_binop(L, "__sub", 1, 3, &lt, 2, 4, &rt);
+    ret = call_user_binop(L, TM_SUB, 1, 3, &lt, 2, 4, &rt);
     if (ret >= 0) {
         return ret;
     }
@@ -2384,7 +2427,7 @@ static int cdata_sub(lua_State* L)
 }
 
 /* TODO fix for unsigned */
-#define NUMBER_ONLY_BINOP(OPSTR, DO_NORMAL, DO_COMPLEX)                     \
+#define NUMBER_ONLY_BINOP(OP, DO_NORMAL, DO_COMPLEX)                     \
     struct ctype lt, rt, ct;                                                \
     void *lp, *rp;                                                          \
     int ct_usr;                                                             \
@@ -2395,7 +2438,7 @@ static int cdata_sub(lua_State* L)
     lp = to_cdata(L, 1, &lt);                                               \
     rp = to_cdata(L, 2, &rt);                                               \
                                                                             \
-    ret = call_user_binop(L, OPSTR, 1, 3, &lt, 2, 4, &rt);                  \
+    ret = call_user_binop(L, OP, 1, 3, &lt, 2, 4, &rt);                  \
     if (ret >= 0) {                                                         \
         return ret;                                                         \
     }                                                                       \
@@ -2427,12 +2470,14 @@ static int cdata_sub(lua_State* L)
 
 #define MUL(l,r,s) s = l * r
 #define DIV(l,r,s) s = l / r
+#define IDIV(l,r,s) s = (int64_t)(l / r)
 #define MOD(l,r,s) s = l % r
 #define POW(l,r,s) s = pow(l, r)
 
 #if defined(HAVE_COMPLEX)
 #define MULC(l,r,s) s = l * r
 #define DIVC(l,r,s) s = l / r
+#define IDIVC(l,r,s) (void) l, (void) r, memset(&s, 0, sizeof(s)), luaL_error(L, "NYI: complex idiv")
 #define MODC(l,r,s) (void) l, (void) r, memset(&s, 0, sizeof(s)), luaL_error(L, "NYI: complex mod")
 #define POWC(l,r,s) s = cpow(l, r)
 #else
@@ -2444,18 +2489,19 @@ static int cdata_sub(lua_State* L)
 #endif
 
 static int cdata_mul(lua_State* L)
-{ NUMBER_ONLY_BINOP("__mul", MUL, MULC); }
+{ NUMBER_ONLY_BINOP(TM_MUL, MUL, MULC); }
 
 static int cdata_div(lua_State* L)
-{ NUMBER_ONLY_BINOP("__div", DIV, DIVC); }
-
+{ NUMBER_ONLY_BINOP(TM_DIV, DIV, DIVC); }
+static int cdata_idiv(lua_State* L)
+{ NUMBER_ONLY_BINOP(TM_IDIV, IDIV, IDIVC); }
 static int cdata_mod(lua_State* L)
-{ NUMBER_ONLY_BINOP("__mod", MOD, MODC); }
+{ NUMBER_ONLY_BINOP(TM_MOD, MOD, MODC); }
 
 static int cdata_pow(lua_State* L)
-{ NUMBER_ONLY_BINOP("__pow", POW, POWC); }
+{ NUMBER_ONLY_BINOP(TM_POW, POW, POWC); }
 
-#define COMPARE_BINOP(OPSTR, OP, OPC)                                       \
+#define COMPARE_BINOP(OPKEY, OP, OPC)                                       \
     struct ctype lt, rt;                                                    \
     void *lp, *rp;                                                          \
     int ret, res;                                                           \
@@ -2465,7 +2511,7 @@ static int cdata_pow(lua_State* L)
     lp = to_cdata(L, 1, &lt);                                               \
     rp = to_cdata(L, 2, &rt);                                               \
                                                                             \
-    ret = call_user_binop(L, OPSTR, 1, 3, &lt, 2, 4, &rt);                  \
+    ret = call_user_binop(L, OPKEY, 1, 3, &lt, 2, 4, &rt);                  \
     if (ret >= 0) {                                                         \
         return ret;                                                         \
     }                                                                       \
@@ -2536,7 +2582,7 @@ static int cdata_pow(lua_State* L)
 
 static int cdata_eq(lua_State* L)
 {
-    COMPARE_BINOP("__eq", EQ, EQC);
+    COMPARE_BINOP(TM_EQ, EQ, EQC);
 err:
     lua_pushboolean(L, 0);
     return 1;
@@ -2544,7 +2590,7 @@ err:
 
 static int cdata_lt(lua_State* L)
 {
-    COMPARE_BINOP("__lt", LT, LTC);
+    COMPARE_BINOP(TM_LT, LT, LTC);
 err:
     lua_getuservalue(L, 1);
     lua_getuservalue(L, 2);
@@ -2555,7 +2601,7 @@ err:
 
 static int cdata_le(lua_State* L)
 {
-    COMPARE_BINOP("__le", LE, LEC);
+    COMPARE_BINOP(TM_LE, LE, LEC);
 err:
     lua_getuservalue(L, 1);
     lua_getuservalue(L, 2);
@@ -2652,7 +2698,7 @@ static int cdata_tostring(lua_State* L)
     lua_settop(L, 1);
     p = to_cdata(L, 1, &ct);
 
-    ret = call_user_op(L, "__tostring", 1, 2, &ct);
+    ret = call_user_op(L, TM_TO_STRING, 1, 2, &ct);
     if (ret >= 0) {
         return ret;
     }
@@ -3195,6 +3241,7 @@ static const luaL_Reg cdata_mt[] = {
     {"__sub", &cdata_sub},
     {"__mul", &cdata_mul},
     {"__div", &cdata_div},
+    {"__idiv", &cdata_idiv},
     {"__mod", &cdata_mod},
     {"__pow", &cdata_pow},
     {"__unm", &cdata_unm},
