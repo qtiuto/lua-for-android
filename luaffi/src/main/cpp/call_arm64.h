@@ -1073,7 +1073,7 @@ void compile_globals(struct jit* jit, lua_State* L)
 cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctype* ct)
 {
     struct jit* Dst = get_jit(L);;
-    int i,fi,ii,reg,stackCount, nargs, num_upvals, ref;
+    int i,fi,ii, nargs, num_upvals, ref;
     const struct ctype* mt;
 
     int top = lua_gettop(L);
