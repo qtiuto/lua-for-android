@@ -66,15 +66,18 @@ static const char* tm_fields[]={
 
 void push_upval(lua_State* L, int* key)
 {
-    lua_pushlightuserdata(L, key);
-    lua_rawget(L, LUA_REGISTRYINDEX);
+    lua_rawgetp(L, LUA_REGISTRYINDEX,key);
 }
 
 void set_upval(lua_State* L, int* key)
 {
+#if LUA_VERSION_NUM<502
     lua_pushlightuserdata(L, key);
     lua_insert(L, -2);
     lua_rawset(L, LUA_REGISTRYINDEX);
+#else
+    lua_rawsetp(L,LUA_REGISTRYINDEX,key);
+#endif
 }
 
 int equals_upval(lua_State* L, int idx, int* key)
@@ -425,7 +428,7 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
 	}
 #else
 	{
-        double  v = lua_tonumber(L, i); 
+        double  v = lua_tonumber(L, i);
 		int64_t intV=(int64_t)v;
 		if(intV==v){
 			#ifdef __LP64__
@@ -475,7 +478,7 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
 		} else if (ct.type == FLOAT_TYPE) {
             //float should be lifted to double in var arg
             CHECK_ALIGN(*(double*) to = *(float*) p ,sizeof(double));
-		} 
+		}
         goto err;
 
     case LUA_TNIL:
@@ -641,11 +644,13 @@ static void* check_pointer(lua_State* L, int idx, struct ctype* ct)
         return NULL;
 
     case LUA_TNUMBER:
-        ct->type = INTPTR_TYPE;
-        ct->is_unsigned = 1;
-        ct->pointers = 0;
-        lua_pushnil(L);
-        return (void*) (uintptr_t) lua_tonumber(L, idx); // TODO in Lua 5.3: maybe change to lua_tointeger
+        if(!isFloatArg(L,idx)){
+            ct->type = INTPTR_TYPE;
+            ct->is_unsigned = 1;
+            ct->pointers = 0;
+            lua_pushnil(L);
+            return (void*) (uintptr_t) lua_tointeger(L, idx);
+        } else break;
 
     case LUA_TLIGHTUSERDATA:
         ct->type = VOID_TYPE;
@@ -656,7 +661,7 @@ static void* check_pointer(lua_State* L, int idx, struct ctype* ct)
     case LUA_TSTRING:
         ct->type = INT8_TYPE;
         ct->pointers = 1;
-        ct->is_unsigned = IS_CHAR_UNSIGNED;
+        ct->is_unsigned = IS_CHAR_UNSIGNED?1:0;
         ct->is_array = 1;
         ct->base_size = 1;
         ct->const_mask = 2;
@@ -1930,8 +1935,8 @@ err:
 
             return 1;
 
-        } else 
-#endif			
+        } else
+#endif
 			if (ct.type == BOOL_TYPE) {
             uint64_t val = *(uint64_t*) data;
             lua_pushboolean(L, (int) (val & (UINT64_C(1) << ct.bit_offset)));
@@ -2903,31 +2908,119 @@ static int ffi_abi(lua_State* L)
     lua_pushboolean(L, lua_toboolean(L, -1));
     return 1;
 }
+#ifdef FAKE_ANDROID_DL
+static void* android_fake_load_library(lua_State* L,const char* libname)
+{
+    extern int getSDK();
+    extern void *fake_dlopen(const char *libpath, int flags);
+    if(getSDK()<24) return NULL;
+    if(libname[0]=='/'){
+        return fake_dlopen(libname,RTLD_LAZY);
+    }
+    static int ld_path_key;
+    push_upval(L,&ld_path_key);
+    if(lua_isnil(L,-1)){
+        lua_pop(L,1);
+        lua_createtable(L,2,0);
+        const char* library_path = getenv("LD_LIBRARY_PATH");
+        if (library_path == NULL) {
+            static const char *const kDefaultLdPaths[] = {
+#if defined(__LP64__)
+            "/system/lib64",
+            "/vendor/lib64"
+#else
+            "/system/lib",
+            "/vendor/lib"
+#endif
+            };
+            lua_pushstring(L,kDefaultLdPaths[0]);
+            lua_rawseti(L,-2,1);
+            lua_pushstring(L,kDefaultLdPaths[1]);
+            lua_rawseti(L,-2,2);
+        } else{
+            size_t len=strlen(library_path);
+            char* buf=malloc(len+1);
+            memcpy(buf,library_path,len);
+            int libIndex=0;
+            size_t lastStart=0;
+            for(size_t i=0;i<=len;++i){
+                if(buf[i]==':'){
+                    buf[i]=0;
+                } else if(buf[i]!=0){
+                    continue;
+                }
+                if(i>lastStart+1&&buf[i-1]=='/'){
+                    buf[i-1]=0;
+                }
+                lua_pushstring(L,buf+lastStart);
+                lua_rawseti(L,-2,libIndex);
+                lastStart=i+1;
+                libIndex++;
+            }
+        }
+        lua_pushvalue(L,-1);
+        set_upval(L,&ld_path_key);
+    }
+
+    size_t pathLen=lua_rawlen(L,-1);
+    void* lib=NULL;
+    const char* path,*trueLib;
+    for (int i = 1; i <= pathLen; ++i) {
+        lua_rawgeti(L,-1,i);
+        path = lua_tostring(L, -1);
+        if(path==0){
+            lua_pop(L,1);continue;
+        }
+        trueLib = lua_pushfstring(L, "%s/"LIB_FORMAT_1,path, libname);
+        if(access(trueLib,F_OK==0))
+            lib = fake_dlopen(trueLib,RTLD_LAZY);
+        lua_pop(L, 1);
+
+        if (!lib) {
+            trueLib = lua_pushfstring(L, "%s/"LIB_FORMAT_2,path, libname);
+            if(access(trueLib,F_OK==0))
+                lib = fake_dlopen(trueLib,RTLD_LAZY);
+            lua_pop(L, 1);
+        }
+        lua_pop(L,1);
+        if(lib) break;
+    }
+    lua_pop(L,1);//pop the table;
+    return lib;
+}
+#endif
 
 static int ffi_load(lua_State* L)
 {
-    const char* libname = luaL_checkstring(L, 1);
+    const char* libname = luaL_checkstring(L, 1),*trueLib;
     void** lib = (void**) lua_newuserdata(L, sizeof(void*));
 
     *lib = LoadLibraryA(libname);
 
 #ifdef LIB_FORMAT_1
     if (!*lib) {
-        libname = lua_pushfstring(L, LIB_FORMAT_1, lua_tostring(L, 1));
-        *lib = LoadLibraryA(libname);
+        trueLib = lua_pushfstring(L, LIB_FORMAT_1, libname);
+        *lib = LoadLibraryA(trueLib);
         lua_pop(L, 1);
     }
 #endif
 
 #ifdef LIB_FORMAT_2
     if (!*lib) {
-        libname = lua_pushfstring(L, LIB_FORMAT_2, lua_tostring(L, 1));
-        *lib = LoadLibraryA(libname);
+        trueLib = lua_pushfstring(L, LIB_FORMAT_2, libname);
+        *lib = LoadLibraryA(trueLib);
         lua_pop(L, 1);
     }
 #endif
 
     if (!*lib) {
+#ifdef FAKE_ANDROID_DL
+        *lib=android_fake_load_library(L,libname);
+        if(*lib){
+            lua_pushboolean(L,1);
+            set_upval(L,*lib);
+        } else
+#endif
         return luaL_error(L, "could not load library %s", lua_tostring(L, 1));
     }
 
@@ -2948,9 +3041,19 @@ static void* find_symbol(lua_State* L, int modidx, const char* asmname)
 
     libs = (void**) lua_touserdata(L, modidx);
     num = lua_rawlen(L, modidx) / sizeof(void*);
-
+#ifdef FAKE_ANDROID_DL
+    push_upval(L,*libs);
+    int isFakeLib=!lua_isnil(L,-1);
+    lua_pop(L,1);
+    extern void *fake_dlsym(void *handle, const char *name);
+#endif
     for (i = 0; i < num && sym == NULL; i++) {
         if (libs[i]) {
+#ifdef FAKE_ANDROID_DL
+            if(isFakeLib){
+                sym=fake_dlsym(libs[i],asmname);
+            } else
+#endif
             sym = GetProcAddressA(libs[i], asmname);
         }
     }
@@ -3157,6 +3260,31 @@ static int cmodule_newindex(lua_State* L)
     return 0;
 }
 
+static int cmodule_gc(lua_State* L){
+    void* handle;int i;
+    void** libs=lua_touserdata(L,1);
+    size_t len=lua_rawlen(L,1)/ sizeof(void*);
+#ifdef FAKE_ANDROID_DL
+    push_upval(L,*libs);
+    int isFakeLib=!lua_isnil(L,-1);
+    lua_pop(L,1);
+    extern void fake_dlclose(void* handle);
+#endif
+    for (i = 0; i < len; ++i) {
+        handle = libs[i];
+        if(handle){
+#ifdef FAKE_ANDROID_DL
+            if(isFakeLib){
+                fake_dlclose(handle);
+            } else
+#endif
+            FreeLibrary(handle);
+
+        }
+    }
+    return 0;
+}
+
 static int jit_gc(lua_State* L)
 {
     size_t i;
@@ -3219,7 +3347,7 @@ static int do64(lua_State* L, int is_unsigned)
     if (!is_unsigned && (high < 0 || low < 0)) {
         val = -val;
     }
-	
+
     memset(&ct, 0, sizeof(ct));
     ct.type = INT64_TYPE;
     ct.is_unsigned = is_unsigned;
@@ -3277,6 +3405,7 @@ static const luaL_Reg ctype_mt[] = {
 static const luaL_Reg cmodule_mt[] = {
     {"__index", &cmodule_index},
     {"__newindex", &cmodule_newindex},
+    {"__gc",&cmodule_gc},
     {NULL, NULL}
 };
 
@@ -3425,7 +3554,7 @@ static int setup_upvals(lua_State* L)
 
         libs[0] = LoadLibraryA(NULL); /* exe */
         libs[1] = LoadLibraryA("libc.so");
-#if  defined(__GNUC__) && !defined(__ANDROID_API__)
+#if  defined(__GNUC__) && !defined(OS_ANDROID)
         libs[2] = LoadLibraryA("libgcc.so");
 #endif
         libs[3] = LoadLibraryA("libm.so");

@@ -91,6 +91,7 @@ static void (lua_call)(lua_State *L, int nargs, int nresults)
     lua_call(L, nargs, nresults);
 }
 #endif
+
 #if LUA_VERSION_NUM == 501
 
 /*
@@ -118,6 +119,12 @@ static char* luaL_prepbuffsize(luaL_Buffer* B, size_t sz) {
     }
     return luaL_prepbuffer(B);
 }
+
+static __inline void lua_rawgetp(lua_State *L, int idx,void* p){
+    lua_pushlightuserdata(L, key);
+    lua_rawget(L, LUA_REGISTRYINDEX);
+}
+
 #elif LUA_VERSION_NUM >= 503
 static void (lua_remove)(lua_State *L, int idx) {
     lua_remove(L, idx);
@@ -191,6 +198,7 @@ static void (lua_remove)(lua_State *L, int idx) {
 #endif
 #   define LoadLibraryA(name) dlopen(name, RTLD_LAZY | RTLD_GLOBAL)
 #   define GetProcAddressA(lib, name) dlsym(lib, name)
+#   define FreeLibrary(lib) dlclose(lib)
 #   define AllocPage(size) mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0)
 #   define FreePage(data, size) munmap(data, size)
 #   define EnableExecute(data, size) mprotect(data, size, PROT_READ|PROT_EXEC)
@@ -393,7 +401,7 @@ extern float crealf(complex_float);
 extern double cimag(complex_double);
 extern double creal(complex_double);
 
-#if defined(__ANDROID_API__) && __ANDROID_API__<26
+#if defined(OS_ANDROID) && __ANDROID_API__<26
 #include <math.h>
 static double cabs(complex_double f){
     double re = creal(f);
@@ -493,9 +501,7 @@ void compile_globals(struct jit* jit, lua_State* L);
 int get_extern(struct jit* jit, uint8_t* addr, int idx, int type);
 
 /* WARNING: assembly needs to be updated for prototype changes of these functions */
-int check_bool(lua_State* L, int idx);
 double check_double(lua_State* L, int idx);
-double check_complex_imag(lua_State* L, int idx);
 float check_float(lua_State* L, int idx);
 uint64_t check_uint64(lua_State* L, int idx);
 int64_t check_int64(lua_State* L, int idx);

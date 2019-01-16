@@ -26,6 +26,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH) $(LOCAL_PATH)/../lua/includes
 LOCAL_STATIC_LIBRARIES :=$(LUA_LIB)
 LOCAL_LDLIBS := -ldl -llog -latomic
 LOCAL_LDFLAGS := $(LOCAL_PATH)/../lua/$(TARGET_ARCH_ABI)/libluadroid.so
+LOCAL_CFLAGS += -D FAKE_ANDROID_DL
 LOCAL_MODULE :=ffi
 $(info local c includes=$(LOCAL_C_INCLUDES))
 $(info local path=$(LOCAL_PATH))
