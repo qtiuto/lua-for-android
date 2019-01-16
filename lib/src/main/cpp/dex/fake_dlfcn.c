@@ -41,14 +41,13 @@ struct ctx {
 };
 
 //extern "C" {
-int fake_dlclose(void *handle) {
+void fake_dlclose(void *handle) {
     if (handle) {
         struct ctx *ctx = (struct ctx *) handle;
         if (ctx->dynsym) free(ctx->dynsym);    /* we're saving dynsym and dynstr */
         if (ctx->dynstr) free(ctx->dynstr);    /* from library file just in case */
         free(ctx);
     }
-    return 0;
 }
 
 /* flags are ignored */

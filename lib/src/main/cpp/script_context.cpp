@@ -209,7 +209,7 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
     }
 }
 
-int getSDK() {
+extern "C" int getSDK() {
     static int sdk=0;
     if(sdk!=0)
         return sdk;

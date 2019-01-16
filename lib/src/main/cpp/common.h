@@ -23,7 +23,12 @@ extern jmethodID charValue;
 extern jmethodID booleanValue;
 extern jmethodID longValue;
 extern jmethodID doubleValue;
-extern JNIEXPORT int getSDK();
+#ifdef __cplusplus
+extern "C"
+#else
+extern
+#endif
+ JNIEXPORT int getSDK();
 
 typedef std::MString String;
 

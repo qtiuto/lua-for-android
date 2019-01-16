@@ -6,13 +6,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <jni.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-void *fake_dlopen(const char *libpath, int flags);
-int fake_dlclose(void* handle);
-void *fake_dlsym(void *handle, const char *name);
+__attribute__ ((visibility ("default"))) void *fake_dlopen(const char *libpath, int flags);
+__attribute__ ((visibility ("default"))) void fake_dlclose(void* handle);
+__attribute__ ((visibility ("default"))) void *fake_dlsym(void *handle, const char *name);
 #ifdef __cplusplus
 };
 #endif
