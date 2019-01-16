@@ -3280,8 +3280,11 @@ JNIEXPORT FILE* tmpfile(void){
         }
     }
 
-    char tp[strlen(tmpDir)+11];
-    sprintf(tp,"%s/%s",tmpDir,"tmp_XXXXXX");
+    size_t dirLen = strlen(tmpDir);
+    char tp[dirLen + 12];
+    memcpy(tp,tmpDir,dirLen);
+    tp[dirLen]='/';
+    memcpy(tp+dirLen+1,"tmp_XXXXXX",11);
     int fd=mkstemp(tp);
     if(fd==-1){
         return NULL;
