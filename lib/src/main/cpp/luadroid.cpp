@@ -512,33 +512,27 @@ static int getCurrentLibDirectoryLib(lua_State* L){
     const char *name = lua_tostring(L, 1);
     ScriptContext* context=getContext(L)->scriptContext;
 
-    if(context->libDir.empty()){
+    if(getSDK()>20&&context->libDir.empty()){
         Dl_info info;
         dladdr((const void*)lua_newstate,&info);
         if(info.dli_fname== nullptr)
             return 0;
         const char* s=strrchr(info.dli_fname,'/');
-        if(s== nullptr){
-            char *cwd = getcwd(nullptr, 0);
-            context->libDir= cwd;
-            free(cwd);
-        } else{
+        if(s!= nullptr){
             unsigned int len = uint(s - info.dli_fname + 1);
             context->libDir.append(info.dli_fname, len);
         }
     }
 
     String destFile=context->libDir+"lib"+name+".so";
-    if(access(destFile.data(),F_OK)!=0){
-        destFile=context->libDir+name+".so";
-    }
-    if(access(destFile.data(),F_OK)!=0){
-        lua_pushboolean(L, false);
-        return 1;
-    }
+
     void* handle=dlopen(destFile.data(),RTLD_NOW);
     if(handle== nullptr){
-        lua_pushfstring(L,"\n\tOpen library %s failed:%s",name,dlerror());
+        destFile=context->libDir+name+".so";
+        handle=dlopen(destFile.data(),RTLD_NOW);
+    }
+    if(handle== nullptr){
+        lua_pushfstring(L,"\n\tOpen library %s failed",name);
         return 1;
     }
     String funcName="luaopen_";
