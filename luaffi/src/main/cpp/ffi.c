@@ -34,7 +34,7 @@ typedef enum {
     TM_CALL,
     TM_NEW,
     TM_GC,
-    TM_LEN,
+    TM_TO_STRING,
     TM_ADD,
     TM_SUB,
     TM_MUL,
@@ -53,16 +53,16 @@ typedef enum {
     TM_LT,
     TM_LE,
     TM_CONCAT,
-    TM_TO_STRING,
+    TM_LEN,
     TM_PAIRS,
     TM_IPAIRS,
     TM_N        /* number of elements in the enum */
 } TMK;
 static const char* tm_fields[]={
         "__index","__newindex","__call","__new",
-        "__gc","__len","__add","__sub", "__mul",
+        "__gc","__tostring","__add","__sub", "__mul",
         "__mod","__pow","__div","__idiv", "__unm","__eq","__lt","__le","__concat",
-        "__tostring","__pairs","__ipairs"};
+        "__len", "__pairs","__ipairs"};
 
 void push_upval(lua_State* L, int* key)
 {
@@ -1426,8 +1426,7 @@ static int ctype_call(lua_State* L)
     check_ctype(L, 1, &ct);
 
     if (push_user_mt(L, -1, &ct)) {
-        lua_pushstring(L, "__new");
-        lua_rawget(L, -2);
+        lua_rawgeti(L, -2,TM_NEW);
         if (!lua_isnil(L, -1)) {
             lua_insert(L, 1); // function at bottom of stack under args
             lua_pop(L, 2);
