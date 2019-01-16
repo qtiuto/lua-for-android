@@ -395,7 +395,8 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
         return sizeof(int);
 
     case LUA_TNUMBER:
-#if defined(ARCH_ARM)
+//IOS doesn't need alignment
+#if defined(ARCH_ARM)&&!defined(TARGET_OS_IPHONE)
 #define CHECK_ALIGN(CODE,RET_SIZE)\
             ({int align=(uintptr_t)(to)&0b111?4:0;\
             to+=align;\

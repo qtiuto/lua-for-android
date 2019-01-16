@@ -24,7 +24,11 @@
 
 
 #define ROUND_UP(x, align) (((int) (x) + (align - 1)) & ~(align - 1))
+#ifdef TARGET_OS_IPHONE
+#define  ALIGNED(x, align)  1
+#else
 #define ALIGNED(x, align) (((int)(x) & (align - 1)) == 0)
+#endif
 static void compile_extern_jump(struct jit* jit, lua_State* L, cfunction func, uint8_t* code)
 {
     /* The jump code is the function pointer followed by a stub to call the
