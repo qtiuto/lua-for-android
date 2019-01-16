@@ -196,12 +196,28 @@ static void (lua_remove)(lua_State *L, int idx) {
 #   define LIB_FORMAT_1 "%s.so"
 #   define LIB_FORMAT_2 "lib%s.so"
 #endif
+#if defined (__GNUC__)
+#define GCC_VERSION ((__GNUC__*10000) + __GNUC_MINOR__*100 + __GNUC_PATCHLEVEL__)
+#endif
+//Only arm need cache flush
+#if defined __GNUC__ && GCC_VERSION>=40300
+#define CacheFlush(st,size)  __builtin___clear_cache((char*)st,(size)+(char*)st)
+#elif defined(ARCH_ARM64)||defined(ARCH_ARM)
+#if defined(OS_OSX)
+ void sys_icache_invalidate(void *start, size_t len);
+ #define CacheFlush(st,size) sys_icache_invalidate((char*)st,size)
+#else
+  #define CacheFlush(st,size) __clear_cache((char*)st,(size)+(char*)st)
+# endif
+#else
+#define CacheFlush(st,size)
+#endif
 #   define LoadLibraryA(name) dlopen(name, RTLD_LAZY | RTLD_GLOBAL)
 #   define GetProcAddressA(lib, name) dlsym(lib, name)
 #   define FreeLibrary(lib) dlclose(lib)
 #   define AllocPage(size) mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0)
 #   define FreePage(data, size) munmap(data, size)
-#   define EnableExecute(data, size) mprotect(data, size, PROT_READ|PROT_EXEC)
+#   define EnableExecute(data, size) do{mprotect(data, size, PROT_READ|PROT_EXEC);CacheFlush(data,size);}while(0)
 #   define EnableWrite(data, size) mprotect(data, size, PROT_READ|PROT_WRITE)
 #endif
 

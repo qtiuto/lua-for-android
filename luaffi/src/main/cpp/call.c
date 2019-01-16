@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
  */
+
 #include "ffi.h"
 
 static cfunction compile(Dst_DECL, lua_State* L, cfunction func, int ref);
