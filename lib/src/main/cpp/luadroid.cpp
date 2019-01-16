@@ -3260,7 +3260,34 @@ static void registerNativeMethods(JNIEnv *env) {
 
     env->DeleteLocalRef(scriptClass);
 }
+JNIEXPORT FILE* tmpfile(void){
+    static const char* tmpDir;
+    if(tmpDir== nullptr){
+        AutoJNIEnv env;
+        auto&& c=env->FindClass("java/lang/System");
+        jmethodID mid=env->GetStaticMethodID(c,"getProperty","(Ljava/lang/String;)Ljava/lang/String;");
+        JString key=env->NewStringUTF("java.io.tmpdir");
+        JString s=env->CallStaticObjectMethod(c,mid,key.get());
+        if(s.get()== nullptr){
+            tmpDir="/data/local/tmp";
+            if(access(tmpDir,W_OK)!=0){
+                return NULL;
+            }
+        } else{
+           char* tmp=new char[env->GetStringUTFLength(s)];
+           strcpy(tmp,s.str());
+           tmpDir=tmp;
+        }
+    }
 
+    char tp[strlen(tmpDir)+11];
+    sprintf(tp,"%s/%s",tmpDir,"tmp_XXXXXX");
+    int fd=mkstemp(tp);
+    if(fd==-1){
+        return NULL;
+    }
+    return fdopen(fd,"r+");
+}
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
     ::vm = vm;
     JNIEnv *env;
