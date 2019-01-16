@@ -392,6 +392,17 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
         return sizeof(int);
 
     case LUA_TNUMBER:
+#if defined(ARCH_ARM)
+#define CHECK_ALIGN(CODE,RET_SIZE)\
+            ({int align=(uintptr_t)(to)&0b111?4:0;\
+            to+=align;\
+            {CODE;}\
+            return (RET_SIZE)+align; });
+#else
+#define CHECK_ALIGN(CODE,RET_SIZE)({\
+            {CODE;}\
+            return (RET_SIZE);})
+#endif
 #if LUA_VERSION_NUM >=503
 	{
 		int64_t v;int isnum;
@@ -399,18 +410,17 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
 		if(isnum){
 			#ifdef __LP64__
 			*(int64_t*) to=v;//64bits platform is safe to store int64 arg
+            return sizeof(int64_t);
 			#else
 			if(v&0xffffffff00000000L){
-				*(int64_t*) to=v;
+				CHECK_ALIGN(*(int64_t*) to=v ,sizeof(int64_t));
 			}else{
 				*(int32_t*) to=(int32_t)v;
 				return sizeof(int);
 			}
 			#endif
-			return sizeof(int64_t);
 		}else{
-			*(double*) to = lua_tonumber(L, i); 
-			return sizeof(double);
+            CHECK_ALIGN(*(double*) to = lua_tonumber(L, i) ,sizeof(double));
 		}
 	}
 #else
@@ -420,18 +430,17 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
 		if(intV==v){
 			#ifdef __LP64__
 			*(int64_t*) to=intV;//64bits platform is safe to store int64 arg
+			return sizeof(int64_t);
 			#else
 			if(v&0xffffffff00000000L){
-				*(int64_t*) to=intV;
+				CHECK_ALIGN(*(int64_t*) to=intV ,sizeof(int64_t));
 			}else{
 				*(int32_t*) to=(int32_t)intV;
 				return sizeof(int);
 			}
 			#endif
-			return sizeof(int64_t);
 		}else{
-			*(double*) to=v;
-			return sizeof(double);
+			CHECK_ALIGN(*(double*) to = v ,sizeof(double));
 		}
 	}
 #endif
@@ -460,15 +469,12 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
             return sizeof(int32_t);
 
         } else if (ct.type == INT64_TYPE) {
-            *(int64_t*) to = *(int64_t*) p;
-            return sizeof(int64_t);
+            CHECK_ALIGN(*(int64_t*) to=*(int64_t*) p ,sizeof(int64_t));
         } else if (ct.type == DOUBLE_TYPE) {
-			 *(double*) to = *(double*) p;
-            return sizeof(double);
+            CHECK_ALIGN(*(double*) to = *(double*) p ,sizeof(double));
 		} else if (ct.type == FLOAT_TYPE) {
             //float should be lifted to double in var arg
-            *(double*) to = *(float *) p;
-            return sizeof(double);
+            CHECK_ALIGN(*(double*) to = *(float*) p ,sizeof(double));
 		} 
         goto err;
 
@@ -479,7 +485,7 @@ static size_t unpack_vararg(lua_State* L, int i, char* to)
     default:
         goto err;
     }
-
+#undef CHECK_ALIGN
 err:
     return type_error(L, i, "vararg", 0, NULL);
 }
