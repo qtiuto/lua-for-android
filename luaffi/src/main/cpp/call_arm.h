@@ -332,7 +332,7 @@ static const unsigned int build_actionlist[703] = {
 0xe89da0f0,
 0x00000000,
 0xe1a0c00d,
-0xe92d58f0,
+0xe92d5cf0,
 0xe1a0b00c,
 0xe1a05000,
 0xe1a00005,
@@ -528,7 +528,7 @@ static const unsigned int build_actionlist[703] = {
 0x00030001,
 0xe5806000,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xe1a06000,
 0xe1a07001,
@@ -555,7 +555,7 @@ static const unsigned int build_actionlist[703] = {
 0xe5806000,
 0xe5807004,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xe1a06000,
 0xeb000000,
@@ -580,7 +580,7 @@ static const unsigned int build_actionlist[703] = {
 0x00030001,
 0xe5806000,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xeb000000,
 0x0003001c,
@@ -591,7 +591,7 @@ static const unsigned int build_actionlist[703] = {
 0x0006000f,
 0xe5810000,
 0xe3a00000,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xe1a06000,
 0xeb000000,
@@ -607,7 +607,7 @@ static const unsigned int build_actionlist[703] = {
 0xeb000000,
 0x00030005,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xe1a06000,
 0xeb000000,
@@ -629,7 +629,7 @@ static const unsigned int build_actionlist[703] = {
 0x00030006,
 0x00000000,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xe1a06000,
 0xeb000000,
@@ -645,7 +645,7 @@ static const unsigned int build_actionlist[703] = {
 0xeb000000,
 0x00030007,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xe1a06000,
 0xe1a07001,
@@ -663,7 +663,7 @@ static const unsigned int build_actionlist[703] = {
 0xeb000000,
 0x00030008,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xeb000000,
 0x0003001c,
@@ -694,7 +694,7 @@ static const unsigned int build_actionlist[703] = {
 0xe597600c,
 0xe580600c,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000,
 0xeb000000,
 0x0003001c,
@@ -721,7 +721,7 @@ static const unsigned int build_actionlist[703] = {
 0xe5976004,
 0xe5806004,
 0xe3a00001,
-0xe91ba8f0,
+0xe91bacf0,
 0x00000000
 };
 
@@ -1089,7 +1089,6 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 
     dasm_setup(Dst, build_actionlist);
 
-	
     dasm_put(Dst, 311, nargs);
 	
     if (ct->has_var_arg) {

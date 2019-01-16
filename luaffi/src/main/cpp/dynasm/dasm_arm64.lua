@@ -1061,7 +1061,7 @@ map_op[".long64_*"]=function(params)
   if not params then return "imm..." end
   for _,p in ipairs(params) do
 	waction("LONG",0,format("(int)(%s)",p))
-	waction("LONG",0,format("(int)((unsigned long)(%s)>>32)",p))
+	waction("LONG",0,format("(int)(((unsigned long)(%s))>>32)",p))
   end
 end
 

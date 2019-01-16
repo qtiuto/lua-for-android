@@ -489,7 +489,8 @@ void unpack_varargs_stack(lua_State* L, int first, int last, char* to)
     int i;
 
     for (i = first; i <= last; i++) {
-        to += unpack_vararg(L, i, to);
+        size_t size = unpack_vararg(L, i, to);
+        to += size;
     }
 }
 // complex arg is not supported

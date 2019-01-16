@@ -455,9 +455,9 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 
     dasm_setup(Dst, build_actionlist);
 
-	
+	// redundant r10 to make stak align 8
     | mov r12, sp
-    | push {TOP, L_ARG, DATA, DATA2, r11, r12, lr}
+    | push {TOP, L_ARG, DATA, DATA2,r10, r11, r12, lr}
     | mov r11, r12
     | mov L_ARG, r0
     | lcall extern lua_gettop
@@ -482,7 +482,7 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
     mt = (const struct ctype*) lua_touserdata(L, -1);
 	retByAddr=!mt->pointers && !mt->is_reference && (mt->type==COMPLEX_DOUBLE_TYPE||mt->type==COMPLEX_FLOAT_TYPE);
     if (retByAddr) {
-		| sub sp,sp, #16
+		| sub sp,sp, #0x10
 		| mov DATA2, sp // address for complex return
 	}
 	lua_pop(L,1);
@@ -490,7 +490,7 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
      * argument for complex double and maintains alignment). Add an extra 16/64 bytes so
      * that the pop {r0, r1, r2, r3} or pop arguments doesn't clean out our stack frame */
     | sub sp, sp, TOP, lsl #4
-    | sub sp, sp, #16
+    | sub sp, sp, #0x10
     | mov DATA, sp
 	
 	// Complex type is return in the address stored in r0
@@ -642,7 +642,7 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
     |.endmacro
 
     |.macro return
-    | ldmdb r11, {TOP, L_ARG, DATA, DATA2, r11, sp, pc}
+    | ldmdb r11, {TOP, L_ARG, DATA, DATA2,r10, r11, sp, pc}
     |.endmacro
 
     lua_rawgeti(L, ct_usr, 0);
