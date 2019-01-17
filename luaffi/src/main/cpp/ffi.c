@@ -1375,7 +1375,7 @@ static int do_new(lua_State* L, int is_cast)
         lua_pushvalue(L, -3);
 
         /* user_mt.__gc */
-        lua_rawgeti(L, -4,TM_GC);
+        lua_rawgeti(L, -3,TM_GC);
 
         lua_rawset(L, -3); /* gc_upval[cdata] = user_mt.__gc */
         lua_pop(L, 2); /* user_mt and gc_upval */
@@ -1813,7 +1813,7 @@ static int cdata_newindex(lua_State* L)
             goto err;
         }
 
-        lua_rawgeti(L, -2,TM_NEWINDEX);
+        lua_rawgeti(L, -1,TM_NEWINDEX);
 
         if (lua_isnil(L, -1)) {
             goto err;
@@ -1885,7 +1885,7 @@ static int cdata_index(lua_State* L)
             goto err;
         }
 
-        lua_rawgeti(L, -2,TM_INDEX);
+        lua_rawgeti(L, -1,TM_INDEX);
 
         if (lua_isnil(L, -1)) {
             goto err;
@@ -2136,7 +2136,7 @@ static int call_user_op(lua_State* L, TMK key, int idx, int ct_usr, const struct
     idx = lua_absindex(L, idx);
 
     if (push_user_mt(L, ct_usr, ct)) {
-        lua_rawgeti(L, -2,key);
+        lua_rawgeti(L, -1,key);
         if (!lua_isnil(L, -1)) {
             int top = lua_gettop(L);
             lua_pushvalue(L, idx);
@@ -2186,7 +2186,7 @@ static int call_user_binop(lua_State* L, TMK key, int lidx, int lusr, const stru
     ridx = lua_absindex(L, ridx);
 
     if (push_user_mt(L, lusr, lt)) {
-        lua_rawgeti(L, -2,key);
+        lua_rawgeti(L, -1,key);
 
         if (!lua_isnil(L, -1)) {
             int top = lua_gettop(L);
@@ -2200,7 +2200,7 @@ static int call_user_binop(lua_State* L, TMK key, int lidx, int lusr, const stru
     }
 
     if (push_user_mt(L, rusr, rt)) {
-        lua_rawgeti(L, -2,key);
+        lua_rawgeti(L, -1,key);
 
         if (!lua_isnil(L, -1)) {
             int top = lua_gettop(L);
