@@ -793,8 +793,6 @@ static int get_cfunction_address(lua_State* L, int idx, cfunction* addr)
 {
     if (!lua_isfunction(L, idx)) return 0;
 
-    int top = lua_gettop(L);
-
     // Get the last upvalue
     int n = 2;
     while (lua_getupvalue(L, idx, n)) {
@@ -1566,9 +1564,9 @@ static int cdata_gc(lua_State* L)
 
 static int callback_free(lua_State* L)
 {
-    cfunction* p = (cfunction*) lua_touserdata(L, 1);
     // FIXME: temporarily disabled to prevent SIGTRAP on exit
-    // free_code(get_jit(L), L, *p);
+    //cfunction* p = (cfunction*) lua_touserdata(L, 1);
+     //free_code(get_jit(L), L, *p);
     return 0;
 }
 
@@ -1625,7 +1623,7 @@ static int cdata_call(lua_State* L)
     cfunction* p = (cfunction*) check_cdata(L, 1, &ct);
 
     if (push_user_mt(L, -1, &ct)) {
-        lua_rawgeti(L, -2,TM_CALL);
+        lua_rawgeti(L, -1,TM_CALL);
 
         if (!lua_isnil(L, -1)) {
             lua_insert(L, 1);
