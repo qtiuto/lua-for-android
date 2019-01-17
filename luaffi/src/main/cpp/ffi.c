@@ -1683,6 +1683,9 @@ static void compile_user_mt(lua_State* L,int user_mt){
         }
         lua_rawseti(L,-2,i);
     }
+    if(!created){
+        lua_pushnil(L);
+    }
     lua_replace(L,user_mt);
 }
 
