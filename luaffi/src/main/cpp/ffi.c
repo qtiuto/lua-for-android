@@ -29,7 +29,7 @@ int next_unnamed_key;
 int niluv_key;
 int asmname_key;
 typedef enum {
-    TM_INDEX,
+    TM_INDEX=1,
     TM_NEWINDEX,
     TM_CALL,
     TM_NEW,
@@ -56,9 +56,9 @@ typedef enum {
     TM_LEN,
     TM_PAIRS,
     TM_IPAIRS,
-    TM_N        /* number of elements in the enum */
+    TM_END        /* number of elements in the enum */
 } TMK;
-static const char* tm_fields[]={
+static const char* tm_fields[]={NULL,
         "__index","__newindex","__call","__new",
         "__gc","__tostring","__add","__sub", "__mul",
         "__mod","__pow","__div","__idiv", "__unm","__eq","__lt","__le","__concat",
@@ -1669,12 +1669,17 @@ static int user_mt_key;
 static void compile_user_mt(lua_State* L,int user_mt){
     if(lua_isnil(L,user_mt))
         return;
-    lua_createtable(L,TM_N,0);
-    for (int i = TM_N; i-- ;) {
+    int created=0;
+    for (int i = TM_END; --i ;) {
         lua_getfield(L,user_mt,tm_fields[i]);
         if(lua_isnil(L,-1)){
             lua_pop(L,1);
             continue;
+        }
+        if(!created){
+            created=1;
+            lua_createtable(L,i,0);
+            lua_insert(L,-2);
         }
         lua_rawseti(L,-2,i);
     }
