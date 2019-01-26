@@ -3074,7 +3074,7 @@ static int callInitializer(lua_State *L){
 }
 
 int funcWriter(lua_State *, const void *p, size_t sz, void *ud) {
-    Vector<char> *holder = (Vector<char> *) ud;
+    Vector<char,0> *holder = (Vector<char,0> *) ud;
     for (int i = 0; i < sz; ++i) {
         holder->push_back(((const char *) p)[i]);
     }

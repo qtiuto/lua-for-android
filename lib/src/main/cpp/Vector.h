@@ -62,15 +62,6 @@ private:
         }
     }
 
-    static inline size_type binaryCeil(size_type i) {
-        i |= (i >> 1);
-        i |= (i >> 2);
-        i |= (i >> 4);
-        i |= (i >> 8);
-        i |= (i >> 16);
-        return i + 1;
-    }
-
 
 public:
     Vector() {}
@@ -176,7 +167,7 @@ public:
 
     void reserve(size_type len) {
         if (len <= _capacity) return;
-        _capacity = binaryCeil(len);
+        _capacity = len+1+(len>>1);
         if (_capacity <= cacheCount) {
             array = (_Tp*)cache;
         } else {

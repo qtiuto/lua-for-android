@@ -90,16 +90,6 @@ public:
         return *this;
     }
 
-    /*Array& operator=(const Array<_Tp>& other){
-        release();
-        _size=other._size;
-        array=al.allocate(_size);
-        for (size_type i=_size-1;i!=-1;--i) {
-            array[i]=other.array[i];
-        }
-        return *this;
-    }*/
-
     const size_type size() const noexcept {
         return _size;
     }
