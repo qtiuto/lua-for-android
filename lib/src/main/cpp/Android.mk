@@ -14,7 +14,7 @@ LOCAL_CFLAGS  += -Os -fno-math-errno -fvisibility=hidden
 LOCAL_CPPFLAGS += -Os
 LOCAL_LDFLAGS += -Wl,--gc-sections
 endif
-LOCAL_LDLIBS := -ldl -llog -latomic
+LOCAL_LDLIBS := -ldl -llog
 LOCAL_MODULE :=luadroid
 $(info local c includes=$(LOCAL_C_INCLUDES))
 $(info local path=$(LOCAL_PATH))
