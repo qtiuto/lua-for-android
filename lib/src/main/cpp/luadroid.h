@@ -181,7 +181,7 @@ class ScriptContext {
             return c1 == c2 || ScriptContext::sTypeEnv->IsSameObject(c1, c2);
         }
     };
-    static jmethodID sWriteBytes;
+    static jmethodID sWriteLog;
     static TJNIEnv* sTypeEnv;
     friend class ThreadContext;
     typedef Map<jclass, JavaType *,hashJClass,equalJClass> TypeMap;
@@ -198,12 +198,14 @@ class ScriptContext {
     SpinLock gcLock;
     SpinLock crossLock;
     SpinLock addLock;
+    SpinLock loggerLock;
     CrossThreadMap crossThreadMap;
 
     JavaType *HashMapClass = nullptr;
     JavaType *FunctionClass = nullptr;
     jweak outLogger = nullptr;
     jweak errLogger = nullptr;
+    char16_t * javaLogBuffer= nullptr;
 
     JavaType *getVoidClass(TJNIEnv *env);
     JavaType *const byteClass;
@@ -228,7 +230,6 @@ public:
     Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
     SpinLock weightLock;
     jobject const javaRef;
-    String libDir;
 
     JavaType *ensureType(TJNIEnv *env, jclass type);
 
@@ -278,15 +279,13 @@ public:
 
     void registerLogger(TJNIEnv *env, jobject out, jobject err);
 
-    void writeLog(TJNIEnv* env,const char *data, bool isError);
+    void writeLog(TJNIEnv *env, const char *data, bool isError);
 
     ~ScriptContext();
 
 
 private:
     void config(lua_State *L);
-
-    char *checkLineEndForLogcat(const char *data) const;
 
     static void init(TJNIEnv *env, jobject const javaObject);
 

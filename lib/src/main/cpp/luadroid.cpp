@@ -140,6 +140,7 @@ extern "C" {
 jlong compile(TJNIEnv *env, jclass thisClass, jlong ptr, jstring script, jboolean isFile);
 jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll);
 void registerLogger(TJNIEnv *, jclass, jlong ptr, jobject out, jobject err);
+void nativeFlushLog(TJNIEnv *, jclass);
 void nativeClose(JNIEnv *env, jclass thisClass, jlong ptr);
 void referFunc(JNIEnv *env, jclass thisClass, jlong ptr, jboolean deRefer);
 jint getClassType(TJNIEnv * env, jclass, jlong ptr,jclass clz);
@@ -182,8 +183,9 @@ static const JNINativeMethod nativeMethods[] =
         {{"nativeOpen",        "(ZZ)J",                            (void *) nativeOpen},
          {"nativeClose",       "(J)V",                             (void *) nativeClose},
          //{"nativeClean",       "(J)V",                             (void *) nativeClean},
-         {"registerLogger",    "(JLjava/io/OutputStream;"
-                                       "Ljava/io/OutputStream;)V", (void *) registerLogger},
+         {"registerLogger",    "(JLcom/oslorde/luadroid/Logger;"
+                                       "Lcom/oslorde/luadroid/Logger;)V", (void *) registerLogger},
+         {"nativeFlushLog","()V",(void*) nativeFlushLog},
          {"compile",           "(JLjava/lang/String;Z)J",          (void *) compile},
          {"runScript",         "(JLjava/lang/Object;Z"
                                        "[Ljava/lang/Object;"
@@ -508,38 +510,61 @@ static inline void pushErrorHandler(lua_State *L,ThreadContext* context){
     lua_pushcclosure(L,luaPCallHandler,1);
 }
 
-static int getCurrentLibDirectoryLib(lua_State* L){
-    const char *name = lua_tostring(L, 1);
-    ScriptContext* context=getContext(L)->scriptContext;
 
-    if(getSDK()>20&&context->libDir.empty()){
-        Dl_info info;
-        dladdr((const void*)lua_newstate,&info);
-        if(info.dli_fname== nullptr)
-            return 0;
-        const char* s=strrchr(info.dli_fname,'/');
-        if(s!= nullptr){
-            unsigned int len = uint(s - info.dli_fname + 1);
-            context->libDir.append(info.dli_fname, len);
+static int getLinkableLib(lua_State *L){
+    const char *fullName = lua_tostring(L, 1);
+    String name;
+    const char* p=strchr(fullName,'.');
+    void* handle= nullptr;
+    if(p== nullptr){
+        name=fullName;
+    } else{
+        name.append(fullName);
+        replaceAll<'.','/'>(name);
+        handle=dlopen(name.data(),RTLD_NOW);
+        if(!handle){
+            uint pos=name.rfind('/');
+            name.insert(pos+1,"lib");
+            handle=dlopen(name.data(),RTLD_NOW);
+        }
+        if(handle== nullptr){
+            name.clear();
+            name.append(fullName,0,p-fullName);
         }
     }
-
-    String destFile=context->libDir+"lib"+name+".so";
-
-    void* handle=dlopen(destFile.data(),RTLD_NOW);
-    if(handle== nullptr){
-        destFile=context->libDir+name+".so";
-        handle=dlopen(destFile.data(),RTLD_NOW);
+    if(!handle){
+        name = "lib" + name + ".so";
+        handle = dlopen(name.data(), RTLD_NOW);
     }
     if(handle== nullptr){
-        lua_pushfstring(L,"\n\tOpen library %s failed",name);
+        name.erase(0,3);
+        handle=dlopen(name.data(),RTLD_NOW);
+    }
+    if(handle== nullptr){
+        lua_pushfstring(L,"\n\topen library %s failed",fullName);
         return 1;
     }
-    String funcName="luaopen_";
-    funcName+=name;
-    lua_CFunction  function= (lua_CFunction)(dlsym(handle, funcName.data()));
+    String funcName;
+    lua_CFunction  function= nullptr;
+    const char* mark=strchr(fullName,'-');
+    if(mark){
+        funcName.append(fullName,0,mark-fullName);
+        if(p) replaceAll<'.','_'>(funcName);
+        funcName="luaopen_" + funcName;
+        function= (lua_CFunction)(dlsym(handle, funcName.data()));
+        if(function== nullptr){
+            lua_pushfstring(L,"\n\tno function %s in library %s",funcName.data(),name.data());
+            funcName.clear();
+            funcName.append(mark+1);
+        }
+    } else funcName=fullName;
+    if(!function){
+        if(p) replaceAll<'.','_'>(funcName);
+        funcName=("luaopen_" + funcName);
+        function = (lua_CFunction)(dlsym(handle,funcName.data()));
+    }
     if(function== nullptr){
-        lua_pushfstring(L,"\n\tNo function %s in file %s",funcName.data(),destFile.data());
+        lua_pushfstring(L,"\n\tno function %s in library %s",funcName.data(),name.data());
         return 1;
     }
     lua_pushcfunction(L,function);
@@ -675,14 +700,14 @@ void ScriptContext::config(lua_State *L) {
     lua_getfield(L,-1,loaderName);
     int nextSearcher=lua_rawlen(L,-1);
     lua_pushlightuserdata(L,context);
-    lua_pushcclosure(L,getCurrentLibDirectoryLib,1);
+    lua_pushcclosure(L, getLinkableLib, 1);
     lua_rawseti(L,-2,nextSearcher);
     lua_settop(L, top);
 }
 
 int JavaObject::objectGc(lua_State *L) {
-    ThreadContext *context=(ThreadContext*) lua_touserdata(L, lua_upvalueindex(1));
-    JavaObject *ref = (JavaObject *) lua_touserdata(L, -1);
+    auto context=(ThreadContext*) lua_touserdata(L, lua_upvalueindex(1));
+    auto ref = (JavaObject *) lua_touserdata(L, -1);
     context->env->DeleteGlobalRef(ref->object);
     context->pushedCount--;
     return 0;
@@ -3281,7 +3306,7 @@ JNIEXPORT FILE* tmpfile(void){
     memcpy(tp+dirLen+1,"tmp_XXXXXX",11);
     int fd=mkstemp(tp);
     if(fd==-1){
-        return NULL;
+        return nullptr;
     }
     return fdopen(fd,"r+");
 }
@@ -3296,7 +3321,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *) {
 }
 
 static void loggerCallback(JNIEnv*env,const char* data,bool isErr,void* arg){
-    ((ScriptContext*)arg)->writeLog((TJNIEnv*)env,data, isErr);
+    ((ScriptContext *) arg)->writeLog((TJNIEnv *) env, data, isErr);
 }
 
 jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll) {
@@ -3304,7 +3329,12 @@ jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll) {
     requireLogger(loggerCallback,context);
     return reinterpret_cast<long>(context);
 }
-
+void nativeFlushLog(TJNIEnv *, jclass){
+    fflush(stdout);
+    fflush(stderr);
+    fdatasync(STDOUT_FILENO);
+    fdatasync(STDERR_FILENO);
+}
 void registerLogger(TJNIEnv *env, jclass, jlong ptr, jobject out, jobject err) {
     ScriptContext *context = (ScriptContext *) ptr;
     if (context != nullptr) {

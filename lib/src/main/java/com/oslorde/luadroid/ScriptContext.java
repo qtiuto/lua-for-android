@@ -6,27 +6,60 @@ import android.util.SparseArray;
 import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 import android.util.SparseLongArray;
+
 import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
 import com.oslorde.luadroid.set.BaseNode;
 import com.oslorde.luadroid.set.LightNodeSet;
 import com.oslorde.luadroid.set.LightSet;
 import com.oslorde.luadroid.set.SetUtils;
-import dalvik.system.BaseDexClassLoader;
-import dalvik.system.DexFile;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.*;
-import java.lang.reflect.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Member;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Proxy;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.CharBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+
+import dalvik.system.BaseDexClassLoader;
+import dalvik.system.DexFile;
 
 /**
  * For running a lua context
@@ -107,8 +140,10 @@ public class ScriptContext {
     private HashMap<Class,Indexer> indexers;
     private HashMap<Class,IteratorFactory> iterators;
     private long nativePtr;
-    private OutputStream outLogger;
-    private OutputStream errLogger;
+    private Logger outLogger;
+    private Logger errLogger;
+    private ByteBuffer rawLogBuffer;
+    private CharBuffer logBuffer;
     //Too many memory usages.
     private LightSet<String> dexFiles;
 
@@ -133,7 +168,9 @@ public class ScriptContext {
 
     private native static synchronized void nativeClose(long ptr);
 
-    private static native void registerLogger(long ptr, OutputStream out, OutputStream err);
+    private static native void registerLogger(long ptr, Logger out, Logger err);
+
+    private static native void nativeFlushLog();
 
     private static native Object[] runScript(long ptr, Object s, boolean isFile,
                                              Object... args) throws RuntimeException;
@@ -1544,40 +1581,59 @@ public class ScriptContext {
     }
 
     /**
-     *
      * @param outLogger where output message writes in
      * @param errLogger where error message writes in
      */
-    public void setLogger(OutputStream outLogger, OutputStream errLogger) {
+    public void setLogger(Logger outLogger, Logger errLogger) {
         this.errLogger = errLogger;
         this.outLogger = outLogger;
         registerLogger(nativePtr, outLogger, errLogger);
+        if(outLogger==null&&errLogger==null){
+            rawLogBuffer=null;
+            logBuffer=null;
+        }
     }
 
     /**
      *
      * @param errLogger where error message writes in
      */
-    public void setErrLogger(OutputStream errLogger) {
-        this.errLogger = errLogger;
-        registerLogger(nativePtr, outLogger, errLogger);
+    public void setErrLogger(Logger errLogger) {
+        setLogger(outLogger,errLogger);
     }
 
     /**
      *
      * @param outLogger where output message writes in
      */
-    public void setOutLogger(OutputStream outLogger) {
-        this.outLogger = outLogger;
-        registerLogger(nativePtr, outLogger, errLogger);
+    public void setOutLogger(Logger outLogger) {
+        setLogger(outLogger,errLogger);
+    }
+
+    //native callback
+    private void writeLog(Logger logger,ByteBuffer buffer,int len/*length of java chars*/){
+        CharBuffer log;ByteBuffer raw;
+        if(buffer!=null){/*only not null at first time*/
+            buffer=buffer.asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
+            logBuffer=log=buffer.asCharBuffer();
+            rawLogBuffer=raw=buffer;
+        }else {
+            log=logBuffer;
+            raw=rawLogBuffer;
+        }
+        log.position(0).limit(len);
+        raw.position(0).limit(len<<1);
+        logger.onNewLog(log,raw);
     }
 
     /**
      * flush log
      */
     public void flushLog() {
+        nativeFlushLog();
         try {
-            Thread.sleep(100);
+            //waiting for log thread waking up
+            Thread.sleep(10);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

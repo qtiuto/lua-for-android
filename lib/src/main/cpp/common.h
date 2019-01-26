@@ -82,6 +82,13 @@ public:
         return &pointer;
     }
 };
+template <char s1,char s2>
+inline void replaceAll(String& c){
+    uint32_t pos = 0;
+    while ((pos = c.find(s1, pos)) != String::npos) {
+        c[pos] = s2;
+    }
+}
 
 inline long long getTime() {
     struct timespec tv;
