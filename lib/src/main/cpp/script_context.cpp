@@ -7,7 +7,7 @@
 #include <dlfcn.h>
 #include <assert.h>
 
-jmethodID ScriptContext::sWriteBytes;
+jmethodID ScriptContext::sWriteLog;
 TJNIEnv* ScriptContext::sTypeEnv;
 static jmethodID sProxy;
 TJNIEnv* _GCEnv;
@@ -308,10 +308,7 @@ static bool changeClassName(String &className) noexcept {
     if (className.find('/') != String::npos) {
         return false;
     }
-    uint32_t pos = 0;
-    while ((pos = className.find('.', pos)) != String::npos) {
-        className[pos] = '/';
-    }
+    replaceAll<'.','/'>(className);
     return true;
 }
 
@@ -613,6 +610,7 @@ jobject ThreadContext::proxy(JavaType *main, Vector<JavaType *> *interfaces,
 
 
 void ScriptContext::registerLogger(TJNIEnv *env, jobject out, jobject err) {
+    ScopeLock sentry(loggerLock);
     if (outLogger)
         env->DeleteWeakGlobalRef(outLogger);
     if (errLogger)
@@ -620,42 +618,50 @@ void ScriptContext::registerLogger(TJNIEnv *env, jobject out, jobject err) {
 
     outLogger = out ? env->NewWeakGlobalRef(out) : nullptr;
     errLogger = err ? env->NewWeakGlobalRef(err) : nullptr;
-    if ((out || err) && !sWriteBytes) {
-        sWriteBytes = env->GetMethodID(env->GetObjectClass(out ? out : err), "write", "([B)V");
-    }
-}
-
-void ScriptContext::writeLog(TJNIEnv* env,const char *data, bool isError) {
-    JType<jbyteArray> bytes;
-    if (outLogger || errLogger) {
-        int len = static_cast<int>(strlen(data));
-        bytes = env->NewByteArray(len);
-        env->SetByteArrayRegion(bytes, 0, len, reinterpret_cast<const jbyte *>(data));
-    }
-    if (isError) {
-        JObject logger(env,env->NewLocalRef(errLogger));
-        if (logger!= nullptr)
-            env->CallVoidMethod(logger, sWriteBytes, bytes.get());
-        else {
-            char *str = checkLineEndForLogcat(data);
-            __android_log_write(ANDROID_LOG_ERROR, "stderr", str);
-        }
-
+    if ((out || err) ) {
+        if(!sWriteLog)
+            sWriteLog = env->GetMethodID(contextClass, "writeLog", "(Lcom/oslorde/luadroid/Logger;Ljava/nio/ByteBuffer;I)V");
     } else {
-        JObject logger(env,env->NewLocalRef(outLogger));
-        if (logger!= nullptr)
-            env->CallVoidMethod(logger, sWriteBytes, bytes.get());
-        else {
-            char *str = checkLineEndForLogcat(data);
-            __android_log_write(ANDROID_LOG_VERBOSE, "stdout", str);
-        }
+        delete javaLogBuffer;
+        javaLogBuffer= nullptr;
     }
 }
-
-char *ScriptContext::checkLineEndForLogcat(const char *data) const {
+static char *checkLineEndForLogcat(const char *data) {
     char *str = const_cast<char *>(data);
     size_t pos = strlen(data) - 2;
     if (str[pos] == '\n')
         str[pos] = 0;
     return str;
 }
+void ScriptContext::writeLog(TJNIEnv *env, const char *data,  bool isError) {
+    ScopeLock sentry(loggerLock);
+    size_t len=0;
+    JObject logBuffer;
+    if (outLogger || errLogger) {
+        if(!javaLogBuffer){
+            javaLogBuffer=new char16_t[1024];
+            logBuffer=JObject(env,env->NewDirectByteBuffer(javaLogBuffer,2048));
+        }
+    }
+    if (isError) {
+        JObject logger(env,env->NewLocalRef(errLogger));
+        if (logger!= nullptr){
+            strcpy8to16(javaLogBuffer,data,&len);
+            env->CallVoidMethod(javaRef, sWriteLog,logger.get(), logBuffer.get(),len);
+        }else {
+            char *str = checkLineEndForLogcat(data);
+            __android_log_write(ANDROID_LOG_ERROR, "stderr", str);
+        }
+    } else {
+        JObject logger(env,env->NewLocalRef(outLogger));
+        if (logger!= nullptr){
+            strcpy8to16(javaLogBuffer,data,&len);
+            env->CallVoidMethod(javaRef, sWriteLog,logger.get(), logBuffer.get(),len);
+        }else {
+            char *str = checkLineEndForLogcat(data);
+            __android_log_write(ANDROID_LOG_VERBOSE, "stdout", str);
+        }
+    }
+}
+
+
