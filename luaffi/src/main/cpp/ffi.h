@@ -120,7 +120,7 @@ static char* luaL_prepbuffsize(luaL_Buffer* B, size_t sz) {
     return luaL_prepbuffer(B);
 }
 
-static __inline void lua_rawgetp(lua_State *L, int idx,void* p){
+static ALWAYS_INLINE void lua_rawgetp(lua_State *L, int idx,void* p){
     lua_pushlightuserdata(L, key);
     lua_rawget(L, LUA_REGISTRYINDEX);
 }
@@ -200,14 +200,14 @@ static void (lua_remove)(lua_State *L, int idx) {
 #define GCC_VERSION ((__GNUC__*10000) + __GNUC_MINOR__*100 + __GNUC_PATCHLEVEL__)
 #endif
 //Only arm need cache flush
-#if defined __GNUC__ && GCC_VERSION>=40300
-#define CacheFlush(st,size)  __builtin___clear_cache((char*)st,(size)+(char*)st)
+#if defined(OS_ANDROID)|| (defined(__GNUC__) && GCC_VERSION>=40300)
+#define CacheFlush(st,size)  __builtin___clear_cache((char*)(st),(size)+(char*)(st))
 #elif defined(ARCH_ARM64)||defined(ARCH_ARM)
 #if defined(OS_OSX)
  void sys_icache_invalidate(void *start, size_t len);
- #define CacheFlush(st,size) sys_icache_invalidate((char*)st,size)
+ #define CacheFlush(st,size) sys_icache_invalidate((char*)(st),size)
 #else
-  #define CacheFlush(st,size) __clear_cache((char*)st,(size)+(char*)st)
+  #define CacheFlush(st,size) __clear_cache((char*)(st),(size)+(char*)(st))
 # endif
 #else
 #define CacheFlush(st,size)
@@ -223,6 +223,25 @@ static void (lua_remove)(lua_State *L, int idx) {
 
 #if defined ARCH_X86 || defined ARCH_X64
 #define ALLOW_MISALIGNED_ACCESS
+#endif
+#ifdef OS_WIN
+#define ALWAYS_INLINE __force_inline
+#elif defined(__GNUC__)
+#define ALWAYS_INLINE __attribute__ ((always_inline))
+#else
+#define ALWAYS_INLINE inline
+#endif
+
+// Since arm jump range is always small, so bl extern is hardly compiled
+// as an direct offset to the destination. Unlike global extern functions which
+//will be re-use many times, FUNCTION stub is only use one time, therefore,
+// no need to keep it for arm
+#if defined(ARCH_ARM64)|| defined(ARCH_ARM)
+#define NO_FUNCTION_EXTERN
+#endif
+
+#ifndef bool
+#define bool _Bool
 #endif
 
 struct token;
@@ -242,15 +261,18 @@ struct page {
 
 struct jit {
     lua_State* L;
-    int32_t last_errno;
+    //int32_t last_errno;
     dasm_State* ctx;
     size_t pagenum;
+#ifndef NO_FUNCTION_EXTERN
+    int function_extern;
+#endif
     struct page** pages;
     size_t align_page_size;
     void** globals;
-    int function_extern;
+    uint8_t* default_functions;
     void* lua_dll;
-    void* kernel32_dll;
+    //void* kernel32_dll;
 };
 
 #define ALIGN_DOWN(PTR, MASK) \
@@ -365,7 +387,6 @@ struct ctype {
          */
         size_t variable_increment;
     };
-    size_t offset;
     unsigned align_mask : 4; /* as (align bytes - 1) eg 7 gives 8 byte alignment */
     unsigned pointers : POINTER_BITS; /* number of dereferences to get to the base type including +1 for arrays */
     unsigned const_mask : POINTER_MAX + 1; /* const pointer mask, LSB is current pointer, +1 for the whether the base type is const */
@@ -374,7 +395,6 @@ struct ctype {
     unsigned is_array : 1;
     unsigned is_defined : 1;
     unsigned is_null : 1;
-    unsigned has_member_name : 1;
     unsigned calling_convention : 2;
     unsigned has_var_arg : 1;
     unsigned is_variable_array : 1; /* set for variable array types where we don't know the variable size yet */
@@ -387,6 +407,11 @@ struct ctype {
     unsigned is_unsigned : 1;
 };
 
+struct member_type{
+    struct ctype ct;
+    unsigned has_member_name : 1;
+    size_t offset;
+};
 #ifdef _MSC_VER
 __declspec(align(16))
 #endif
@@ -403,13 +428,11 @@ typedef void (*cfunction)(void);
 #ifdef HAVE_COMPLEX
 typedef double complex complex_double;
 typedef float complex complex_float;
-static __inline complex_double mk_complex_double(double real, double imag) {
-    double ret[2]={real , imag };
-    return *(complex_double*)ret;
+static ALWAYS_INLINE complex_double mk_complex_double(double real, double imag) {
+    return (complex_double){real , imag };
 }
-static __inline complex_double mk_complex_float(double real, double imag) {
-    double ret[2]={real , imag };
-    return *(complex_double*)ret;
+static ALWAYS_INLINE complex_float mk_complex_float(double real, double imag) {
+    return (complex_float){(float)real , (float)imag };
 }
 
 extern float cimagf(complex_float);
@@ -419,11 +442,9 @@ extern double creal(complex_double);
 
 #if defined(OS_ANDROID) && __ANDROID_API__<26
 #include <math.h>
-static double cabs(complex_double f){
-    double re = creal(f);
-    double im = cimag(f);
-    return sqrt(re * re + im*im);
-}
+
+#define cabs(f) ((double (*)(complex_double))hypot)(f);
+
 static complex_double cpow(complex_double f,complex_double s){
     if(cimag(s)==0){
         double real = creal(s);
@@ -450,24 +471,23 @@ typedef struct {
     float real, imag;
 } complex_float;
 
-static __inline complex_double mk_complex_double(double real, double imag) {
+static ALWAYS_INLINE complex_double mk_complex_double(double real, double imag) {
     return { real, imag };
 }
-static __inline complex_float mk_complex_float(double real, double imag) {
-    complex_float ret = { real, imag };
-    return ret;
+static ALWAYS_INLINE complex_float mk_complex_float(double real, double imag) {
+    return (complex_float){ real, imag };
 }
-static __inline double creal(complex_double c) {
+static ALWAYS_INLINE double creal(complex_double c) {
     return c.real;
 }
-static __inline float crealf(complex_float c) {
+static ALWAYS_INLINE float crealf(complex_float c) {
     return c.real;
 }
 
-static __inline double cimag(complex_double c) {
+static ALWAYS_INLINE double cimag(complex_double c) {
     return c.imag;
 }
-static __inline float cimagf(complex_float c) {
+static ALWAYS_INLINE float cimagf(complex_float c) {
     return c.imag;
 }
 
@@ -475,12 +495,12 @@ static __inline float cimagf(complex_float c) {
 static complex_double cpow(complex_double f, complex_double s) {
     if (s.imag == 0) {
         double real = s.real;
-        double r = sqrt(f.real*f.real + f.imag*f.imag);
+        double r = hypot(f.real, f.imag);
         r = pow(r, real);
         double theta = atan2(f.imag, f.real) * real;
         return { r*cos(theta),r*sin(theta) };
     }
-    double r= sqrt(f.real*f.real + f.imag*f.imag);
+    double r= hypot(f.real, f.imag);
     double theta = atan2(f.imag, f.real);
     r = log(r);
     f = { r * s.real - theta * s.imag ,r * s.imag + s.real*theta};
@@ -493,15 +513,19 @@ static complex_double cpow(complex_double f, complex_double s) {
 
 void set_defined(lua_State* L, int ct_usr, struct ctype* ct);
 struct ctype* push_ctype(lua_State* L, int ct_usr, const struct ctype* ct);
+struct member_type* push_member_type(lua_State* L, int ct_usr, const struct member_type* mt);
 void* push_cdata(lua_State* L, int ct_usr, const struct ctype* ct); /* called from asm */
 void push_callback(lua_State* L, cfunction luafunc, cfunction cfunc);
 void check_ctype(lua_State* L, int idx, struct ctype* ct);
 void* to_cdata(lua_State* L, int idx, struct ctype* ct);
+const struct ctype* get_ctype(lua_State* L, int idx);
 void* check_cdata(lua_State* L, int idx, struct ctype* ct);
 size_t ctype_size(lua_State* L, const struct ctype* ct);
 
 int parse_type(lua_State* L, struct parser* P, struct ctype* type);
-void parse_argument(lua_State* L, struct parser* P, int ct_usr, struct ctype* type, struct token* name, struct parser* asmname);
+void parse_argument(lua_State *L, struct parser *P, int ct_usr, struct ctype *type,
+                    struct token *name,
+                    struct parser *asmname, bool ignore_name);
 void push_type_name(lua_State* L, int usr, const struct ctype* ct);
 
 int push_user_mt(lua_State* L, int ct_usr, const struct ctype* ct);

@@ -194,12 +194,6 @@
 | ret
 |.endmacro
 
-|.macro get_errno // note trashes registers
-| call extern GetLastError
-| mov64 rcx, perr
-| mov dword [rcx], eax
-|.endmacro
-
 |.macro too_few_arguments
 | mov ax, 0
 | call_rp extern luaL_error, L_ARG, &"too few arguments"
@@ -216,27 +210,18 @@
 |.endmacro
 
 |.macro lua_return_void
-| get_errno
 | mov eax, 0
 | epilog
 |.endmacro
 
 |.macro lua_return_double
-|.if X64
-| movq qword [rsp+32], xmm0
-|.else
-| fstp qword [rsp+4] // note get_errno doesn't require any stack on x86
-|.endif
-|
-| get_errno
-|
 |.if X64WIN
-| movq xmm1, qword [rsp+32]
+| movq xmm1,xmm0
 | mov rcx, L_ARG
 |.elif X64
-| movq xmm0, qword [rsp+32]
 | mov rdi, L_ARG
 |.else
+| fstp qword [rsp+4]
 | mov [rsp], L_ARG
 |.endif
 | call extern lua_pushnumber
@@ -245,41 +230,26 @@
 
 |.macro lua_return_bool
 | movzx eax, al
-| mov [rsp+32], eax
-| get_errno
-| mov eax, [rsp+32]
 | call_rr extern lua_pushboolean, L_ARG, rax
 | lua_return_arg
 |.endmacro
 
 |.macro lua_return_int
-| mov [rsp+32], eax
-| get_errno
-| mov eax, [rsp+32]
 | call_rr extern push_int, L_ARG, rax
 | lua_return_arg
 |.endmacro
 
 |.macro lua_return_uint
-| mov [rsp+32], eax
-| get_errno
-| mov eax, [rsp+32]
 | call_rr extern push_uint, L_ARG, rax
 | lua_return_arg
 |.endmacro
 
 |.macro lua_return_long
-| mov [rsp+32], rax
-| get_errno
-| mov rax, [rsp+32]
 | call_rr extern lua_pushinteger, L_ARG, rax
 | lua_return_arg
 |.endmacro
 
 |.macro lua_return_ulong
-| mov [rsp+32], rax
-| get_errno
-| mov rax, [rsp+32]
 | call_rr extern lua_pushinteger, L_ARG, rax
 | lua_return_arg
 |.endmacro
@@ -360,7 +330,7 @@ static void compile_extern_jump(struct jit* jit, lua_State* L, cfunction func, u
 void compile_globals(struct jit* jit, lua_State* L)
 {
     struct jit* Dst = jit;
-    int* perr = &jit->last_errno;
+    //int* perr = &jit->last_errno;
     dasm_setup(Dst, build_actionlist);
 
     /* Note: since the return code uses EBP to reset the stack pointer, we
@@ -721,13 +691,13 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
     | mov64 L_ARG, L
 
     /* get the upval table */
-    | call_rrr extern lua_rawgeti, L_ARG, LUA_REGISTRYINDEX, ref
+    | call_rrr extern rawgeti, L_ARG, LUA_REGISTRYINDEX, ref
 
     /* get the lua function */
     lua_pushvalue(L, fidx);
     lua_rawseti(L, -2, ++num_upvals);
     assert(num_upvals == CALLBACK_FUNC_USR_IDX);
-    | call_rrr extern lua_rawgeti, L_ARG, -1, num_upvals
+    | call_rrr extern rawgeti, L_ARG, -1, num_upvals
 
 #if !defined _WIN64 && !defined __amd64__
     lua_rawgeti(L, ct_usr, 0);
@@ -752,7 +722,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
             /* on the lua stack in the callback:
              * upval tbl, lua func, i-1 args
              */
-            | call_rrr extern lua_rawgeti, L_ARG, -i-1, num_upvals-1
+            | call_rrr extern rawgeti, L_ARG, -i-1, num_upvals-1
             | call_rrp extern push_cdata, L_ARG, -1, mt
             get_pointer(Dst, ct, &reg);
             | mov [rax], rcx
@@ -760,6 +730,15 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
         } else {
             switch (mt->type) {
             case INT64_TYPE:
+			#if LUA_VERSION_NUM >=503
+				lua_pop(L, 1);
+                get_int(Dst, ct, &reg, 1);
+				|.if X64
+                | call_rr extern lua_pushinteger, L_ARG, rcx
+				|.else
+				| call_rrr extern lua_pushinteger, L_ARG, ecx, edx
+				|.endif	
+			#else
                 lua_getuservalue(L, -1);
                 lua_rawseti(L, -3, ++num_upvals); /* mt */
                 lua_pop(L, 1);
@@ -771,6 +750,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
                 | mov [rax], ecx
                 | mov [rax+4], edx
                 |.endif
+			#endif	
                 break;
 
             case INTPTR_TYPE:
@@ -893,7 +873,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
         lua_getuservalue(L, -1);
         lua_rawseti(L, -3, ++num_upvals); /* usr value */
         lua_rawseti(L, -2, ++num_upvals); /* mt */
-        | call_rrr extern lua_rawgeti, L_ARG, -2, num_upvals-1
+        | call_rrr extern rawgeti, L_ARG, -2, num_upvals-1
         | call_rrrp extern check_typed_pointer, L_ARG, -2, -1, mt
         | mov [rsp+32], rax
         | call_rr extern lua_settop, L_ARG, -4
@@ -905,7 +885,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
             lua_getuservalue(L, -1);
             lua_rawseti(L, -3, ++num_upvals); /* usr value */
             lua_rawseti(L, -2, ++num_upvals); /* mt */
-            | call_rrr extern lua_rawgeti, L_ARG, -2, num_upvals-1
+            | call_rrr extern rawgeti, L_ARG, -2, num_upvals-1
             | call_rrrp, extern check_enum, L_ARG, -2, -1, mt
             | mov [rsp+32], eax
             | call_rr extern lua_settop, L_ARG, -4
@@ -1068,7 +1048,6 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
     struct reg_alloc reg;
     void* p;
     int top = lua_gettop(L);
-    int* perr = &Dst->last_errno;
 
     ct_usr = lua_absindex(L, ct_usr);
 
@@ -1341,16 +1320,7 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 #endif
     }
 
-    | mov64 rcx, perr
-    | mov eax, dword [rcx]
-    | call_r extern SetLastError, rax
-
-    /* remove the stack space to call local functions */
-    |.if X32WIN
-    | add rsp, 28 // SetLastError will have already popped 4
-    |.else
     | add rsp, 32
-    |.endif
 
 #ifdef _WIN64
     |.if X64WIN
@@ -1474,7 +1444,6 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
         lua_getuservalue(L, -1);
         num_upvals += 2;
         | mov [rsp+32], rax // save the pointer
-        | get_errno
         | call_rrp extern push_cdata, L_ARG, lua_upvalueindex(num_upvals), mbr_ct
         | mov rcx, [rsp+32]
         | mov [rax], rcx // *(void**) cdata = val
@@ -1486,7 +1455,6 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             lua_getuservalue(L, -1);
             num_upvals += 2;
             | mov [rsp+32], rax // save the function pointer
-            | get_errno
             | call_rrp extern push_cdata, L_ARG, lua_upvalueindex(num_upvals), mbr_ct
             | mov rcx, [rsp+32]
             | mov [rax], rcx // *(cfunction**) cdata = val
@@ -1494,7 +1462,7 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             break;
 
         case INT64_TYPE:
-#if LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM >= 503
             lua_pop(L, 1);
             if (mbr_ct->is_unsigned) {
                 | lua_return_ulong
@@ -1511,7 +1479,6 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             | mov [rsp+32], eax // low
             |.endif
             |
-            | get_errno
             | call_rrp extern push_cdata, L_ARG, 0, mbr_ct
             |
             | // *(int64_t*) cdata = val
@@ -1541,7 +1508,6 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             | mov [rsp+36], edx
             |.endif
             |
-            | get_errno
             | call_rrp extern push_cdata, L_ARG, lua_upvalueindex(num_upvals), mbr_ct
             |
             | // ((complex_float*) cdata) = val
@@ -1566,7 +1532,6 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             | movq qword [rsp+40], xmm1
             | movq qword [rsp+32], xmm0
             |
-            | get_errno
             | call_rrp extern push_cdata, L_ARG, lua_upvalueindex(num_upvals), mbr_ct
             |
             | // ((complex_double*) cdata)->real = val0
@@ -1580,9 +1545,19 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             | // On 32 bit we have already handled this by pushing a new cdata
             | // and handing the cdata ptr in as the hidden first param, but
             | // still need to add mbr_ct as an upval as its used earlier.
+			| // Reset uservalue for it if not nil
+			if(!lua_isnil(L,-1)){
+				| mov dword [rsp+4], lua_upvalueindex(num_upvals)
+				| mov [rsp], L_ARG
+				| mov eax, lua_pushvalue
+				| call eax
+				| mov dword [rsp+4], -2
+				| mov [rsp], L_ARG
+				| mov eax, lua_setuservalue
+				| call eax
+			}
             | // Hidden param was popped by called function, we need to realign.
             | sub rsp, 4
-            | get_errno
             |.endif
             |
             | lua_return_arg

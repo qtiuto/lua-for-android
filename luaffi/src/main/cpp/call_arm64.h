@@ -2,7 +2,7 @@
 ** This file has been pre-processed with DynASM.
 ** http://luajit.org/dynasm.html
 ** DynASM version 1.4.0, DynASM arm version 1.4.0
-** DO NOT EDIT! The original file is in "E:/AppProjects/luadroid/luaffi/src/main/cpp/call_arm64.dasc".
+** DO NOT EDIT! The original file is in "call_arm64.dasc".
 */
 
 /* vim: ts=4 sw=4 sts=4 et tw=78
@@ -18,30 +18,58 @@
 #error "Version mismatch between DynASM and included encoding engine"
 #endif
 
-static const unsigned int build_actionlist[976] = {
-0x910003e9,
-0xd10103ff,
-0xa90307e0,
-0xa9020fe2,
-0xa90117e4,
-0xa9001fe6,
-0x910003ea,
-0xd10103ff,
-0x6d0307e0,
-0x6d020fe2,
-0x6d0117e4,
-0x6d001fe6,
-0x910003eb,
-0xd100c3ff,
-0xa9027bfd,
-0xa90157f4,
-0xa9005ff6,
+static const unsigned int build_actionlist[783] = {
+0xf84003e1,
+0x000f0000,
 0x00000000,
-0xaa0b03f7,
-0xaa0a03f6,
-0xaa0903f5,
-0xaa0903fd,
-0x58000014,
+0xf8408681,
+0x00000000,
+0xfc4003e0,
+0x000f0000,
+0x00000000,
+0xbc408681,
+0x00000000,
+0xfc408681,
+0x00000000,
+0x6d4007e0,
+0x000a8cef,
+0x00000000,
+0x2cc10680,
+0x00000000,
+0x6cc10680,
+0x00000000,
+0xbc408680,
+0x00000000,
+0xfc408680,
+0x00000000,
+0xd10283ff,
+0x00000000,
+0xd10083ff,
+0x00000000,
+0xa9091fe6,
+0x00000000,
+0xa90817e4,
+0x00000000,
+0xa9070fe2,
+0x00000000,
+0xa90607e0,
+0x910003ea,
+0x00000000,
+0x6d051fe6,
+0x00000000,
+0x6d0417e4,
+0x00000000,
+0x6d030fe2,
+0x00000000,
+0x6d0207e0,
+0x910003eb,
+0x00000000,
+0xa9017bfd,
+0xa90057f4,
+0x00000000,
+0x910283f4,
+0x00000000,
+0x58000015,
 0x00050805,
 0x14000000,
 0x00050006,
@@ -50,6 +78,550 @@ static const unsigned int build_actionlist[976] = {
 0x00090000,
 0x00060010,
 0x18000002,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00060010,
+0x18000001,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00060010,
+0xaa1503e0,
+0x94000000,
+0x00030000,
+0x00000000,
+0x52800002,
+0x000a0205,
+0x92800001,
+0xaa1503e0,
+0x94000000,
+0x00030000,
+0x00000000,
+0x52800002,
+0x000a0205,
+0x92800001,
+0x000a0205,
+0xaa1503e0,
+0x94000000,
+0x00030000,
+0x58000002,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030001,
+0x00000000,
+0xf9000001,
+0x12800021,
+0xaa1503e0,
+0x94000000,
+0x00030002,
+0x00000000,
+0x52800002,
+0x000a0205,
+0x92800001,
+0x000a0205,
+0xaa1503e0,
+0x94000000,
+0x00030000,
+0x58000002,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030001,
+0x00000000,
+0x6d000400,
+0x12800021,
+0xaa1503e0,
+0x94000000,
+0x00030002,
+0x00000000,
+0x52800002,
+0x000a0205,
+0x92800001,
+0x000a0205,
+0xaa1503e0,
+0x94000000,
+0x00030000,
+0x58000002,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030001,
+0x00000000,
+0x2d000400,
+0x12800021,
+0xaa1503e0,
+0x94000000,
+0x00030002,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030003,
+0x00000000,
+0x58000002,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x2a1f03e1,
+0xaa1503e0,
+0x94000000,
+0x00030001,
+0x00000000,
+0xf9000001,
+0x12800021,
+0xaa1503e0,
+0x94000000,
+0x00030002,
+0x00000000,
+0x18000002,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x2a1f03e1,
+0xaa1503e0,
+0x94000000,
+0x00030001,
+0x00000000,
+0xf9000001,
+0x12800021,
+0xaa1503e0,
+0x94000000,
+0x00030002,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030004,
+0x00000000,
+0x384003e1,
+0x000f0000,
+0x00000000,
+0x38c003e1,
+0x000f0000,
+0x00000000,
+0x38408681,
+0x00000000,
+0x38c08681,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030005,
+0x00000000,
+0x784003e1,
+0x000f0000,
+0x00000000,
+0x78c003e1,
+0x000f0000,
+0x00000000,
+0x78408681,
+0x00000000,
+0x78c08681,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030005,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030005,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030006,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030007,
+0x00000000,
+0x52800002,
+0x000a0205,
+0x52800001,
+0x000a0205,
+0xaa1503e0,
+0x94000000,
+0x00030008,
+0x00000000,
+0x52800002,
+0x000a0205,
+0x92800021,
+0xaa1503e0,
+0x94000000,
+0x00030000,
+0x58000003,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x92800002,
+0x92800021,
+0xaa1503e0,
+0x94000000,
+0x00030009,
+0x00000000,
+0x52800002,
+0x000a0205,
+0x92800021,
+0xaa1503e0,
+0x94000000,
+0x00030000,
+0x58000003,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x92800002,
+0x92800021,
+0xaa1503e0,
+0x94000000,
+0x0003000a,
+0x00000000,
+0x12800021,
+0xaa1503e0,
+0x94000000,
+0x0003000b,
+0x00000000,
+0x12800001,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000c,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000d,
+0x00000000,
+0x12800001,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000e,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000f,
+0x00000000,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030010,
+0x00000000,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030011,
+0x00000000,
+0x9e660014,
+0x12800041,
+0xaa1503e0,
+0x94000000,
+0x0003000b,
+0x9e670280,
+0x00000000,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030012,
+0x00000000,
+0x9e660014,
+0x12800041,
+0xaa1503e0,
+0x94000000,
+0x0003000b,
+0x9e670280,
+0x00000000,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030013,
+0x00000000,
+0x12800001,
+0xaa1503e0,
+0x94000000,
+0x00030014,
+0x00000000,
+0xaa1503e0,
+0x12800041,
+0x9e660014,
+0x9e660035,
+0x94000000,
+0x0003000b,
+0x9e670280,
+0x9e6702a1,
+0x00000000,
+0xaa0003f4,
+0x12800041,
+0xaa1503e0,
+0x94000000,
+0x0003000b,
+0xaa1403e0,
+0x00000000,
+0xa94057f4,
+0xa9417bfd,
+0x910003ff,
+0x000c0000,
+0xd65f03c0,
+0x00000000,
+0xfc0003e0,
+0x000f0000,
+0x00000000,
+0xbc008681,
+0x00000000,
+0xfc008681,
+0x00000000,
+0x6d0007e0,
+0x000a8cef,
+0x00000000,
+0x2c810680,
+0x00000000,
+0x6c810680,
+0x00000000,
+0xbc008680,
+0x00000000,
+0xfc008680,
+0x00000000,
+0xd100c3ff,
+0xa9027bfd,
+0xa90153f3,
+0xf90003f5,
+0x910003fd,
+0xaa0003f5,
+0x00000000,
+0x94000000,
+0x00030015,
+0xaa0003f3,
+0xf100027f,
+0x000c0000,
+0x5400000a,
+0x00050801,
+0x58000001,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0xaa1503e0,
+0x94000000,
+0x00030016,
+0x0006000b,
+0xcb3373ff,
+0x910003f4,
+0xd10203ff,
+0x00000000,
+0xd10003ff,
+0x000c0000,
+0x910203f4,
+0x00000000,
+0x58000003,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0x18000002,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00060010,
+0x52800001,
+0x000a0205,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030009,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030017,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000a,
+0x00000000,
+0x52800001,
+0x000a0205,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000d,
+0x6b1f001f,
+0x1a9f07e0,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000d,
+0x00000000,
+0x53001c00,
+0x00000000,
+0x13001c00,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000d,
+0x00000000,
+0x53003c00,
+0x00000000,
+0x13003c00,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000c,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000d,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000e,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x0003000f,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030010,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030012,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030011,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030013,
+0x00000000,
+0xaa1503e0,
+0x94000000,
+0x00030014,
+0x00000000,
+0xb80003e0,
+0x000f0000,
+0x00000000,
+0xb8008680,
+0x00000000,
+0xf80003e0,
+0x000f0000,
+0x00000000,
+0xf8008680,
+0x00000000,
+0x910003e4,
+0x000c0000,
+0x52800003,
+0x000a0205,
+0xaa1303e2,
+0x52800001,
+0x000a0205,
+0xaa1503e0,
+0x94000000,
+0x00030018,
+0x00000000,
+0x910003e4,
+0x000c0000,
+0x52800003,
+0x000a0205,
+0xaa1303e2,
+0x52800001,
+0x000a0205,
+0xaa1503e0,
+0x94000000,
+0x00030019,
+0x00000000,
+0xf100027f,
+0x000c0000,
+0x5400000d,
+0x00050801,
+0xaa1403e5,
+0x52800003,
+0x000a0205,
+0x52800003,
+0x000a0205,
+0xaa1303e2,
+0x52800001,
+0x000a0205,
+0xaa1503e0,
+0x94000000,
+0x0003001a,
+0x0006000b,
+0x00000000,
+0xa9471fe6,
+0x00000000,
+0xa94617e4,
+0x00000000,
+0xa9450fe2,
+0x00000000,
+0xa94407e0,
+0x00000000,
+0x6d431fe6,
+0x00000000,
+0x6d4217e4,
+0x00000000,
+0x6d410fe2,
+0x00000000,
+0x6d4007e0,
+0x00000000,
+0x910203ff,
+0x00000000,
+0x58000009,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00090000,
+0x00060010,
+0xd63f0120,
+0x00000000,
+0xaa0003f4,
+0x58000002,
 0x00050805,
 0x14000000,
 0x00050006,
@@ -63,444 +635,32 @@ static const unsigned int build_actionlist[976] = {
 0x00050006,
 0x0006000f,
 0x00090000,
-0x00090000,
 0x00060010,
-0xaa1403e0,
-0x94000000,
-0x00030000,
-0x00000000,
-0x52800002,
-0x000a0205,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030000,
-0x00000000,
-0x52800002,
-0x000a0205,
-0x12800001,
-0x000a0205,
-0xaa1403e0,
-0x94000000,
-0x00030000,
-0x58000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0x00000000,
-0xf84086c2,
-0x00000000,
-0xf84086a2,
-0x00000000,
-0xf9000002,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x00030002,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030003,
-0x58000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0x00000000,
-0xf84086a1,
-0xf9000001,
-0x00000000,
-0xf84086e1,
-0xf9000401,
-0x00000000,
-0xf84086a1,
-0xf9000401,
-0x00000000,
-0xa8c10aa1,
-0xa9000801,
-0x00000000,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x00030002,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030003,
-0x58000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0x00000000,
-0xb84086a1,
-0xb9000001,
-0x00000000,
-0xb84086e1,
-0xb9000401,
-0x00000000,
-0xb84086a1,
-0xb9000401,
-0x00000000,
-0x28c10aa1,
-0x29000801,
-0x00000000,
-0xf9000002,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x00030002,
-0x00000000,
-0xf84086c1,
-0x00000000,
-0xf84086a1,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030004,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030003,
-0x58000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0x00000000,
-0xf84086c1,
-0x00000000,
-0xf84086a1,
-0x00000000,
-0xf9000001,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x00030002,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030003,
-0x18000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0x00000000,
-0xb84086c1,
-0x00000000,
-0xb84086a1,
-0x00000000,
-0xf9000001,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x00030002,
-0x00000000,
-0xb84086c1,
-0x00000000,
-0xb84086a1,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030005,
-0x00000000,
-0xb84086c1,
-0x00000000,
-0xb84086a1,
-0x00000000,
-0x2a0163e1,
-0x00000000,
-0x2a4163e1,
-0x00000000,
-0x2a8163e1,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030006,
-0x00000000,
-0xb84086c1,
-0x00000000,
-0xb84086a1,
-0x00000000,
-0x2a0143e1,
-0x00000000,
-0x2a4143e1,
-0x00000000,
-0x2a8143e1,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030006,
-0x00000000,
-0xb84086c1,
-0x00000000,
-0xb84086a1,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030006,
-0x00000000,
-0xbc4086e0,
-0x00000000,
-0xbc4086a0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030007,
-0x00000000,
-0xfc4086e0,
-0x00000000,
-0xfc4086a0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030008,
-0x00000000,
-0x52800002,
-0x000a0205,
-0x52800001,
-0x000a0205,
-0xaa1403e0,
-0x94000000,
-0x00030009,
-0x00000000,
-0x52800002,
-0x000a0205,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x00030000,
-0x58000003,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800002,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x0003000a,
-0x00000000,
-0x52800002,
-0x000a0205,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x00030000,
-0x58000003,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800002,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x0003000b,
-0x00000000,
-0x12800021,
-0xaa1403e0,
-0x94000000,
-0x0003000c,
-0x00000000,
-0x12800001,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000d,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000e,
-0x00000000,
-0x12800001,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000f,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030010,
-0x00000000,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030011,
-0x00000000,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030012,
-0x00000000,
-0x9e660015,
-0x12800041,
-0xaa1403e0,
-0x94000000,
-0x0003000c,
-0x9e6702a0,
-0x00000000,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030013,
-0x00000000,
-0x9e660015,
-0x12800041,
-0xaa1403e0,
-0x94000000,
-0x0003000c,
-0x9e6702a0,
-0x00000000,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030014,
-0x00000000,
-0x9e660015,
-0x9e660036,
-0x12800041,
-0xaa1403e0,
-0x94000000,
-0x0003000c,
-0x9e6702a0,
-0x9e6702c1,
-0x00000000,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030015,
-0x00000000,
-0x9e660015,
-0x9e660036,
-0x12800041,
-0xaa1403e0,
-0x94000000,
-0x0003000c,
-0x9e6702a0,
-0x9e6702c1,
-0x00000000,
-0xaa0003f5,
-0x12800041,
-0xaa1403e0,
-0x94000000,
-0x0003000c,
 0xaa1503e0,
-0x00000000,
-0xaa1d03e9,
-0xa9405ff6,
-0xa94157f4,
+0x94000000,
+0x00030001,
+0xf9000014,
+0x52800020,
+0x910003bf,
+0xf94003f5,
+0xa94153f3,
 0xa9427bfd,
-0x9100013f,
+0x9100c3ff,
 0xd65f03c0,
 0x00000000,
-0xd10103ff,
-0xa9037bfd,
-0xa90253f3,
-0xa9015bf5,
-0xf90003f7,
-0x910003fd,
+0xaa0003e1,
+0xaa1503e0,
+0x94000000,
+0x00030003,
+0x52800020,
+0x910003bf,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
+0xd65f03c0,
+0x00000000,
 0xaa0003f4,
-0xaa1403e0,
-0x94000000,
-0x00030016,
-0xaa0003f3,
-0xf100027f,
-0x000c0000,
-0x00000000,
-0x5400000a,
-0x00050801,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xaa1403e0,
-0x94000000,
-0x00030017,
-0x0006000b,
-0x00000000,
-0x54000000,
-0x00050801,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xaa1403e0,
-0x94000000,
-0x00030017,
-0x0006000b,
-0x00000000,
-0xf100227f,
-0x5400000d,
-0x00050801,
-0xd1002269,
-0xcb2973ff,
-0x910003f5,
-0x0006000b,
-0xd10103ff,
-0x910003f6,
-0xd10103ff,
-0x910003f7,
-0x00000000,
-0x58000003,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
 0x58000002,
 0x00050805,
 0x14000000,
@@ -509,417 +669,84 @@ static const unsigned int build_actionlist[976] = {
 0x00090000,
 0x00090000,
 0x00060010,
-0x52800001,
-0x000a0205,
-0x00000000,
-0xaa1403e0,
+0x2a1f03e1,
+0xaa1503e0,
 0x94000000,
-0x0003000a,
+0x00030001,
+0xf9000014,
+0x52800020,
+0x910003bf,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
+0xd65f03c0,
 0x00000000,
-0xaa1403e0,
+0x2a1f03e0,
+0x910003bf,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
+0xd65f03c0,
+0x00000000,
+0xaa0003e1,
+0xaa1503e0,
 0x94000000,
-0x00030018,
+0x00030004,
+0x52800020,
+0x910003bf,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
+0xd65f03c0,
 0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000b,
+0xaa0003e1,
 0x00000000,
-0x52800001,
-0x000a0205,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000e,
-0x00000000,
-0x12001c00,
-0x00000000,
-0x2a0063e0,
-0x2a8063e0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000e,
-0x00000000,
-0x2a0043e0,
-0x2a4043e0,
-0x00000000,
-0x2a0043e0,
-0x2a8043e0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000d,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000e,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003000f,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030010,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030013,
-0x00000000,
-0xfc0086e0,
-0x00000000,
-0xfc0086a0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030012,
-0x00000000,
-0xbc0086e0,
-0x00000000,
-0xbc0086a0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030014,
-0x00000000,
-0xfc0086e0,
-0x00000000,
-0xfc0086e1,
-0x00000000,
-0xfc0086a1,
-0x00000000,
-0x6c8106a0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030015,
-0x00000000,
-0xbc0086e0,
-0x00000000,
-0xbc0086e1,
-0x00000000,
-0xbc0086a1,
-0x00000000,
-0x2c8106a0,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x00030011,
-0x00000000,
-0xb80086c0,
-0x00000000,
-0xb80086a0,
-0x00000000,
-0xf80086c0,
-0x00000000,
-0xf80086a0,
-0x00000000,
-0xaa1703e4,
-0x52800003,
-0x000a0205,
-0xaa1303e2,
-0x52800001,
-0x000a0205,
-0xaa1403e0,
-0x94000000,
-0x00030019,
-0x00000000,
-0xaa1603e4,
-0x52800003,
-0x000a0205,
-0xaa1303e2,
-0x52800001,
-0x000a0205,
-0xaa1403e0,
-0x94000000,
-0x0003001a,
-0x00000000,
-0xf100227f,
-0x5400000d,
-0x00050801,
-0xaa1503e5,
-0x52800003,
-0x000a0205,
-0x52800003,
-0x000a0205,
-0xaa1303e2,
-0x52800001,
-0x000a0205,
-0xaa1403e0,
+0xaa1503e0,
 0x94000000,
 0x0003001b,
-0x0006000b,
 0x00000000,
-0x58000000,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9400000,
-0x94000000,
-0x0003001c,
-0x00000000,
-0x6d4007e0,
-0x6d410fe2,
-0x6d4217e4,
-0x6d431fe6,
-0xa94407e0,
-0xa9450fe2,
-0xa94617e4,
-0xa9471fe6,
-0x910203ff,
-0x00000000,
-0x94000000,
-0x0003001d,
-0x00000000,
-0xaa0003f5,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0x58000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0xf9000015,
-0x52800020,
-0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
-0xd65f03c0,
-0x00000000,
-0xaa0003f5,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0xaa1503e1,
-0xaa1403e0,
-0x94000000,
-0x00030004,
-0x52800020,
-0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
-0xd65f03c0,
-0x00000000,
-0xaa0003f5,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0xaa1403e0,
-0x94000000,
-0x00030003,
-0x58000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0xf9000015,
-0x52800020,
-0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
-0xd65f03c0,
-0x00000000,
-0xaa0003f5,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0xaa1403e0,
-0x94000000,
-0x00030003,
-0x58000002,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0x12800001,
-0xaa1403e0,
-0x94000000,
-0x00030001,
-0xf9000015,
-0x52800020,
-0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
-0xd65f03c0,
-0x00000000,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0x52800000,
-0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
-0xd65f03c0,
-0x00000000,
-0xaa0003f5,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0xaa1503e1,
-0xaa1403e0,
+0xaa1503e0,
 0x94000000,
 0x00030005,
+0x00000000,
 0x52800020,
 0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
 0xd65f03c0,
 0x00000000,
-0xaa0003f5,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0xaa1503e1,
-0x00000000,
-0xaa1403e0,
-0x94000000,
-0x0003001f,
-0x00000000,
-0xaa1403e0,
+0xaa1503e0,
 0x94000000,
 0x00030006,
-0x00000000,
 0x52800020,
 0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
 0xd65f03c0,
 0x00000000,
-0x9e660015,
-0x94000000,
-0x0003001e,
-0x58000001,
-0x00050805,
-0x14000000,
-0x00050006,
-0x0006000f,
-0x00090000,
-0x00090000,
-0x00060010,
-0xb9000020,
-0x9e6702a0,
-0xaa1403e0,
+0xaa1503e0,
 0x94000000,
 0x00030007,
 0x52800020,
 0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
 0xd65f03c0,
 0x00000000,
-0x9e660015,
-0x94000000,
-0x0003001e,
-0x58000001,
+0x1e260000,
+0x1e260021,
+0xaa018000,
+0xaa0003f4,
+0x58000002,
 0x00050805,
 0x14000000,
 0x00050006,
@@ -927,25 +754,28 @@ static const unsigned int build_actionlist[976] = {
 0x00090000,
 0x00090000,
 0x00060010,
-0xb9000020,
-0x9e6702a0,
-0xaa1403e0,
+0x18000001,
+0x00050805,
+0x14000000,
+0x00050006,
+0x0006000f,
+0x00090000,
+0x00060010,
+0xaa1503e0,
 0x94000000,
-0x00030008,
+0x00030001,
+0xf9000014,
 0x52800020,
 0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
 0xd65f03c0,
 0x00000000,
-0x9e660015,
-0x9e660036,
-0x94000000,
-0x0003001e,
-0x58000001,
+0x9e660014,
+0x9e660033,
+0x58000002,
 0x00050805,
 0x14000000,
 0x00050006,
@@ -953,46 +783,23 @@ static const unsigned int build_actionlist[976] = {
 0x00090000,
 0x00090000,
 0x00060010,
-0xb9000020,
-0x9e6702a0,
-0x9e6702c1,
-0xaa1403e0,
-0x94000000,
-0x00030007,
-0x52800020,
-0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
-0xd65f03c0,
-0x00000000,
-0x9e660015,
-0x9e660036,
-0x94000000,
-0x0003001e,
-0x58000001,
+0x18000001,
 0x00050805,
 0x14000000,
 0x00050006,
 0x0006000f,
 0x00090000,
-0x00090000,
 0x00060010,
-0xb9000020,
-0x9e6702a0,
-0x9e6702c1,
-0xaa1403e0,
+0xaa1503e0,
 0x94000000,
-0x00030008,
+0x00030001,
+0xa9005013,
 0x52800020,
 0x910003bf,
-0xf94003f7,
-0xa9415bf5,
-0xa94253f3,
-0xa9437bfd,
-0x910103ff,
+0xf94003f5,
+0xa94153f3,
+0xa9427bfd,
+0x9100c3ff,
 0xd65f03c0,
 0x00000000
 };
@@ -1001,10 +808,9 @@ static const char *const globnames[] = {
   (const char *)0
 };
 static const char *const extnames[] = {
-  "lua_rawgeti",
+  "rawgeti",
   "push_cdata",
   "lua_remove",
-  "lua_pushnil",
   "lua_pushinteger",
   "lua_pushboolean",
   "push_int",
@@ -1029,9 +835,6 @@ static const char *const extnames[] = {
   "unpack_varargs_float",
   "unpack_varargs_int",
   "unpack_varargs_stack_skip",
-  "SetLastError",
-  "FUNCTION",
-  "GetLastError",
   "push_uint",
   (const char *)0
 };
@@ -1054,14 +857,15 @@ static void compile_extern_jump(struct jit* jit, lua_State* L, cfunction func, u
      * in the jit state.
      */
 	 
-	 /*l: ptr*/
+	 //l: ptr
 	 *(cfunction*) code = func;
-	 /* ldr x9,#-8*/
+	 // ldr x9,#-8
 	  *(uint32_t*) &code[8] = 0x58FFFFC9;
-	 /*br x9*/
+	 //br x9
 	 *(uint32_t*) &code[12] = 0xD61F0120;
 	
 }
+
 
 
 
@@ -1069,11 +873,85 @@ void compile_globals(struct jit* jit, lua_State* L)
 {
     (void) jit;
 }
+typedef struct reg_info{
+	uint8_t ints;
+	uint8_t floats;
+} reg_info;
+
+static ALWAYS_INLINE reg_info caculateRegs(lua_State* L,int ct_usr,int nargs){
+    int i;reg_info regs;
+    const struct ctype* mt;
+    for (i = 1,regs.ints=0,regs.floats=0; i <= nargs&&(regs.floats<8||regs.ints<8); ++i){
+		lua_rawgeti(L, ct_usr, i);
+        mt = (const struct ctype*) lua_touserdata(L, -1);
+		if (mt->pointers || mt->is_reference) {
+			if(regs.ints<8)regs.ints++;
+		}else{
+			switch(mt->type){
+				case COMPLEX_DOUBLE_TYPE:
+				case COMPLEX_FLOAT_TYPE:
+					if(regs.floats<7)
+						regs.floats+=2;
+					else if(regs.floats==7)
+						regs.floats=8;
+					break;
+				case FLOAT_TYPE:
+				case DOUBLE_TYPE:
+					if(regs.floats<8) ++regs.floats;
+					break;
+				default:
+					if(regs.ints<8)++regs.ints;//no need to check type support here
+			}
+		}
+		lua_pop(L,1);
+	}
+	
+	return regs;
+}
+// arm store/load range for immediate value is only -256-255
+static ALWAYS_INLINE void load_int(struct jit* Dst,reg_info* regs){
+	if(regs->ints<8)
+		dasm_put(Dst, 0, 0x60+(regs->ints++<<3));
+	else
+		dasm_put(Dst, 3);
+}
+static ALWAYS_INLINE void load_float(struct jit* Dst,reg_info* regs,int isFloat,int isComplex){
+	if(regs->floats<8){
+		if(!isComplex||regs->floats==7){
+			dasm_put(Dst, 5, 0x20+(regs->floats++<<3));
+			if(isComplex){
+				if(isFloat){
+					dasm_put(Dst, 8);
+				}else{
+					dasm_put(Dst, 10);
+				}
+			}
+		}else{
+			dasm_put(Dst, 12, 0x20+(regs->floats<<3));
+			regs->floats+=2;
+		}
+	}else if(isComplex){
+		if(isFloat){
+			//complex float is packed as one double on stack
+			dasm_put(Dst, 15);
+		}else{
+			dasm_put(Dst, 17);
+		}
+	}else {
+		if(isFloat){
+			dasm_put(Dst, 19);
+		}else {
+			dasm_put(Dst, 21);
+		}
+	}
+			
+	
+}
 
 cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctype* ct)
 {
     struct jit* Dst = get_jit(L);;
-    int i,fi,ii, nargs, num_upvals, ref;
+    int i, nargs, num_upvals, ref;
     const struct ctype* mt;
 
     int top = lua_gettop(L);
@@ -1092,23 +970,60 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
     if (ct->has_var_arg) {
         luaL_error(L, "can't create callbacks with varargs");
     }
+
+	reg_info regs=caculateRegs(L,ct_usr,nargs);
 	
-	
+	if(regs.ints||regs.floats){
+		dasm_put(Dst, 23);
+	}else{
+		dasm_put(Dst, 25);
+	}
 	//8 integer reigsters and 8 floating registers
-	dasm_put(Dst, 0);
+	switch(regs.ints){
+		case 8:
+		case 7:
+			dasm_put(Dst, 27);
+		case 6:
+		case 5:
+			dasm_put(Dst, 29);
+		case 4:
+		case 3:
+			dasm_put(Dst, 31);
+		case 2:
+		case 1:
+			dasm_put(Dst, 33);
+	}	
+
+	switch(regs.floats){
+		case 8:
+		case 7:
+			dasm_put(Dst, 36);
+		case 6:
+		case 5:
+			dasm_put(Dst, 38);
+		case 4:
+		case 3:
+			dasm_put(Dst, 40);
+		case 2:
+		case 1:
+			dasm_put(Dst, 42);
+	} 
+	dasm_put(Dst, 45);
 	
-	dasm_put(Dst, 18, (int)(L), (int)(((unsigned long)(L))>>32), (int)(ref), (int)(((unsigned long)(ref))>>32), (int)(LUA_REGISTRYINDEX), (int)(((unsigned long)(LUA_REGISTRYINDEX))>>32));
+	if(regs.ints==8||regs.floats==8){ // may be overflowed if it's full
+		dasm_put(Dst, 48);
+	}
 	
     /* get the lua function */
     lua_pushvalue(L, fidx);
     lua_rawseti(L, -2, ++num_upvals);
 	
+	dasm_put(Dst, 50, (int)(L), (int)(((unsigned long)(L))>>32), (int)(ref), (int)(LUA_REGISTRYINDEX));
 	
-    dasm_put(Dst, 50, num_upvals);
+    dasm_put(Dst, 76, num_upvals);
 	
-#define isReg(x) ((x)==8?0:++(x))
 
-    for (i = 1,ii=0,fi=0; i <= nargs; i++) {
+    for (i = 1,regs.ints=0,regs.floats=0; i <= nargs; ++i) {
         lua_rawgeti(L, ct_usr, i);
         mt = (const struct ctype*) lua_touserdata(L, -1);
 
@@ -1117,71 +1032,44 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
             lua_rawseti(L, -3, ++num_upvals); /* usr value */
             lua_rawseti(L, -2, ++num_upvals); /* mt */
 			
-            dasm_put(Dst, 57, num_upvals-1, i, (int)(mt), (int)(((unsigned long)(mt))>>32));
-			if(isReg(ii)){
-				dasm_put(Dst, 77);
-			}else {
-				dasm_put(Dst, 79);
-			}
-            dasm_put(Dst, 81);
+            dasm_put(Dst, 83, num_upvals-1, i, (int)(mt), (int)(((unsigned long)(mt))>>32));
+			load_int(Dst,&regs);
+            dasm_put(Dst, 103);
 
         } else {
             switch (mt->type) {
 			case COMPLEX_DOUBLE_TYPE:
+				lua_getuservalue(L, -1);
+				lua_rawseti(L, -3, ++num_upvals); /* usr value */
 				lua_rawseti(L, -2, ++num_upvals); /* mt */
 				
-                dasm_put(Dst, 87, (int)(mt), (int)(((unsigned long)(mt))>>32));
-				if(isReg(fi)){
-					dasm_put(Dst, 103);
-					if(isReg(fi)){
-						dasm_put(Dst, 106);
-					}else {
-						dasm_put(Dst, 109);
-					}
-				}else {
-					dasm_put(Dst, 112);
-				}
-					
-                dasm_put(Dst, 115);
+                dasm_put(Dst, 109, num_upvals-1, i, (int)(mt), (int)(((unsigned long)(mt))>>32));
+				load_float(Dst,&regs,0,1);
+                dasm_put(Dst, 129);
 				
 				break;
 			case COMPLEX_FLOAT_TYPE:
+				lua_getuservalue(L, -1);
+				lua_rawseti(L, -3, ++num_upvals); /* usr value */
 				lua_rawseti(L, -2, ++num_upvals); /* mt */
 				
-                dasm_put(Dst, 120, (int)(mt), (int)(((unsigned long)(mt))>>32));
-				if(isReg(fi)){
-					dasm_put(Dst, 136);
-					if(isReg(fi)){
-						dasm_put(Dst, 139);
-					}else {
-						dasm_put(Dst, 142);
-					}
-				}else {
-					dasm_put(Dst, 145);
-				}
-                dasm_put(Dst, 148);
+                dasm_put(Dst, 135, num_upvals-1, i, (int)(mt), (int)(((unsigned long)(mt))>>32));
+				load_float(Dst,&regs,1,1);
+                dasm_put(Dst, 155);
 				
 				break;
             case INT64_TYPE:
 			    #if LUA_VERSION_NUM>=503
                 lua_pop(L, 1);
-				if(isReg(ii)){
-					dasm_put(Dst, 154);
-				}else{
-					dasm_put(Dst, 156);
-				} 
-                dasm_put(Dst, 158);
+				load_int(Dst,&regs);
+                dasm_put(Dst, 161);
 				
 				#else
                 lua_rawseti(L, -2, ++num_upvals); /* mt */
 				
-                dasm_put(Dst, 162, (int)(mt), (int)(((unsigned long)(mt))>>32));
-                if(isReg(ii)){
-					dasm_put(Dst, 178);
-				}else{ 
-					dasm_put(Dst, 180);
-				}
-                dasm_put(Dst, 182);
+                dasm_put(Dst, 165, (int)(mt), (int)(((unsigned long)(mt))>>32));
+                load_int(Dst,&regs);
+                dasm_put(Dst, 178);
 				
 				#endif
                 break;
@@ -1189,98 +1077,74 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
             case INTPTR_TYPE:
                 lua_rawseti(L, -2, ++num_upvals); /* mt */
 				
-                dasm_put(Dst, 188, (int)(mt), (int)(((unsigned long)(mt))>>32));
-                if(isReg(ii)){
-					dasm_put(Dst, 204);
-				}else {
-					dasm_put(Dst, 206);
-				}
-                dasm_put(Dst, 208);
+                dasm_put(Dst, 184, (int)(mt), (int)(((unsigned long)(mt))>>32));
+                load_int(Dst,&regs);
+                dasm_put(Dst, 197);
 				
                 break;
 
             case BOOL_TYPE:
                 lua_pop(L, 1);
 				
-				 if(isReg(ii)){
-					dasm_put(Dst, 214);
-				}else{
-					dasm_put(Dst, 216);
-                }
-				dasm_put(Dst, 218);
+				load_int(Dst,&regs);
+				dasm_put(Dst, 203);
 				
                 break;
 
             case INT8_TYPE:
-                lua_pop(L, 1);
-               
-                if(isReg(ii)){
-					dasm_put(Dst, 222);
+				lua_pop(L, 1);
+				if(regs.ints<8){
+					if (mt->is_unsigned) {
+						dasm_put(Dst, 207, 0x60+(regs.ints++<<3));
+					} else {
+						dasm_put(Dst, 210, 0x60+(regs.ints++<<3));
+					}
 				}else {
-					dasm_put(Dst, 224);
-                }
-				dasm_put(Dst, 226);
-				
-                if (mt->is_unsigned) {
-                    dasm_put(Dst, 228);
-                } else {
-                    dasm_put(Dst, 230);
-					
-                }
-                dasm_put(Dst, 232);
-                break;
-
-            case INT16_TYPE:
-                lua_pop(L, 1);
-				
-                if(isReg(ii)){
-					dasm_put(Dst, 236);
-				}else {
-					dasm_put(Dst, 238);
+					if (mt->is_unsigned) {
+						dasm_put(Dst, 213);
+					} else {
+						dasm_put(Dst, 215);
+					}
 				}
-				dasm_put(Dst, 240);
+				dasm_put(Dst, 217);
+				break;
+			
+            case INT16_TYPE:
+				lua_pop(L, 1);
+				if(regs.ints<8){
+					if (mt->is_unsigned) {
+						dasm_put(Dst, 221, 0x60+(regs.ints++<<3));
+					} else {
+						dasm_put(Dst, 224, 0x60+(regs.ints++<<3));
+					}
+				}else {
+					if (mt->is_unsigned) {
+						dasm_put(Dst, 227);
+					} else {
+						dasm_put(Dst, 229);
+					}
+				}
+				dasm_put(Dst, 231);
+				break;
 				
-                if (mt->is_unsigned) {
-                    dasm_put(Dst, 242);
-                } else {
-                    dasm_put(Dst, 244);
-                }
-                dasm_put(Dst, 246);
-                break;
-
             case ENUM_TYPE:
             case INT32_TYPE:
                 lua_pop(L, 1);
+				load_int(Dst,&regs);
 				
-				if(isReg(ii)){
-					dasm_put(Dst, 250);
-				}else {
-					dasm_put(Dst, 252);
-				}
-				
-                dasm_put(Dst, 254);
+                dasm_put(Dst, 235);
                 break;
 
             case FLOAT_TYPE:
                 lua_pop(L, 1);
-				
-				if(isReg(fi)){
-					dasm_put(Dst, 258);
-				}else{
-					dasm_put(Dst, 260);
-				} 
-                dasm_put(Dst, 262);
-				
+				load_float(Dst,&regs,1,0);
+                dasm_put(Dst, 239);
                 break;
 
             case DOUBLE_TYPE:
                 lua_pop(L, 1);
-				if(isReg(fi)){
-					dasm_put(Dst, 266);
-				}else {
-					dasm_put(Dst, 268);
-				}
-                dasm_put(Dst, 270);
+				load_float(Dst,&regs,0,0);
+                dasm_put(Dst, 243);
                 break;
 				
             default:
@@ -1292,7 +1156,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
     lua_rawgeti(L, ct_usr, 0);
     mt = (const struct ctype*) lua_touserdata(L, -1);
 
-    dasm_put(Dst, 274, ((mt->pointers || mt->is_reference || mt->type != VOID_TYPE) ? 1 : 0), nargs);
+    dasm_put(Dst, 247, ((mt->pointers || mt->is_reference || mt->type != VOID_TYPE) ? 1 : 0), nargs);
     
 
 	
@@ -1301,8 +1165,8 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
         lua_rawseti(L, -3, ++num_upvals); /* usr value */
         lua_rawseti(L, -2, ++num_upvals); /* mt */
 
-        dasm_put(Dst, 282, num_upvals-1, (int)(mt), (int)(((unsigned long)(mt))>>32));
-        goto single;
+        dasm_put(Dst, 255, num_upvals-1, (int)(mt), (int)(((unsigned long)(mt))>>32));
+        goto single_no_pop;
     } else {
         switch (mt->type) {
         case ENUM_TYPE:
@@ -1310,12 +1174,12 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
             lua_rawseti(L, -3, ++num_upvals); /* usr value */
             lua_rawseti(L, -2, ++num_upvals); /* mt */
 
-            dasm_put(Dst, 302, num_upvals-1, (int)(mt), (int)(((unsigned long)(mt))>>32));
+            dasm_put(Dst, 275, num_upvals-1, (int)(mt), (int)(((unsigned long)(mt))>>32));
 
-            goto single;
+            goto single_no_pop;
 
         case VOID_TYPE:
-            dasm_put(Dst, 322);
+            dasm_put(Dst, 295);
             lua_pop(L, 1);
             break;
 
@@ -1323,60 +1187,59 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
         case INT8_TYPE:
         case INT16_TYPE:
         case INT32_TYPE:
-		    dasm_put(Dst, 327);
+		    dasm_put(Dst, 300);
             if (mt->is_unsigned) {
-                dasm_put(Dst, 329);
+                dasm_put(Dst, 302);
             } else {
-                dasm_put(Dst, 333);
+                dasm_put(Dst, 306);
             }
             goto single;
 
         case INT64_TYPE:
-            dasm_put(Dst, 337);
+            dasm_put(Dst, 310);
             if (mt->is_unsigned) {
-                dasm_put(Dst, 339);
+                dasm_put(Dst, 312);
             } else {
-                dasm_put(Dst, 343);
+                dasm_put(Dst, 316);
             }
 			
 			goto single;
 
         case INTPTR_TYPE:
-            dasm_put(Dst, 347);
+            dasm_put(Dst, 320);
             goto single;
 
         case FLOAT_TYPE:
-            dasm_put(Dst, 352);
+            dasm_put(Dst, 325);
 			
-            dasm_put(Dst, 357);
+            dasm_put(Dst, 330);
             lua_pop(L, 1);
 			break;
         case DOUBLE_TYPE:
-            dasm_put(Dst, 364);
+            dasm_put(Dst, 337);
 			
-            dasm_put(Dst, 369);
+            dasm_put(Dst, 342);
 			
             lua_pop(L, 1);
 			break;
 			
 		case COMPLEX_DOUBLE_TYPE:
 
-			dasm_put(Dst, 376);
+			dasm_put(Dst, 349);
 		    
-			dasm_put(Dst, 381);
-			
-            lua_pop(L, 1);
-			break;	
+			goto complex_ret;
 		case COMPLEX_FLOAT_TYPE:
-			dasm_put(Dst, 390);
+			dasm_put(Dst, 354);
 			
-			dasm_put(Dst, 395);
+		complex_ret:	
+			dasm_put(Dst, 359);
 
             lua_pop(L, 1);			
 			break;
         single:
-            dasm_put(Dst, 404);
             lua_pop(L, 1);
+		single_no_pop:	
+            dasm_put(Dst, 368);
             break;
 
         
@@ -1385,8 +1248,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
         }
     }
 	
-	
-	dasm_put(Dst, 411);
+	dasm_put(Dst, 375,  (0x20 + ((regs.floats!=0)||(regs.ints!=0)) * 0x80));
 	
     lua_pop(L, 1); /* upval table - already in registry */
     assert(lua_gettop(L) == top);
@@ -1408,11 +1270,41 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
         return func;
     }
 }
+static ALWAYS_INLINE void storeFloat(struct jit* Dst,reg_info* regs,int isFloat,int isComplex){
+	if(regs->floats<8){
+		if(!isComplex||regs->floats==7){
+			dasm_put(Dst, 381, (regs->floats++<<3));
+			if(isComplex){
+				if(isFloat){
+					dasm_put(Dst, 384);
+				}else{
+					dasm_put(Dst, 386);
+				}
+			}
+		}else{
+			dasm_put(Dst, 388, (regs->floats<<3));
+			regs->floats+=2;
+		}
+	}else if(isComplex){
+		//complex float is packed as one double on stack
+		if(isFloat){
+			dasm_put(Dst, 391);
+		}else{
+			dasm_put(Dst, 393);
+		}
+	}else {
+		if(isFloat){
+			dasm_put(Dst, 395);
+		}else {
+			dasm_put(Dst, 397);
+		}
+	}
+}
 
 void compile_function(lua_State* L, cfunction func, int ct_usr, const struct ctype* ct)
 {
     struct jit* Dst = get_jit(L);;
-    int i, nargs, num_upvals,fi,ii;
+    int i, nargs, num_upvals;
     const struct ctype* mt;
     void* p;
 
@@ -1427,21 +1319,20 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 
     dasm_setup(Dst, build_actionlist);
 
-    dasm_put(Dst, 418, nargs);
+    reg_info regs={0,0};
 	
+	dasm_put(Dst, 399);
+	
+    /* reserve enough stack space for all of the arguments (16 bytes per
+     * argument for complex double and maintains alignment). */
+	 
     if (ct->has_var_arg) {
-        dasm_put(Dst, 432, (int)("too few arguments"), (int)(((unsigned long)("too few arguments"))>>32));
-    } else {
-        dasm_put(Dst, 447, (int)("incorrect number of arguments"), (int)(((unsigned long)("incorrect number of arguments"))>>32));
+        dasm_put(Dst, 406, nargs, (int)("too few arguments"), (int)(((unsigned long)("too few arguments"))>>32));
+    }else if(nargs>0){
+		dasm_put(Dst, 429, (nargs<<4)+0x80);
     }
 
-    /* reserve enough stack space for all of the arguments (16 bytes per
-     * argument for complex double and maintains alignment). if */
-	
-	dasm_put(Dst, 462);
-	
-
-    for (i = 1,ii=0,fi=0; i <= nargs; i++) {
+    for (i = 1,regs.ints=0,regs.floats=0; i <= nargs; i++) {
         lua_rawgeti(L, ct_usr, i);
         mt = (const struct ctype*) lua_touserdata(L, -1);
 
@@ -1450,120 +1341,95 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             num_upvals += 2;
 
 			
-			dasm_put(Dst, 474, (int)(mt), (int)(((unsigned long)(mt))>>32), (int)(lua_upvalueindex(num_upvals)), (int)(((unsigned long)(lua_upvalueindex(num_upvals)))>>32), i);
+			dasm_put(Dst, 433, (int)(mt), (int)(((unsigned long)(mt))>>32), (int)(lua_upvalueindex(num_upvals)), i);
 			
             if (mt->pointers || mt->is_reference) {
-                dasm_put(Dst, 493);
+                dasm_put(Dst, 451);
             } else if (mt->type == FUNCTION_PTR_TYPE) {
-                dasm_put(Dst, 497);
+                dasm_put(Dst, 455);
             } else if (mt->type == ENUM_TYPE) {
-                dasm_put(Dst, 501);
+                dasm_put(Dst, 459);
             }
-
 			goto longstore;
 
         } else {
             lua_pop(L, 1);
-            dasm_put(Dst, 505, i);
+            dasm_put(Dst, 463, i);
 
             switch (mt->type) {
+            case BOOL_TYPE:
+                dasm_put(Dst, 466);
+                goto intstore;
             case INT8_TYPE:
-                dasm_put(Dst, 508);
+                dasm_put(Dst, 472);
                 if (mt->is_unsigned) {
-                    dasm_put(Dst, 512);
+                    dasm_put(Dst, 476);
                 } else {
-                    dasm_put(Dst, 514);
+                    dasm_put(Dst, 478);
                 }
 				goto intstore;
 
             case INT16_TYPE:
-                dasm_put(Dst, 517);
+                dasm_put(Dst, 480);
                 if (mt->is_unsigned) {
-                    dasm_put(Dst, 521);
+                    dasm_put(Dst, 484);
                 } else {
-                    dasm_put(Dst, 524);
+                    dasm_put(Dst, 486);
                 }
 				goto intstore;
 
             case INT32_TYPE:
                 if (mt->is_unsigned) {
-                    dasm_put(Dst, 527);
+                    dasm_put(Dst, 488);
                 } else {
-                    dasm_put(Dst, 531);
+                    dasm_put(Dst, 492);
                 }
  				goto intstore;
 
             case INT64_TYPE:
                 if (mt->is_unsigned) {
-                    dasm_put(Dst, 535);
+                    dasm_put(Dst, 496);
                 } else {
-                    dasm_put(Dst, 539);
+                    dasm_put(Dst, 500);
                 }
-				
               	goto longstore;
+				
+            case INTPTR_TYPE:
+                dasm_put(Dst, 504);
+                
+                goto longstore;
 
             case DOUBLE_TYPE:
-                dasm_put(Dst, 543);
-                if(isReg(fi))
-					dasm_put(Dst, 547);
-				else	
-					dasm_put(Dst, 549);
+                dasm_put(Dst, 508);
+                storeFloat(Dst,&regs,0,0);
                 break;
 
             case FLOAT_TYPE:
-                dasm_put(Dst, 551);
-                if(isReg(fi))
-					dasm_put(Dst, 555);
-				else	
-					dasm_put(Dst, 557);
+                dasm_put(Dst, 512);
+                storeFloat(Dst,&regs,1,0);
                 break;
 			case COMPLEX_DOUBLE_TYPE:
-                dasm_put(Dst, 559);
-				if(isReg(fi)){
-					dasm_put(Dst, 563);
-					if(isReg(fi)){
-						dasm_put(Dst, 565);
-					}else{
-						dasm_put(Dst, 567);
-					}
-				}
-				else{
-					dasm_put(Dst, 569);
-				}	
+                dasm_put(Dst, 516);
+				storeFloat(Dst,&regs,0,1);
                 break;
 
             case COMPLEX_FLOAT_TYPE:
-                dasm_put(Dst, 571);
-				// complex float is saved as two single precision registers on stack
-				if(isReg(fi)){
-					dasm_put(Dst, 575);
-					if(isReg(fi)){
-						dasm_put(Dst, 577);
-					}else{
-						dasm_put(Dst, 579);
-					}
-				}
-				else{
-					dasm_put(Dst, 581);
-				}
+                dasm_put(Dst, 520);
+				storeFloat(Dst,&regs,1,1);
                 break;
-            case INTPTR_TYPE:
-                dasm_put(Dst, 583);
-                
-				
-                goto longstore;
 				
 			intstore:
-				if(isReg(ii))
-					dasm_put(Dst, 587);
-				else	
-					dasm_put(Dst, 589);
+				if(regs.ints<8)
+					dasm_put(Dst, 524, 0x40+(regs.ints++<<3));
+				else
+					dasm_put(Dst, 527);
+				
                 break;
 			longstore:
-				if(isReg(ii))
-					dasm_put(Dst, 591);
-				else	
-					dasm_put(Dst, 593);
+				if(regs.ints<8)
+					dasm_put(Dst, 529, 0x40+(regs.ints++<<3));
+				else
+					dasm_put(Dst, 532);
                 break;
 				
             default:
@@ -1573,60 +1439,81 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
     }
 
     if (ct->has_var_arg) {
-		if(fi<8){
-			dasm_put(Dst, 595, (8-fi), nargs+1);
+		if(regs.floats<8){
+			dasm_put(Dst, 534, regs.floats<<3, (8-regs.floats), nargs+1);
 		}
-		if(ii<8){
-			dasm_put(Dst, 605, (8-ii), nargs+1);
+		if(regs.ints<8){
+			dasm_put(Dst, 545, 0x40+(regs.ints<<3), (8-regs.ints), nargs+1);
 		}
-		
-		//case when DATA is not allocated, all arg is skipped
-		dasm_put(Dst, 615, (8-fi), (8-ii), nargs+1);
-		
+		dasm_put(Dst, 556, (nargs>8?nargs:8), (8-regs.floats), (8-regs.ints), nargs+1);
+		regs.floats=regs.ints=8;
     }
 
-    dasm_put(Dst, 631, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
-
 	//pop all args in registers
-	dasm_put(Dst, 643);
+	switch(regs.ints){
+		case 8:
+		case 7:
+            dasm_put(Dst, 573);
+		case 6:
+		case 5:
+            dasm_put(Dst, 575);
+		case 4:
+		case 3:
+            dasm_put(Dst, 577);
+		case 2:
+		case 1:
+			dasm_put(Dst, 579);
+    }
 	
-    dasm_put(Dst, 653);
-
+	switch(regs.floats){
+		case 8:
+		case 7:
+            dasm_put(Dst, 581);
+		case 6:
+		case 5:
+            dasm_put(Dst, 583);
+		case 4:
+		case 3:
+            dasm_put(Dst, 585);
+		case 2:
+		case 1:
+			dasm_put(Dst, 587);
+    }
+	if(regs.ints==8|| regs.floats==8){// fix stack case registers is full
+		dasm_put(Dst, 589);
+	}
+    dasm_put(Dst, 591, (int)(func), (int)(((unsigned long)(func))>>32));
 
 
     lua_rawgeti(L, ct_usr, 0);
     mt = (const struct ctype*) lua_touserdata(L, -1);
 
-    if (mt->pointers || mt->is_reference) {
+    if (mt->pointers || mt->is_reference || mt->type==FUNCTION_PTR_TYPE) {
         lua_getuservalue(L, -1);
         num_upvals += 2;
-        dasm_put(Dst, 656, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32), (int)(mt), (int)(((unsigned long)(mt))>>32), (int)(lua_upvalueindex(num_upvals)), (int)(((unsigned long)(lua_upvalueindex(num_upvals)))>>32));
+        dasm_put(Dst, 601, (int)(mt), (int)(((unsigned long)(mt))>>32), (int)(lua_upvalueindex(num_upvals)));
 
     } else {
         switch (mt->type) {
         case INT64_TYPE:
 		#if LUA_VERSION_NUM>=503
 			 lua_pop(L, 1);
-            dasm_put(Dst, 697, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
-		#else
-            num_upvals++;
-            dasm_put(Dst, 722, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32), (int)(mt), (int)(((unsigned long)(mt))>>32));
-		#endif
+            dasm_put(Dst, 629);
             break;
+		#endif
 
         case INTPTR_TYPE:
             num_upvals++;
-            dasm_put(Dst, 759, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32), (int)(mt), (int)(((unsigned long)(mt))>>32));
-            break;
-
+            dasm_put(Dst, 641, (int)(mt), (int)(((unsigned long)(mt))>>32));
+			break;
         case VOID_TYPE:
             lua_pop(L, 1);
-            dasm_put(Dst, 796, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
+            dasm_put(Dst, 663);
             break;
 
         case BOOL_TYPE:
             lua_pop(L, 1);
-            dasm_put(Dst, 816, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
+            dasm_put(Dst, 671);
             break;
 
         case INT8_TYPE:
@@ -1634,32 +1521,34 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
         case INT32_TYPE:
         case ENUM_TYPE:
             lua_pop(L, 1);
-            dasm_put(Dst, 841, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
+            dasm_put(Dst, 683);
             if (mt->is_unsigned) {
-                dasm_put(Dst, 855);
+                dasm_put(Dst, 685);
             } else {
-                dasm_put(Dst, 859);
+                dasm_put(Dst, 689);
             }
-            dasm_put(Dst, 863);
+            dasm_put(Dst, 693);
             break;
 
         case FLOAT_TYPE:
             lua_pop(L, 1);
-            dasm_put(Dst, 872, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
+            dasm_put(Dst, 701);
             break;
 
         case DOUBLE_TYPE:
             lua_pop(L, 1);
-            dasm_put(Dst, 897, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
+            dasm_put(Dst, 712);
             break;
 		case COMPLEX_FLOAT_TYPE:
-            lua_pop(L, 1);
-            dasm_put(Dst, 922, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
+            lua_getuservalue(L, -1);
+            num_upvals+=2;
+            dasm_put(Dst, 723, (int)(mt), (int)(((unsigned long)(mt))>>32), (int)(lua_upvalueindex(num_upvals)));
             break;
 
         case COMPLEX_DOUBLE_TYPE:
-            lua_pop(L, 1);
-            dasm_put(Dst, 949, (int)(&Dst->last_errno), (int)(((unsigned long)(&Dst->last_errno))>>32));
+            lua_getuservalue(L, -1);
+            num_upvals+=2;
+            dasm_put(Dst, 754, (int)(mt), (int)(((unsigned long)(mt))>>32), (int)(lua_upvalueindex(num_upvals)));
             break;
         default:
             luaL_error(L, "NYI: call return type");
@@ -1667,6 +1556,12 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
     }
 
     assert(lua_gettop(L) == top + num_upvals);
-    lua_pushcclosure(L, (lua_CFunction) compile(Dst, L, func, LUA_NOREF), num_upvals);
+	{
+        cfunction f = compile(Dst, L, NULL, LUA_NOREF);
+        /* add a callback as an upval so that the jitted code gets cleaned up when
+         * the function gets gc'd */
+        push_callback(L, f, func);
+        lua_pushcclosure(L, (lua_CFunction) f, num_upvals+1);
+    }
 }
 

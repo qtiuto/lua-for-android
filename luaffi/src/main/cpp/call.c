@@ -12,7 +12,7 @@
 static cfunction compile(Dst_DECL, lua_State* L, cfunction func, int ref);
 
 static void* reserve_code(struct jit* jit, lua_State* L, size_t sz);
-static void commit_code(struct jit* jit, void* p, size_t sz);
+static void commit_code(struct jit *jit, size_t sz);
 
 static void push_int(lua_State* L, int val)
 { lua_pushinteger(L, val); }
@@ -43,10 +43,17 @@ static void SetLastError(int err)
 #elif defined __amd64__
 #include "dynasm/dasm_x86.h"
 #include "call_x64.h"
-#elif defined __arm__ || defined __arm || defined __ARM__ || defined __ARM || defined ARM || defined _ARM_ || defined ARMV4I || defined _M_ARM
+#elif defined(ARCH_ARM)
 #include "dynasm/dasm_arm.h"
+//See http://code.google.com/p/v8/issues/detail?id=2140 for more information
+#if defined(__ARM_PCS_VFP) || (GCC_VERSION==40500||defined(__clang__))&&!defined(__ARM_PCS) && !defined(__SOFTFP__) && !defined(__SOFTFP) && \
+    defined(__VFP_FP__)
+#warning "Hard floating point pcs support is not tested"
+#include "call_arm_hf.h"
+#else
 #include "call_arm.h"
-#elif defined __aarch64__
+#endif
+#elif defined ARCH_ARM64
 #include "dynasm/dasm_arm64.h"
 #include "call_arm64.h"
 #else
@@ -57,10 +64,12 @@ static void SetLastError(int err)
 struct jit_head {
     size_t size;
     int ref;
+#ifndef NO_FUNCTION_EXTERN
     uint8_t jump[JUMP_SIZE];
+#endif
 };
 
-#define LINKTABLE_MAX_SIZE (sizeof(extnames) / sizeof(extnames[0]) * (JUMP_SIZE))
+#define LINKTABLE_MAX_SIZE ((sizeof(extnames) / sizeof(extnames[0])-1) * (JUMP_SIZE))
 
 static cfunction compile(struct jit* jit, lua_State* L, cfunction func, int ref)
 {
@@ -79,16 +88,18 @@ static cfunction compile(struct jit* jit, lua_State* L, cfunction func, int ref)
     code = (struct jit_head*) reserve_code(jit, L, codesz);
     code->ref = ref;
     code->size = codesz;
+#ifndef NO_FUNCTION_EXTERN
     compile_extern_jump(jit, L, func, code->jump);
+#endif
 
     if ((err = dasm_encode(jit, code+1)) != 0) {
         char buf[32];
         sprintf(buf, "%x", err);
-        commit_code(jit, code, 0);
+        commit_code(jit, 0);
         luaL_error(L, "dasm_encode error %s", buf);
     }
 
-    commit_code(jit, code, codesz);
+    commit_code(jit, codesz);
     cfunction ret = (cfunction) (code + 1);
     return ret;
 }
@@ -102,10 +113,12 @@ int get_extern(struct jit* jit, uint8_t* addr, int idx, int type)
     struct jit_head* h = (struct jit_head*) ((uint8_t*) page + page->off);
     uint8_t* jmp;
     ptrdiff_t off;
-
+#ifndef NO_FUNCTION_EXTERN
     if (idx == jit->function_extern) {
        jmp = h->jump;
-    } else {
+    } else
+#endif
+    {
        jmp = jumps[idx];
     }
 
@@ -127,6 +140,9 @@ int get_extern(struct jit* jit, uint8_t* addr, int idx, int type)
     } else {
         return (int32_t)(jmp + sizeof(uint8_t*) - addr);
     }
+}
+static int rawgeti(lua_State* L,int idx,ptrdiff_t key){
+    return lua_rawgeti(L,idx,key);
 }
 
 static void* reserve_code(struct jit* jit, lua_State* L, size_t sz)
@@ -150,15 +166,23 @@ static void* reserve_code(struct jit* jit, lua_State* L, size_t sz)
         pdata = (uint8_t*) page;
         page->size = size;
         page->off = sizeof(struct page);
+        if(jit->default_functions!=NULL){
+            memcpy((uint8_t*)(page+1),jit->default_functions,LINKTABLE_MAX_SIZE);
+            page->off+=LINKTABLE_MAX_SIZE;
+            page->freed=page->off;
+            goto End;
+        }
 
         lua_newtable(L);
 
-#define ADDFUNC(DLL, NAME) \
+#define ADD_FUNC_WITH_NAME(DLL, NAME,FUNC) \
         lua_pushliteral(L, #NAME); \
-        func = DLL ? (cfunction) GetProcAddressA(DLL, #NAME) : NULL; \
-        func = func ? func : (cfunction) &NAME; \
+        func = DLL ? (cfunction) GetProcAddressA(DLL, #FUNC) : NULL; \
+        func = func ? func : (cfunction) &FUNC; \
         lua_pushcfunction(L, (lua_CFunction) func); \
         lua_rawset(L, -3)
+
+#define ADDFUNC(DLL, NAME) ADD_FUNC_WITH_NAME(DLL,NAME,NAME)
 
         ADDFUNC(NULL, check_double);
         ADDFUNC(NULL, check_float);
@@ -182,13 +206,17 @@ static void* reserve_code(struct jit* jit, lua_State* L, size_t sz)
         ADDFUNC(NULL, push_uint);
         ADDFUNC(NULL, lua_pushinteger);
         ADDFUNC(NULL, push_float);
-        ADDFUNC(jit->kernel32_dll, SetLastError);
-        ADDFUNC(jit->kernel32_dll, GetLastError);
+        //ADDFUNC(jit->kernel32_dll, SetLastError);
+        //ADDFUNC(jit->kernel32_dll, GetLastError);
         ADDFUNC(jit->lua_dll, luaL_error);
         ADDFUNC(jit->lua_dll, lua_pushnumber);
         ADDFUNC(jit->lua_dll, lua_pushboolean);
         ADDFUNC(jit->lua_dll, lua_gettop);
-        ADDFUNC(jit->lua_dll, lua_rawgeti);
+#if LUA_VERSION_NUM<503 || defined(__LP64__)
+        ADD_FUNC_WITH_NAME(jit->lua_dll,rawgeti, lua_rawgeti);
+#else
+        ADDFUNC(NULL,rawgeti);
+#endif
         ADDFUNC(jit->lua_dll, lua_pushnil);
         ADDFUNC(jit->lua_dll, lua_call);
         ADDFUNC(jit->lua_dll, lua_settop);
@@ -196,12 +224,13 @@ static void* reserve_code(struct jit* jit, lua_State* L, size_t sz)
 #undef ADDFUNC
 
         for (i = 0; extnames[i] != NULL; i++) {
-
+#ifndef NO_FUNCTION_EXTERN
             if (strcmp(extnames[i], "FUNCTION") == 0) {
                 shred(pdata + page->off, 0, JUMP_SIZE);
                 jit->function_extern = i;
-
-            } else {
+            } else
+#endif
+            {
                 lua_getfield(L, -1, extnames[i]);
                 func = (cfunction) lua_tocfunction(L, -1);
 
@@ -212,10 +241,14 @@ static void* reserve_code(struct jit* jit, lua_State* L, size_t sz)
                 compile_extern_jump(jit, L, func, pdata + page->off);
                 lua_pop(L, 1);
             }
-
             page->off += JUMP_SIZE;
         }
-
+#ifndef NO_FUNCTION_EXTERN
+        if(jit->function_extern==0){
+            luaL_error(L, "internal error: should define extern  FUNCTION");
+        }
+#endif
+        jit->default_functions=(uint8_t*)(page+1);
         page->freed = page->off;
         lua_pop(L, 1);
 
@@ -223,22 +256,15 @@ static void* reserve_code(struct jit* jit, lua_State* L, size_t sz)
         page = jit->pages[jit->pagenum-1];
         EnableWrite(page, page->size);
     }
-
+    End:
     return (uint8_t*) page + page->off;
 }
 
-static void commit_code(struct jit* jit, void* code, size_t sz)
+static void commit_code(struct jit *jit, size_t sz)
 {
     struct page* page = jit->pages[jit->pagenum-1];
     page->off += sz;
     EnableExecute(page, page->size);
-    {
-#if 0
-        FILE* out = fopen("\\Hard Disk\\out.bin", "wb");
-        fwrite(page, page->off, 1, out);
-        fclose(out);
-#endif
-    }
 }
 
 /* push_func_ref pushes a copy of the upval table embedded in the compiled
@@ -272,7 +298,9 @@ void free_code(struct jit* jit, lua_State* L, cfunction func)
             EnableExecute(p, p->size);
             return;
         }
-
+        if((uint8_t*)(p+1)==jit->default_functions){
+            jit->default_functions=NULL;
+        }
         FreePage(p, p->size);
         memmove(&jit->pages[i], &jit->pages[i+1], (jit->pagenum - (i+1)) * sizeof(jit->pages[0]));
         jit->pagenum--;

@@ -719,10 +719,10 @@ local function parse_load(params, nparams, n, op)
   local oplo = band(op, 255)
   local ext, ldrd = (oplo ~= 0), (oplo == 208)
   local d
-  if (ldrd or oplo == 240) then
+  --[[if (ldrd or oplo == 240) then
     d = band(shr(op, 12), 15)
     if band(d, 1) ~= 0 then werror("odd destination register") end
-  end
+  end]]
   local pn = params[n]
   local p1, wb = match(pn, "^%[%s*(.-)%s*%](!?)$")
   local p2 = params[n+1]
