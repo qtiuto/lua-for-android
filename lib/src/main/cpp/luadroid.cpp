@@ -17,6 +17,8 @@
 #include <dex/DexResolver.h>
 #include <assert.h>
 #include <dlfcn.h>
+#include <ctype.h>
+
 #if LUA_VERSION_NUM < 503
 #include "int64_support.h"
 #endif
@@ -32,6 +34,13 @@ __ErrorHandle:\
 return 0;\
 }})
 #define luaL_isstring(L, i) (lua_type(L,i)==LUA_TSTRING)
+#define max(a,b) ((a)>(b)?(a):(b))
+inline void FakeString::set(lua_State *L, int i){
+    pointer=lua_tolstring(L,i,(size_t*)&__size_);
+}
+inline FakeString::FakeString(lua_State *L, int i):__cap_(1){
+    pointer=lua_tolstring(L,i,(size_t*)&__size_);
+}
 
 static int javaType(lua_State *L);
 
@@ -385,7 +394,7 @@ static JavaType* checkJavaType(lua_State* L,int idx){
 }
 static void setMetaTable(lua_State* L,const RegisterKey* key){
     lua_rawgetp(L,LUA_REGISTRYINDEX,key);
-    lua_setmetatable(L,-2);
+    lua_setmetatable(L,-2 );
 }
 
 static bool newMetaTable(lua_State*L,const RegisterKey* key,const char* tname){
@@ -614,7 +623,9 @@ void ScriptContext::config(lua_State *L) {
         }
         lua_pushlightuserdata(L,context);
         lua_pushcclosure(L, javaType,1);
-        lua_setglobal(L, "type_");
+        lua_pushvalue(L,-1);
+        lua_setglobal(L, "class");
+        lua_setglobal(L, "Type");
     }
     {
         *(ThreadContext**)lua_newuserdata(L, sizeof(void*))=context;
@@ -683,9 +694,6 @@ void ScriptContext::config(lua_State *L) {
     for (auto &pair:addedMap) {
         pushAddedObject(context->env, L, pair.first.data(), pair.second);
     }
-    pushJavaType(L,context->ensureType("com.oslorde.luadroid.ClassBuilder"));
-    lua_pushvalue(L, -1);
-    lua_setglobal(L, "ClassBuilder");
 
     luaL_openlibs(L);
     luaL_requiref(L,LFS_LIBNAME,luaopen_lfs, true);
@@ -1408,7 +1416,7 @@ int javaType(lua_State *L) {
     for (int i = 1; i <= count; ++i) {
         JavaType *type;
         if (luaL_isstring(L, i)) {
-            type = context->ensureType(lua_tostring(L, i));
+            type = context->ensureType(FakeString(L, i));
             if(type== nullptr)
                 goto Error;
         } else {
@@ -1418,7 +1426,7 @@ int javaType(lua_State *L) {
                     type = context->scriptContext->ensureType(env, (jclass) objectRef->object);
                     goto Ok;
                 } else if (env->IsInstanceOf(objectRef->object, stringType)) {
-                    type = context->ensureType(JString(env, (jstring) objectRef->object));
+                    type = context->ensureType(FakeString(JString(env, (jstring) objectRef->object)));
                     if(type!= nullptr)
                         goto Ok;
                 }
@@ -1541,10 +1549,10 @@ readProxyMethods(lua_State *L, ThreadContext *context, Vector<JavaType *> &inter
     agentMethods.reserve(expectedLen);
     lua_pushnil(L);
     while (lua_next(L, -2)) {
-        if (!lua_isstring(L, -2)) {
+        if (!luaL_isstring(L, -2)) {
             TopErrorHandle("Not a string for method name=%s", luaL_tolstring(L, -2, NULL));
         }
-        FakeString methodName(lua_tostring(L, -2));
+        FakeString methodName(L, -2);
         if (strcmp(methodName.data(), "<init>") == 0) {
             TopErrorHandle("Constructor can't be override");
         }
@@ -1648,14 +1656,14 @@ int javaProxy(lua_State *L) {
     }
     auto env=context->env;
     Vector<JavaType *> curMethodTypes;
-    const char *curMethod = nullptr;
+    FakeString curMethod;
     Vector<JObject> agentMethods;
     Vector<std::unique_ptr<BaseFunction>> luaFuncs;
     std::unique_ptr<BaseFunction> defaultFunc;
     bool isLocalFunction = context->isLocalFunction();
     for (int j = i; j <= top; ++j) {
         if (luaL_isstring(L, j)) {
-            curMethod = lua_tostring(L, j);
+            curMethod.set(L, j);
             if (strcmp(curMethod, "<init>") == 0) {
                 TopErrorHandle("Constructor can't be override");
             }
@@ -1664,10 +1672,10 @@ int javaProxy(lua_State *L) {
         } else if (lua_isfunction(L, j)) {
             if (curMethod != nullptr) {
                 JavaType *matchType = main;
-                auto info = main->findMethod(env,FakeString(curMethod), false, curMethodTypes, nullptr);
+                auto info = main->findMethod(env,curMethod, false, curMethodTypes, nullptr);
                 if (info == nullptr) {
                     for (auto interface:interfaces) {
-                        info = interface->findMethod(env,FakeString(curMethod), false, curMethodTypes,
+                        info = interface->findMethod(env,curMethod, false, curMethodTypes,
                                                      nullptr);
                         if (info != nullptr) {
                             matchType = interface;
@@ -1678,7 +1686,7 @@ int javaProxy(lua_State *L) {
                 if (unlikely(info == nullptr)) {
                     TopErrorHandle("Can't find matched method "
                                            "for the No.%d method:%s", agentMethods.size(),
-                                   curMethod);
+                                   curMethod.data());
                 } else
                     agentMethods.push_back(
                             env->ToReflectedMethod(matchType->getType(), info->id, JNI_FALSE));
@@ -1791,7 +1799,7 @@ int javaUsing(lua_State*L){
     ThreadContext *context = getContext(L);
     TJNIEnv *env = context->env;
     Import *import = context->getImport();
-    if(lua_isstring(L, 1)){
+    if(luaL_isstring(L, 1)){
         const char* pack=lua_tostring(L,1);
         static jmethodID importAll= env->GetMethodID(contextClass, "importAll", "(Ljava/lang/String;)[Ljava/lang/String;");
         JString jpack= env->NewStringUTF(pack);
@@ -1921,16 +1929,18 @@ int javaCharString(lua_State *L) {
     return 1;
 }
 
-int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type,JavaType* arrayType= nullptr) {
-    jlong size = 0;
+static int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type,JavaType* arrayType= nullptr) {
     if (type->isVoid()) {
         ERROR( "Type Error:array for void.class can't be created");
     }
+
     int isnum;
-    size = lua_tointegerx(L, index++, &isnum);
+    jlong size = lua_tointegerx(L, index++, &isnum);
     if (!isnum) {
         ERROR( "Type Error: not a integer but %s", luaL_typename(L, index));
-    } else if (size > INT32_MAX || size < -1) {
+    }
+
+    if (size > INT32_MAX || size < -1) {
         ERROR( "integer overflowed");
     }
     int top = lua_gettop(L);
@@ -1960,31 +1970,146 @@ int newArray(lua_State *L, int index, ThreadContext *context, JavaType *type,Jav
     pushJavaObject(L, context, ret,arrayType);
     return 1;
 }
+
 int javaNew(lua_State *L) {
     ThreadContext *context = getContext(L);
-    JavaType *type = checkJavaType(L,1);
     auto env=context->env;
-    auto component = type->getComponentType(env);
-    if (component != nullptr) {
-        return newArray(L, 2, context, component,type);
-    } else if(!type->isPrimitive()){
-        int top=lua_gettop(L);
-        uint expectedSize = uint (top - 1);
-        JavaType* _types[expectedSize];
-        ValidLuaObject _objects[expectedSize];
-        FakeVector<JavaType *> types(_types,expectedSize);
-        FakeVector<ValidLuaObject> objects(_objects,expectedSize);
-        readArguments(L, context, types, objects, 2, top);
-        JObject obj = JObject(env, type->newObject(context,types, objects));
-        if (context->hasErrorPending()) {
-            forceRelease(obj);
-            types.release();
-            throwJavaError(L,context);
+    JavaType* type= nullptr,*component= nullptr;
+    if(luaL_isstring(L,1)){
+        SetErrorJMP();
+        FakeString des(L,1);
+        const String & desStr=des;
+        uint arr_st=desStr.find('[');
+        if(arr_st==String::npos){
+            type= context->ensureType(desStr);
+            goto TypeNew;
         }
-        pushJavaObject(L, context, obj.get(), type);
-    } else
-        ERROR("Primitive type can't make a new instance");
+        String name=desStr.substr(0,arr_st);
+        Vector<int> dims;
+        do{
+            uint close=desStr.find(']',arr_st);
+            if(close==String::npos){
+                TopErrorHandle("Bad array type:%s",des.data());
+            }
+            char* s;
+            for (++arr_st;isspace(des[arr_st]);++arr_st);
+            if(arr_st!=close){
+                if(!isdigit(des[arr_st])){
+                    BadSizeString:
+                    lua_pushlstring(L,&des.data()[arr_st],close-arr_st);
+                    TopErrorHandle("Bad array size string:%s",lua_tostring(L,-1));
+                }
+                unsigned long l=strtoul(des.data()+arr_st,&s,0);
+                if(l>INT32_MAX){
+                    TopErrorHandle("Array size out of range:%lu",l);
+                }
+                if(s[0]!=']'&&!isspace(s[0])){
+                    goto BadSizeString;
+                }
+                dims.push_back((int)l);
+            } else{
+                dims.push_back(-1);
+            }
+
+            for (arr_st=close+1;isspace(des[arr_st])&&arr_st!=des.size();++arr_st);
+            if(des[arr_st]!='['){
+                if(arr_st==des.size()){
+                    break;
+                }
+                TopErrorHandle("Bad array type string:%s",des.data());
+            }
+        }while (true);
+        int dimMax=-1;
+        for(int i=dims.size();i--;){
+            if(dims[i]!=-1){
+                if(dimMax==-1)
+                    dimMax=i;
+            }else if(dimMax!=-1) TopErrorHandle("Array dimensions must be continuous: %s",des.data());
+        }
+
+        if(dimMax==-1||dimMax==0){
+            int len=dimMax==-1?-1:dims[0];
+            lua_pushinteger(L,len);
+            if(lua_gettop(L)!=2)
+                lua_insert(L,2);
+            int squareCount=dims.size()-1;
+            name.reserve(name.length()+(squareCount)*2);
+            while (squareCount--){
+                name.append("[]");
+            }
+            component=context->ensureType(name);
+            goto TypeNew;
+        }else{
+            static jmethodID multiArrayNew;
+            if(multiArrayNew== nullptr){
+                jclass Array=context->ArrayType()->getType();
+                multiArrayNew=env->GetStaticMethodID(Array,"newInstance","(Ljava/lang/Class;[I)Ljava/lang/Object;");
+            }
+            auto dimArray=env->NewIntArray(dimMax+1);
+            void * p=env->GetPrimitiveArrayCritical(dimArray,NULL);
+            memcpy(p,&dims[0],(dimMax+1)*4);
+            env->ReleasePrimitiveArrayCritical(dimArray,p,0);
+            type=context->ensureType(name);
+            auto ret=(JObjectArray)env->CallStaticObjectMethod(context->ArrayType()->getType(),multiArrayNew,type->getType(),dimArray.get());
+            forceRelease(dims);
+            HOLD_JAVA_EXCEPTION(context,{
+                throwJavaError(L,context);
+            });
+            type=context->scriptContext->ensureType(env,env->GetObjectClass(ret));
+            component=type->getComponentType(env);
+            int len=dims[0];
+            int top=lua_gettop(L);
+            if(len==-1){
+                len=top-1;
+            }else if(len<top-1){
+                ERROR( "%d elements is too many for an array of size %d",top-1 ,len );
+            }
+            for (int i=2,max=max(top,len+1); 2 <=max; ++i) {
+                ValidLuaObject object;
+                if (!parseLuaObject( L, context, i, object)) {
+                    TopErrorHandle( "Arg unexpected for array");
+                }
+                if(checkLuaTypeNoThrow(env, L, component, object)){
+                    lua_error(L);
+                }
+                jvalue v=context->luaObjectToJValue(object,component);
+                env->SetObjectArrayElement(ret,i-2,v.l);
+                cleanArg(env,v.l,object.shouldRelease);
+            }
+            pushJavaObject(L,context,ret,type);
+        }
+    } else{
+        type = checkJavaType(L,1);
+        component = type->getComponentType(env);
+        TypeNew:
+        if (component != nullptr) {
+            return newArray(L, 2, context, component,type);
+        } else if(!type->isPrimitive()){
+            int top=lua_gettop(L);
+            uint expectedSize = uint (top - 1);
+            JavaType* _types[expectedSize];
+            ValidLuaObject _objects[expectedSize];
+            FakeVector<JavaType *> types(_types,expectedSize);
+            FakeVector<ValidLuaObject> objects(_objects,expectedSize);
+            readArguments(L, context, types, objects, 2, top);
+            JObject obj = JObject(env, type->newObject(context,types, objects));
+            if (context->hasErrorPending()) {
+                forceRelease(obj);
+                types.release();
+                throwJavaError(L,context);
+            }
+            pushJavaObject(L, context, obj.get(), type);
+        } else
+            ERROR("Primitive type can't make a new instance");
+    }
+
     return 1;
+}
+
+int javaNewArray(lua_State *L) {
+    ThreadContext *context = getContext(L);
+    JavaType *type = checkJavaType(L,1);
+    return newArray(L, 2, context, type);
 }
 
 static int javaUnBox(lua_State* L){
@@ -2090,12 +2215,6 @@ int javaIterate(lua_State* L){
     pushJavaObject(L,context,iterator);
     lua_pushinteger(L,-1);
     return 3;
-}
-
-int javaNewArray(lua_State *L) {
-    ThreadContext *context = getContext(L);
-    JavaType *type = checkJavaType(L,1);
-    return newArray(L, 2, context, type);
 }
 
 int javaToJavaObject(lua_State *L) {
@@ -2333,15 +2452,15 @@ int javaTry(lua_State *L) {
             if ((typeRef=(JavaType**)testUData(L, i, TYPE_KEY))!= nullptr&&(*typeRef)->isThrowable(env)) {
                     continue;
             } else if (luaL_isstring(L, i)) {
-                const char *thrType = lua_tostring(L, i);
-                if(strcmp(thrType, "all") == 0) {
+                FakeString thrType(L, i);
+                if(strcmp(thrType.c_str(), "all") == 0) {
                     if (catchAllIndex == 0) catchAllIndex = i;
                     else
                         ERROR("More than one catch all functions");
                 }else{
                     JavaType *type = context->ensureType(thrType);
                     if(type== nullptr||!type->isThrowable(env))
-                        ERROR("Not an exception type: %s",thrType);
+                        ERROR("Not an exception type: %s",thrType.data());
                     pushJavaType(L,type);
                     lua_replace(L,i);
                 }
@@ -2703,7 +2822,7 @@ int getFieldOrMethod(lua_State *L) {
     MemberStart:
     if(tryExistedMember(L,type,isStatic))
         return 1;
-    FakeString name(lua_tostring(L, 2));
+    FakeString name(L, 2);
     auto member=type->ensureMember(env,(const String&)name,isStatic);
     FieldArray* fieldArr=nullptr;
     bool isMethod= false;
@@ -2980,7 +3099,7 @@ int setFieldOrArray(lua_State *L) {
                    luaL_tolstring(L, 2, NULL));
     }
 
-    const FakeString name(lua_tostring(L, 2));
+    const FakeString name(L, 2);
     auto arr=type->ensureField(env,name, isStatic);
     if (arr== nullptr){
         if(!isStatic){
@@ -3055,7 +3174,7 @@ int javaObjectToString(lua_State *L) {
     auto env= context->env;
     JString str = env->CallObjectMethod(ob->object, objectToString);
     HOLD_JAVA_EXCEPTION(context,{throwJavaError(L,context);});
-    lua_pushstring(L, str);
+    lua_pushlstring(L, str,strlen(str.str()));
     return 1;
 }
 
