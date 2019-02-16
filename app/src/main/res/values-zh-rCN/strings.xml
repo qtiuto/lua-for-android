@@ -20,4 +20,9 @@
     <string name="helpordoc">帮助/文档</string>
     <string name="lua_doc">Lua文档</string>
     <string name="return_values">返回值</string>
+    <string name="root_mode">Root模式</string>
+    <string name="root_mode_ok">成功切换至Root模式</string>
+    <string name="root_mode_failed">切换Root模式失败</string>
+    <string name="root_mode_exited">已退出Root模式</string>
+    <string name="Opening">正在打开</string>
 </resources>

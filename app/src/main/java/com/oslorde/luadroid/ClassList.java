@@ -1,9 +1,18 @@
 package com.oslorde.luadroid;
 
+import com.oslorde.luadroid.ui.IClassList;
+import com.oslorde.luadroid.ui.JClass;
+import com.oslorde.luadroid.ui.RemoteObj;
+
 import java.util.*;
 
-public class ClassList {
-   static public class ClassEntry implements Comparable<ClassEntry>{
+public class ClassList implements IClassList, RemoteObj {
+    @Override
+    public Class getProxyType() {
+        return IClassList.class;
+    }
+
+    static public class ClassEntry implements Comparable<ClassEntry>{
        String name;
        List<String> classes;
 
@@ -90,6 +99,11 @@ public class ClassList {
             ret.addAll(entries[i].classes);
         }
         return ret;
+    }
+
+    @Override
+    public JClass resolveClass(String c) throws Exception {
+        return JClass.getInstance(c);
     }
 
 }

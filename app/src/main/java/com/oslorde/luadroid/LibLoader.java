@@ -1,32 +1,34 @@
 package com.oslorde.luadroid;
 
 import android.app.Application;
+import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import dalvik.system.BaseDexClassLoader;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import dalvik.system.BaseDexClassLoader;
+
 public class LibLoader {
+    private static final String LIB_DIR = "lualibs";
+
     private static Application getApplication() {
         try {
             final Method CurrentApplication = Class.forName("android.app.ActivityThread").
                     getDeclaredMethod("currentApplication");
             Application application = null;
+
             if (Build.VERSION.SDK_INT < 18) {
                 Handler handler = new Handler(Looper.getMainLooper());
                 final Application[] outA = new Application[1];
@@ -54,47 +56,62 @@ public class LibLoader {
             throw new RuntimeException("Failed to Find Application", e);
         }
     }
-
+//This function is for loading the class not from the application Loader
+//Application loader is initiated when the vm initiates after Android 7.0.
     public static void load() {
         try {
             loadLib( "luadroid",true);
             loadLib("ffi",false);
+            loadLib("socket",false);
+            loadLib("mime",false);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+
+    public static String getLibDir(Context context){
+        return new File(context.getApplicationInfo().dataDir, LIB_DIR).getPath();
+    }
+
+    public static void extractLibs(Context context, int versionCode) {
+       LibInstaller.install(context,versionCode,getLibDir(context),"lib/","assets/lua/");
+    }
+
+    private static File storedLib(ApplicationInfo info,String name){
+        File f= new File(info.dataDir, LIB_DIR + "/" +Build.CPU_ABI+"/lib"+name+".so");
+        if(f.exists())
+            return f;
+        return null;
+    }
+
     private static void loadLib(String libName,boolean load) throws Exception {
-        File dst =new File(getApplication().getCacheDir(), "lib" + libName + ".so");
+        File dst=null;
         if (isLibExtracted()) {
             String libPath = ((BaseDexClassLoader) ScriptContext.class.getClassLoader()).findLibrary(libName);
-            File src ;
+            File src;
             if (libPath!=null&&(src= new File(libPath)).exists())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Files.copy(src.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                } else {
-                    try( FileInputStream in = new FileInputStream(src);
-                            FileOutputStream out = new FileOutputStream(dst)) {
-                        in.getChannel().transferTo(0, src.length(), out.getChannel());
-                    } catch (Exception ignored){ }
-                }
-        } else {
+                dst=src;
+        }
+        if(dst==null){
             Application application = getApplication();
             ApplicationInfo info = application.getPackageManager().getApplicationInfo(BuildConfig.APPLICATION_ID, 0);
-            ZipFile zipFile = new ZipFile(info.sourceDir);
-            ZipEntry entry = zipFile.getEntry("lib/" + Build.CPU_ABI + "/lib" + libName + ".so");
-            InputStream stream = zipFile.getInputStream(entry);
-            byte[] bytes = new byte[1024];
-            int read;
-            FileOutputStream out = new FileOutputStream(dst);
-            while ((read = stream.read(bytes)) > 0) {
-                out.write(bytes, 0, read);
+            if((dst=storedLib(info,libName))==null) {
+                dst = new File(getApplication().getCacheDir(), "lib" + libName + ".so");
+                try (ZipFile zipFile = new ZipFile(info.sourceDir);){
+                    ZipEntry entry = zipFile.getEntry("lib/" + Build.CPU_ABI + "/lib" + libName + ".so");
+                    byte[] bytes = new byte[1024];
+                    int read;
+                    try (InputStream stream = zipFile.getInputStream(entry);
+                         FileOutputStream out = new FileOutputStream(dst);){
+                        while ((read = stream.read(bytes)) > 0) {
+                            out.write(bytes, 0, read);
+                        }
+                    }
+                }
+                dst.deleteOnExit();
             }
-            stream.close();
-            out.close();
-            zipFile.close();
         }
-        dst.deleteOnExit();
         if(load){
             createNewNativeDir(dst.getParentFile());
             System.loadLibrary(libName);
@@ -131,10 +148,6 @@ public class LibLoader {
             System.arraycopy(orig,0,out,1,Array.getLength(orig));
             nativeLibraryPathElements.set(pathList,out);
         }
-
-        /*if(pathClassLoader.findLibrary("lua")==null){
-            File file = new File(path, System.mapLibraryName("lua"));
-        }*/
     }
     private static Object getPathList(Object obj) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException {
         return getField(obj, Class.forName("dalvik.system.BaseDexClassLoader"), "pathList");

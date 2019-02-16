@@ -20,4 +20,9 @@
     <string name="helpordoc">Help/Doc</string>
     <string name="lua_doc">Lua Doc</string>
     <string name="return_values">Retrun Values</string>
+    <string name="root_mode">Root Mode</string>
+    <string name="root_mode_ok">Switched to root mode</string>
+    <string name="root_mode_failed">Failed to switch to root mode</string>
+    <string name="root_mode_exited">Root mode exited</string>
+    <string name="Opening">Opening</string>
 </resources>

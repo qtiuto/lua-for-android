@@ -11,20 +11,43 @@ import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
-import android.view.*;
-import android.widget.*;
+import android.view.ActionMode;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewGroup.LayoutParams;
+import android.widget.AutoCompleteTextView;
+import android.widget.BaseAdapter;
+import android.widget.EditText;
+import android.widget.Filter;
+import android.widget.Filterable;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
 import com.myopicmobile.textwarrior.android.FreeScrollingTextField;
 import com.myopicmobile.textwarrior.android.YoyoNavigationMethod;
-import com.myopicmobile.textwarrior.common.*;
-import com.oslorde.luadroid.ClassList;
+import com.myopicmobile.textwarrior.common.ColorScheme;
+import com.myopicmobile.textwarrior.common.ColorSchemeDark;
+import com.myopicmobile.textwarrior.common.ColorSchemeLight;
+import com.myopicmobile.textwarrior.common.Document;
+import com.myopicmobile.textwarrior.common.DocumentProvider;
+import com.myopicmobile.textwarrior.common.LanguageLua;
+import com.myopicmobile.textwarrior.common.Lexer;
+import com.myopicmobile.textwarrior.common.LinearSearchStrategy;
+import com.myopicmobile.textwarrior.common.ReadTask;
 import com.oslorde.luadroid.R;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.*;
-import java.util.*;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class LuaEditor extends FreeScrollingTextField {
 
@@ -247,7 +270,7 @@ public class LuaEditor extends FreeScrollingTextField {
     }
 
 
-    public void startLibrarySearchMode(ClassList classList){
+    public void startLibrarySearchMode(IClassList classList){
         lastLibraryMode = new ActionMode.Callback() {
             AutoCompleteTextView mText;
             List<String> classes=Collections.emptyList();
@@ -280,9 +303,9 @@ public class LuaEditor extends FreeScrollingTextField {
                         convertView.findViewById(R.id.go).setOnClickListener(v -> {
                             String clazz= (String) v.getTag();
                             try {
-                                Class cl=Class.forName(clazz);
+                                JClass cl=classList.resolveClass(clazz);
                                 startClassMode(cl);
-                            } catch (ClassNotFoundException e) {
+                            } catch (Exception e) {
                                 Toast.makeText(getContext(),R.string.not_found,Toast.LENGTH_SHORT).show();
                             }
                         });
@@ -373,51 +396,15 @@ public class LuaEditor extends FreeScrollingTextField {
         startActionMode(lastLibraryMode);
     }
 
-    private static void binarySearchMember( Member[] inList,List<Member> outList,String prefix){
-        int index=Arrays.binarySearch(inList, prefix,((o1, o2) ->
-            ((Member)o1).getName().startsWith((String) o2)?0:
-                    ((Member)o1).getName().compareTo((String) o2)
-        ));
-        if(index<0) return;
-        int start;
-        for (start=index;start>=0;--start){
-            if(!inList[start].getName().startsWith(prefix)){
-                break;
-            }
-        }
-        ++start;
-        int end;
-        int len=inList.length;
-        for (end=index+1;end<len;++end){
-            if(!inList[end].getName().startsWith(prefix)){
-                break;
-            }
-        }
-        outList.addAll(Arrays.asList(inList).subList(start, end));
-    }
 
-    private void startClassMode(Class c){
+
+    private void startClassMode(JClass c){
         final boolean isPublicClass = Modifier.isPublic(c.getModifiers());
         startActionMode(new ActionMode.Callback() {
             AutoCompleteTextView mText;
-            Constructor[] constructors;
-            Method[] methods;
-            Field[] fields;
-            List<Member> members =Collections.emptyList();
-            {
-                constructors=c.getDeclaredConstructors();
-                Set<Field> fields=new HashSet<>();
-                Set<Method> methods=new HashSet<>();
-                Class cl=c;
-                do{
-                    Collections.addAll(fields,cl.getDeclaredFields());
-                    Collections.addAll(methods,cl.getDeclaredMethods());
-                }while ((cl=cl.getSuperclass())!=null);
-                this.methods=methods.toArray(new Method[methods.size()]);
-                this.fields=fields.toArray(new Field[fields.size()]);
-                Arrays.sort(this.methods,  (o1, o2) -> o1.getName().compareTo(o2.getName()));
-                Arrays.sort(this.fields,  (o1, o2) -> o1.getName().compareTo(o2.getName()));
-            }
+
+            List<JMember> members =Collections.emptyList();
+
             class Adp extends BaseAdapter implements Filterable {
                 LayoutInflater inflater;
                 List<String> memberTextList;
@@ -428,8 +415,7 @@ public class LuaEditor extends FreeScrollingTextField {
 
                 @Override
                 public Object getItem(int position) {
-                    Member member = members.get(position);
-                    return member instanceof Constructor?member.getDeclaringClass().getSimpleName():member.getName();
+                    return  members.get(position).getName();
                 }
 
                 @Override
@@ -449,92 +435,7 @@ public class LuaEditor extends FreeScrollingTextField {
                     return convertView;
                 }
 
-                private String simpleGenericType(Type type){
-                    if(type instanceof Class) return ((Class) type).getSimpleName();
-                    else if(type instanceof ParameterizedType){
-                        StringBuilder builder=new StringBuilder();
-                        builder.append(simpleGenericType(((ParameterizedType) type).getRawType()));
-                        Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
-                        if(actualTypeArguments.length>0){
-                            builder.append('<');
-                            for (Type t: actualTypeArguments){
-                                builder.append(simpleGenericType(t)).append(',');
-                            }
-                            builder.setCharAt(builder.length()-1,'>');
-                        }
-                        return builder.toString();
-                    }else if(type instanceof TypeVariable){
-                        StringBuilder builder=new StringBuilder();
-                        builder.append(((TypeVariable) type).getName());
-                        Type[] bounds = ((TypeVariable) type).getBounds();
-                        if(bounds.length>0){
-                            builder.append(" extends ");
-                            for (Type t: bounds){
-                                builder.append(simpleGenericType(t)).append('&');
-                            }
-                            builder.deleteCharAt(builder.length()-1);
-                        }
-                        return builder.toString();
-                    }else if(type instanceof WildcardType){
-                        StringBuilder builder=new StringBuilder();
-                        builder.append('?');
-                        Type[] bounds = ((WildcardType) type).getUpperBounds();
-                        if(bounds.length>0){
-                            builder.append(" extends ");
-                            for (Type t: bounds){
-                                builder.append(simpleGenericType(t)).append('&');
-                            }
-                            builder.deleteCharAt(builder.length()-1);
-                        }
-                        bounds=((WildcardType) type).getLowerBounds();
-                        if(bounds.length>0){
-                            builder.append(" super ");
-                            for (Type t: bounds){
-                                builder.append(simpleGenericType(t)).append('&');
-                            }
-                            builder.deleteCharAt(builder.length()-1);
-                        }
-                        return builder.toString();
-                    }else if(type instanceof GenericArrayType){
-                        return simpleGenericType(((GenericArrayType) type).getGenericComponentType())+"[]";
-                    }
-                    System.out.println("Type Not Found for "+type);
-                    return "Object";
-                }
 
-
-                private String getMemberDes(Member m){
-
-                    int mod = m.getModifiers();
-                    if(m instanceof Field){
-                        Type fieldType = ((Field) m).getGenericType();
-                        return ((mod == 0) ? "" : (Modifier.toString(mod) + ' '))
-                                + m.getName()+ ':'+ simpleGenericType(fieldType) ;
-                    }else if(m instanceof Method){
-                        StringBuilder builder=new StringBuilder();
-                        if(mod!=0) builder.append( Modifier.toString(mod)).append(' ');
-                        builder.append(m.getName()).append('(');
-                        for (Type type:((Method) m).getGenericParameterTypes()){
-                            builder.append(simpleGenericType(type)).append(", ");
-                        }
-                        if(builder.charAt(builder.length()-1)!='(')
-                            builder.delete(builder.length()-2,builder.length());
-                        builder.append(')');
-                        return builder.append(':').append(simpleGenericType(((Method) m).getReturnType())).toString();
-                    }else if(m instanceof Constructor){
-                        StringBuilder builder=new StringBuilder();
-                        if(mod!=0) builder.append( Modifier.toString(mod)).append(' ');
-                        builder.append(simpleGenericType(m.getDeclaringClass())).append('(');
-                        for (Type type:((Constructor) m).getGenericParameterTypes()){
-                            builder.append(simpleGenericType(type)).append(", ");
-                        }
-                        if(builder.charAt(builder.length()-1)!='(')
-                             builder.delete(builder.length()-2,builder.length());
-                        builder.append(')');
-                        return builder.toString();
-                    }
-                    throw new UnsupportedOperationException();
-                }
 
                 @Override
                 public Filter getFilter() {
@@ -547,12 +448,8 @@ public class LuaEditor extends FreeScrollingTextField {
                                 results.values = Collections.emptyList();
                             } else {
                                 try {
-                                    List<Member> members = new ArrayList<>();
+                                    List<JMember> members =c.filterMembers(constraint.toString());
                                     results.values = members;
-                                    if (c.getSimpleName().startsWith(constraint.toString()))
-                                        Collections.addAll(members, constructors);
-                                    binarySearchMember(fields, members, constraint.toString());
-                                    binarySearchMember(methods, members, constraint.toString());
                                     results.count = members.size();
                                 }catch (Exception e){
                                     e.printStackTrace();
@@ -565,10 +462,10 @@ public class LuaEditor extends FreeScrollingTextField {
                         @Override
                         protected void publishResults(CharSequence constraint, FilterResults results) {
                             if(results.values==null) results.values=Collections.emptyList();
-                            members= (List<Member>) results.values;
+                            members= (List<JMember>) results.values;
                             ArrayList<String> memberTexts=new ArrayList<>(members.size());
-                            for (Member member : members) {
-                                memberTexts.add(getMemberDes(member));
+                            for (JMember member : members) {
+                                memberTexts.add(member.getDes());
                             }
                             memberTextList=memberTexts;
                             if(results.count>0){
@@ -585,10 +482,10 @@ public class LuaEditor extends FreeScrollingTextField {
                 mText.setAdapter(new Adp());
                 mText.setThreshold(1);
                 mText.setOnItemClickListener((parent, view, position, id) ->{
-                    Member member=members.get(position);
-                    if(member instanceof Field){
+                    JMember member=members.get(position);
+                    if(member .isField()){
                         paste(member.getName());
-                    }else if(member instanceof Constructor){
+                    }else if(member .isConstructor()){
                         paste("()");
                         moveCaretLeft();
                     }else{
@@ -667,8 +564,7 @@ public class LuaEditor extends FreeScrollingTextField {
 
             @Override
             public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
-               
-                return false;
+                 return false;
             }
 
             @Override
@@ -802,8 +698,10 @@ public class LuaEditor extends FreeScrollingTextField {
                 return;
             }
         }
-        try {
-            new FileOutputStream(filename).write(getText().toString().getBytes());
+        try (FileOutputStream stream = new FileOutputStream(filename)){
+            stream.write(getText().toString().getBytes());
+            stream.flush();
+            stream.getFD().sync();
         } catch (IOException e) {
             e.printStackTrace();
         }

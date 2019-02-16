@@ -1,5 +1,6 @@
 package com.oslorde.luadroid.ui;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
@@ -9,20 +10,37 @@ import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.StrictMode;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.util.Log;
-import android.view.*;
+import android.view.Gravity;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
-import com.oslorde.luadroid.ClassList;
-import com.oslorde.luadroid.R;
-import com.oslorde.luadroid.ScriptContext;
+import android.widget.Toast;
 
+import com.oslorde.luadroid.BuildConfig;
+import com.oslorde.luadroid.DefaultScriptContext;
+import com.oslorde.luadroid.LibLoader;
+import com.oslorde.luadroid.Logger;
+import com.oslorde.luadroid.R;
+import com.oslorde.luadroid.TransmitClient;
+
+import java.io.DataInputStream;
 import java.io.File;
-import java.io.OutputStream;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.Random;
 
 
 public class MainActivity extends Activity {
@@ -33,17 +51,30 @@ public class MainActivity extends Activity {
         System.loadLibrary("luadroid");
     }
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
     LuaEditor editor;
-    ScriptContext context = new ScriptContext();
-    ClassList classList;
+    IScriptContext context;
+    IScriptContext old;
+    IClassList classList;
     LinearLayout psBar;
     String[] ps = {"(", ")", "[", "]", "{", "}", "\"", "=", ":", ".", ",", "_", "+", "-", "*", "/", "\\", "%", "#", "^", "$", "?", "<", ">", "~", ";", "'"};
     CharSequence result;
     private PopupWindow popupWindow;
+    public static final String[] PRIMITIVE_TYPES = new String[]{"int", "long", "short", "byte", "double", "float"};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Intent intent=getIntent();
+        int port=intent.getIntExtra("remotePort",0);
+        if(port>0){
+            try {
+                context=new TransmitClient(port);
+            } catch (IOException e) {
+                finish();
+            }
+        }else context=new DefaultScriptContext();
         if(editor==null){
             setContentView(R.layout.main);
             editor = findViewById(R.id.editor);
@@ -65,20 +96,11 @@ public class MainActivity extends Activity {
                 });
                 psBar.addView(btn);
             }
-            String[] primitiveTypes = {"int", "long", "short", "byte", "double", "float"};
-            editor.addNames(primitiveTypes);
+            editor.addNames(PRIMITIVE_TYPES);
             context.addToLua("context", this);
-            StringBuilder scriptBuilder=new StringBuilder();
-            for (String type:primitiveTypes){
-                scriptBuilder.append(type).append('=')
-                        .append(" type_ '").append(type).append("'\n");
-            }
-            context.run(scriptBuilder.toString());
-            context.run("package.path='./?.lua;./?/init.lua;/sdcard/?.lua;/sdcard/?/init.lua'\n" +
-                    "package.cpath='./?.so'");
+            configScriptContext();
         }
 
-        Intent intent=getIntent();
         Uri uri=intent.getData();
         String file=null;
         if(uri!=null){
@@ -93,12 +115,30 @@ public class MainActivity extends Activity {
                     new File(Environment.getExternalStorageDirectory().getPath(),"test.lua").getPath())).getAbsolutePath();
         }
         loadFile(file);
+        new Thread(()->{
+            LibLoader.extractLibs(this, BuildConfig.VERSION_CODE);
+        }).start();
     }
 
+    private void configScriptContext() {
+        StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder(StrictMode.getThreadPolicy()).permitNetwork().build());
+        StringBuilder scriptBuilder = new StringBuilder();
+        for (String type : PRIMITIVE_TYPES) {
+            scriptBuilder.append(type).append('=')
+                    .append(" class '").append(type).append("'\n");
+        }
+        context.run(scriptBuilder.toString());
+        context.run("package.path='./?.lua;./?/init.lua;/sdcard/?.lua;/sdcard/?/init.lua;" +
+                LibLoader.getLibDir(this) + "/?.lua" + "'\npackage.cpath='./?.so;./lib?.so;lib?.so;?.so'");
+
+
+    }
+
+    @SuppressLint("ApplySharedPref")
     private void loadFile(String path) {
         if(path==null) return;
         editor.open(path);
-        getPreferences(0).edit().putString(LAST,path).apply();
+        getPreferences(0).edit().putString(LAST,path).commit();
     }
 
     @Override
@@ -107,68 +147,13 @@ public class MainActivity extends Activity {
         return super.onCreateOptionsMenu(menu);
     }
 
+
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.run:
-                SpannableStringBuilder string = new SpannableStringBuilder();
-                final int textColor = 0xFF404040;
-                try {
-                    OutputStream out = new OutputStream() {
-                        @Override
-                        public void write(int b) {
-                        }
-
-                        @Override
-                        public void write(byte[] b) {
-                            int start = string.length();
-                            string.append(new String(b));
-                            string.setSpan(new ForegroundColorSpan(textColor), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-
-                        }
-                    };
-                    OutputStream err = new OutputStream() {
-                        @Override
-                        public void write(int b) {
-                        }
-
-                        @Override
-                        public void write(byte[] b) {
-                            int start = string.length();
-                            string.append(new String(b));
-                            string.setSpan(new ForegroundColorSpan(Color.RED), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-                        }
-                    };
-                    context.setLogger(out, err);
-                    Object[] results = context.run(editor.getText().toString());
-                    context.flushLog();
-                    if (results != null) {
-                        StringBuilder res = new StringBuilder();
-                        res.append(getString(R.string.return_values)).append(":\n");
-                        if(results.length==1){
-                            res.append(results[0]);
-                        }else {
-                            for (int i = 0, len = results.length; i < len; ++i) {
-                                res.append(i + 1).append(". ").append(results[i]).append('\n');
-                            }
-                            res.deleteCharAt(res.length() - 1);
-                        }
-
-                        int start = string.length();
-                        string.append(res);
-                        string.setSpan(new ForegroundColorSpan(textColor), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-                    }
-
-                } catch (Throwable e) {
-                    context.flushLog();
-                    int start = string.length();
-                    string.append(Log.getStackTraceString(e));
-                    string.setSpan(new ForegroundColorSpan(Color.RED), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-                }
-                result = string;
-                context.setLogger(null, null);
-                save();
-                showResult();
+                runCode();
                 break;
             case R.id.redo:
                 editor.redo();
@@ -184,7 +169,7 @@ public class MainActivity extends Activity {
                 break;
             case R.id.search_library:
                 if(classList==null)
-                    classList=new ClassList(context);
+                    classList=context.getClasses();
                 editor.startLibrarySearchMode(classList);
                 break;
             case R.id.view_result:
@@ -208,28 +193,88 @@ public class MainActivity extends Activity {
             }
             break;
             case R.id.help:
-                startActivity(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("https://github.com/qtiuto/lua-for-android")));
+                startActivity(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("https://github.com/qtiuto/lua-for-android/wiki")));
                 break;
             case R.id.lua_doc:
                 startActivity(new Intent().setAction(Intent.ACTION_VIEW).setData(Uri.parse("http://www.lua.org/manual/5.3/manual.html")));
+                break;
+            case R.id.root_mode:{
+                if(item.isChecked()){
+                    ((TransmitClient)(context)).close();
+                    context=old;
+                    item.setChecked(false);
+                    Toast.makeText(this,
+                            R.string.root_mode_exited,Toast.LENGTH_SHORT).show();
+                }else {
+                    new Thread(()->{
+                        boolean switched=startRootMode();
+                        handler.post(()->{
+                            if(switched) item.setChecked(true);
+                            Toast.makeText(this,switched?R.string.root_mode_ok:
+                                    R.string.root_mode_failed,Toast.LENGTH_SHORT).show();
+                        });
+                    }).start();
+
+                }
+
+            }
 
         }
         return super.onOptionsItemSelected(item);
     }
 
+    private void runCode() {
+        SpannableStringBuilder string = new SpannableStringBuilder();
+        final int textColor = 0xFF404040;
+        try {
+            Logger out = (log, r) -> {
+                int start = string.length();
+                string.append(log);
+                string.setSpan(new ForegroundColorSpan(textColor), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+            };
+            Logger err = (log,r) -> {
+                int start = string.length();
+                string.append(log);
+                string.setSpan(new ForegroundColorSpan(Color.RED), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+            };
+            context.setLogger(out, err);
+            String result= context.run(editor.getText().toString());
+            context.flushLog();
+            if (result != null) {
+                StringBuilder res = new StringBuilder();
+                res.append(getString(R.string.return_values)).append(":\n").append(result);
+                int start = string.length();
+                string.append(res);
+                string.setSpan(new ForegroundColorSpan(textColor), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+            }
+
+        } catch (Throwable e) {
+            int start = string.length();
+            string.append(Log.getStackTraceString(e));
+            string.setSpan(new ForegroundColorSpan(Color.RED), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+        }
+        result = string;
+        save();
+        showResult();
+        context.setLogger(null, null);
+    }
+
     private void showResult() {
-        if (popupWindow != null)
-            popupWindow.dismiss();
-        View v = View.inflate(this, R.layout.result, null);
-        TextView resultText = v.findViewById(R.id.result);
-        resultText.setText(result);
-        popupWindow = new PopupWindow(v, ViewGroup.LayoutParams.MATCH_PARENT, getResources().getDisplayMetrics().heightPixels >> 1);
-        popupWindow.setTouchable(true);
-        popupWindow.setFocusable(false);
-        popupWindow.setOutsideTouchable(true);
-        popupWindow.setBackgroundDrawable(new ColorDrawable(Color.WHITE));
-        popupWindow.showAtLocation(editor, Gravity.BOTTOM, 0, 0);
-        popupWindow.setOnDismissListener(() -> popupWindow = null);
+        handler.post(()->{
+            if (popupWindow != null)
+                popupWindow.dismiss();
+            View v = View.inflate(this, R.layout.result, null);
+            TextView resultText = v.findViewById(R.id.result);
+            resultText.setText(result);
+            popupWindow = new PopupWindow(v, ViewGroup.LayoutParams.MATCH_PARENT, getResources().getDisplayMetrics().heightPixels >> 1);
+            popupWindow.setTouchable(true);
+            popupWindow.setFocusable(false);
+            popupWindow.setOutsideTouchable(true);
+            popupWindow.setBackgroundDrawable(new ColorDrawable(Color.WHITE));
+            popupWindow.showAtLocation(editor, Gravity.BOTTOM, 0, 0);
+            popupWindow.setOnDismissListener(() -> popupWindow = null);
+        });
+
     }
 
     @Override
@@ -244,5 +289,40 @@ public class MainActivity extends Activity {
 
     private void save() {
         editor.save(editor.lastFile());
+    }
+
+    private boolean startRootMode(){
+        try (ServerSocket serverListener= getServerListener()){
+            String apkPath=getApplicationInfo().sourceDir;
+            final String cmd="app_process -Djava.class.path="+apkPath+" -Djava.library.path="+System.getProperty("java.library.path")+
+                    ":"+getApplicationInfo().nativeLibraryDir +" "
+                    +new File(apkPath).getParent()+" com.oslorde.luadroid.RootServer "+serverListener.getLocalPort();
+            Runtime.getRuntime().exec("su -c "+cmd);
+            try(Socket socket=serverListener.accept();
+                DataInputStream in=new DataInputStream(socket.getInputStream())){
+                int remotePort=in.readInt();
+                old=context;
+                context=new TransmitClient(remotePort);
+            }
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+
+    }
+
+    private ServerSocket getServerListener()  {
+        int st=7899;
+        Random random=new Random();
+        for (;;){
+            int port=Math.abs((random.nextInt()&0xffff)-st)+st;
+            try {
+                return new ServerSocket(port);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
     }
 }

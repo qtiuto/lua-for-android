@@ -43,4 +43,6 @@ dependencies {
     //implementation(name: 'jna', ext: 'aar')
     implementation project(':lib')
     implementation project(':luaffi')
+    implementation project(':luasocket')
+    implementation project(':luasec')
 }

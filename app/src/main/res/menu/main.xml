@@ -33,6 +33,10 @@
     <item android:id="@+id/save"
           android:showAsAction="ifRoom|collapseActionView"
           android:title="@string/save"/>
+    <item android:id="@+id/root_mode"
+        android:checkable="true"
+        android:checked="false"
+        android:title="@string/root_mode"/>
     <item android:id="@+id/help"
           android:title="@string/helpordoc"/>
     <item android:id="@+id/lua_doc"
