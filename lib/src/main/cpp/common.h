@@ -56,14 +56,24 @@ inline T ptrTypeJudge(T*) {
     abort();
 }
 #define PTR_TYPE(v) decltype(ptrTypeJudge(v))
-
+struct lua_State;
 class FakeString {
     String::size_type __cap_;
     String::size_type __size_;
     const char *pointer;
 public:
+
     FakeString(const char *s) : __cap_(1), __size_(strlen(s)), pointer(s) {
         //__cap_=(__size_&1)==1?__size_:__size_+1;
+    }
+    FakeString():__cap_(1){}
+
+    FakeString(lua_State* L,int i);
+
+    void set(lua_State* L,int i);
+
+    String::size_type size(){
+        return __size_;
     }
 
     operator const String &() const {
@@ -80,6 +90,9 @@ public:
 
     const char * * operator&() {
         return &pointer;
+    }
+    char operator[](String::size_type i) {
+        return pointer[i];
     }
 };
 template <char s1,char s2>

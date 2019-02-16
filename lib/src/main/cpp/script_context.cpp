@@ -272,26 +272,49 @@ inline JClass ThreadContext::getTypeNoCheck(const String &className) const {
     return type;
 }
 
-inline JavaType* ThreadContext::ensureShortArrayType(const char *typeName){
-    uint32_t nameLen= uint32_t(strchr(typeName, '[') - typeName);
-    String trueType(typeName,nameLen);
-    if(trueType=="int") trueType="I";
-    else if(trueType=="byte") trueType="B";
-    else if(trueType=="char") trueType="C";
-    else if(trueType=="float") trueType="F";
-    else if(trueType=="boolean") trueType="Z";
-    else if(trueType=="long") trueType="J";
-    else if(trueType=="double") trueType="D";
-    else if(trueType=="short") trueType="S";
-    else{
-        for (auto &&pack:import->packages) {
-            String full(pack + trueType);
-            if(findClass(full)!= nullptr){
-                trueType='L'+full+';';
-                break;
-            }
+inline JavaType* ThreadContext::ensureArrayType(const char *typeName){
+    auto sq_st = strchr(typeName, '[');
+    if(unlikely(sq_st==NULL)){
+        return nullptr;
+    }
+    uint32_t nameLen= uint32_t(sq_st - typeName);
+    do{
+        if(sq_st[0]!='['||sq_st[1]!=']'){
+            return nullptr;
+        }
+        sq_st+=2;
+    }while (*sq_st!=0);
+    String trueType;
+#define liteq(literal,str,code)  if(memcmp(str,literal "",sizeof(literal "")-1)==0){code}
+    switch (nameLen){
+        case 3:
+            liteq("int",typeName,{trueType="I"; goto Type_End;})
+            break;
+        case 4:
+            liteq("byte",typeName,{trueType="B"; goto Type_End;})
+            liteq("char",typeName,{trueType="C"; goto Type_End;})
+            liteq("long",typeName,{trueType="J"; goto Type_End;})
+            break;
+        case 5:
+            liteq("float",typeName,{trueType="F"; goto Type_End;})
+            liteq("short",typeName,{trueType="S"; goto Type_End;})
+        case 6:
+            liteq("double",typeName,{trueType="D"; goto Type_End;})
+            break;
+        case 7:
+            liteq("boolean",typeName,{trueType="Z"; goto Type_End;})
+        default:
+            break;
+    }
+    trueType.append(typeName,nameLen);
+    for (auto &&pack:import->packages) {
+        String full(pack + trueType);
+        if(findClass(full)!= nullptr){
+            trueType='L'+full+';';
+            break;
         }
     }
+    Type_End:
     uint32_t arrDepth=(uint32_t(strlen(typeName))-nameLen)>>1;
     String legalName(trueType.size()+arrDepth,'[');
     memcpy(&legalName[arrDepth],trueType.data(),trueType.length()+1);
@@ -317,42 +340,55 @@ JClass ThreadContext::findClass(String& className)  {
         return JClass();
     return getTypeNoCheck(className);
 }
-JavaType *ThreadContext::ensureType(const char *typeName) {
+JavaType *ThreadContext::ensureType(const String &typeStr) {
+    const char* typeName=typeStr.data();
 #define MatchPrimitive(type)\
-    ({if(strcmp(typeName,#type)==0){\
+    ({if(memcmp(typeName,#type,sizeof(#type)-1)==0){\
         return scriptContext->type##Class;\
     }})
-
-    MatchPrimitive(byte);
-    MatchPrimitive(int);
-    MatchPrimitive(void);
-    MatchPrimitive(boolean);
-    MatchPrimitive(long);
-    MatchPrimitive(double);
-    MatchPrimitive(char);
-    MatchPrimitive(float);
-    MatchPrimitive(short);
-
+    switch (typeStr.size()){
+        case 3:
+            MatchPrimitive(int);
+            break;
+        case 4:
+            MatchPrimitive(byte);
+            MatchPrimitive(long);
+            MatchPrimitive(char);
+            MatchPrimitive(void);
+            break;
+        case 5:
+            MatchPrimitive(float);
+            MatchPrimitive(short);
+            break;
+        case 6:
+            MatchPrimitive(double);
+            break;
+        case 7:
+            MatchPrimitive(boolean);
+        default:
+            break;
+    }
 
     JClass type;
+    if(typeName[typeStr.length()-1]==']'){
+        return ensureArrayType(typeName);
+    }
     if (strchr(typeName, '.') == nullptr&&typeName[0]!='[') {
         if (strchr(typeName, '/') != nullptr) return nullptr;
         Import *import = getImport();
-        auto&& iter = import->stubbed.find(FakeString(typeName));
+        auto&& iter = import->stubbed.find(typeStr);
         if (iter != nullptr) return iter->second.type;
-        if(typeName[strlen(typeName)-1]==']'){
-            return ensureShortArrayType(typeName);
-        }
+
         for (auto &&pack:import->packages) {
-            String full(pack + typeName);
+            String full(pack + typeStr);
             type = findClass(full);
             if(type== nullptr) continue;
             JavaType* ret= scriptContext->ensureType(env, type);
-            import->stubbed[typeName]={ret,DeleteOrNotString(pack.data())};
+            import->stubbed[typeStr]={ret,DeleteOrNotString(pack.data())};
             return ret;
         }
     }
-    String qul = typeName;
+    String qul(typeStr);
     type = findClass(qul);
     if (type== nullptr) {
         return nullptr;
@@ -520,7 +556,13 @@ JavaType *ThreadContext::MapType() {
     }
     return scriptContext->HashMapClass;
 }
-
+JavaType *ThreadContext::ArrayType(){
+    if (scriptContext->ArrayClass == nullptr) {
+        scriptContext->ArrayClass = scriptContext->
+                ensureType(env,env->FindClass("java/lang/reflect/Array"));
+    }
+    return scriptContext->ArrayClass;
+}
 JavaType *ThreadContext::FunctionType() {
     if (scriptContext->FunctionClass == nullptr) {
         scriptContext->FunctionClass = scriptContext->
