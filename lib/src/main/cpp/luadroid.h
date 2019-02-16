@@ -73,7 +73,7 @@ private:
     jthrowable pendingJavaError;
     void* storage[(int)ContextStorage::LEN];
     inline JClass getTypeNoCheck(const String &className) const;
-    inline JavaType* ensureShortArrayType(const char *typeName) ;
+    inline JavaType* ensureArrayType(const char *typeName) ;
 public:
 
     template <typename T>
@@ -143,7 +143,7 @@ public:
 
     JClass findClass(String& str)  ;
 
-    JavaType *ensureType(const char *typeName);
+    JavaType *ensureType(const String &typeName);
     jobject proxy(JavaType *main, Vector<JavaType *> *interfaces,
                   const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
                   BaseFunction* defaultFunc= nullptr,
@@ -155,6 +155,8 @@ public:
     JavaType *MapType();
 
     JavaType *FunctionType();
+
+    JavaType *ArrayType();
 
     bool isLocalFunction();
 
@@ -203,6 +205,8 @@ class ScriptContext {
 
     JavaType *HashMapClass = nullptr;
     JavaType *FunctionClass = nullptr;
+    JavaType *ArrayClass = nullptr;
+
     jweak outLogger = nullptr;
     jweak errLogger = nullptr;
     char16_t * javaLogBuffer= nullptr;
