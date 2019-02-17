@@ -44,19 +44,20 @@ static void compile_extern_jump(struct jit* jit, lua_State* L, cfunction func, u
 |.define DATA,x20
 |.define L_ARG,x21
 |.macro load64, reg, val
-| ldr reg, >5
-| b >6
-|5:
-|.long64 val
-|6:
+//| ldr reg, >5
+//| b >6
+//|5:
+//|.long64 val
+//|6:
+| mov reg, #(unsigned short)(val)
+| movk reg, #(((unsigned int)(val))>>16), lsl #16
+| movk reg, #(unsigned short)((unsigned long)(val)>>32), lsl #32
+| movk reg, #(unsigned short)((unsigned long)(val)>>48), lsl #48
 |.endmacro
 
 |.macro load32, reg, val
-| ldr reg, >5
-| b >6
-|5:
-|.long val
-|6:
+| mov reg, #(unsigned short)(val)
+| movk reg, #(((unsigned int)(val))>>16), lsl #16
 |.endmacro
 
 |.macro lcall, func
@@ -305,7 +306,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
             case INTPTR_TYPE:
                 lua_rawseti(L, -2, ++num_upvals); /* mt */
 				
-                | load64 w2, mt
+                | load64 x2, mt
                 | mov w1, wzr
                 | lcall extern push_cdata
                 load_int(Dst,&regs);
