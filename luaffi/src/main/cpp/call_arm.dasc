@@ -58,10 +58,8 @@ static void compile_extern_jump(struct jit* jit, lua_State* L, cfunction func, u
 |.define DATA, r6
 
 |.macro load32, reg, val
-| ldr reg, [pc]
-| b >5
-|.long val
-|5:
+| movw reg, #(unsigned short)(val)
+| movt reg, #(((unsigned int)(val))>>16)
 |.endmacro
 
 |.macro lcall, func
@@ -75,6 +73,7 @@ void compile_globals(struct jit* jit, lua_State* L)
 }
 
 typedef struct stack_info{
+	int extra;
 	int int_off;
 	int stack_off;
 	int float_size;
@@ -108,7 +107,7 @@ typedef struct reg_info{
 #define set_bit(x,b) (x=((x)|(1<<(b)))) 
 #define FIX_ALIGN(x,al) \
 	if(!ALIGNED((x),al)){\
-		ROUND_UP(x,al);\
+		x=ROUND_UP(x,al);\
 	}
 static ALWAYS_INLINE bool is_float_sealed(reg_info* regs){
 #if ARM_HF
@@ -329,7 +328,7 @@ static void load_stack(struct jit* Dst,stack_info* st,int size,int align){
 static void load_int(struct jit* Dst,stack_info* st,int size,int align){
 	FIX_ALIGN(st->int_off,align);
 	if(st->int_off<MAX_REGS*4){
-		load_reg(Dst,st->int_off,size);
+		load_reg(Dst,st->int_off+st->extra,size);
 		st->int_off+=size;
 	}else{
 		load_stack(Dst,st,size,align);
@@ -343,18 +342,24 @@ static void load_float(struct jit* Dst,stack_info* st,int size,int vfp,int align
 		|.if ARM_HF
 		if(vfp){
 			if(size==4){//float
-				| vldr s0, [sp,#st->float_off];
+				| vldr s0, [sp,#st->float_off+st->extra];
 			}else if(size==8){//double
-				| vldr d0, [sp,#st->float_off];
+				| vldr d0, [sp,#st->float_off+st->extra];
 			}
-		}else load_reg(Dst,st->float_off,size);
+		}else load_reg(Dst,st->float_off+st->extra,size);
 		st->float_off+=size;
 	}else if(vfp){
 		if(size==4){//float
-			| vldr s0, [sp,#st->int_off];
+			| vldr s0, [DATA];
+			| add DATA, DATA, #4
 		}else if(size==8){//double
-			FIX_ALIGN(st->int_off,8);
-			| vldr d0, [sp,#st->int_off];
+			int off=st->stack_off;
+			FIX_ALIGN(st->stack_off,align);
+			if((off=st->stack_off-off)){
+				| add DATA, DATA, #off
+			}
+			| vldr d0, [DATA];
+			| add DATA, DATA, #8
 		}
 		|.endif
 	}else{
@@ -421,7 +426,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
         luaL_error(L, "can't create callbacks with varargs");
     }
 	memset(&st,0,sizeof(stack_info));
-	st.int_off=0x10;
+	st.extra=0x10;
     /* prolog and get the upval table */
     | mov r12, sp
 	| push {r0,r1,r2,r3}
@@ -434,12 +439,9 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
     
     | push {L_ARG, DATA, r12, lr}
 	| mov DATA, r12
-    | ldr L_ARG, [pc, #8]
-    | ldr r2, [pc, #8]
-    | ldr r1, [pc, #8]
-    | b >1
-    |.long L, ref, LUA_REGISTRYINDEX
-    |1:
+    | load32 L_ARG, L
+    | load32 r2, ref
+    | load32 r1, LUA_REGISTRYINDEX
     | lcall extern rawgeti
 	
     /* get the lua function */
@@ -521,7 +523,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
             #if CK_ALGIN
 				FIX_ALIGN(st.int_off,8);
 				if(st.int_off<16){
-					| add r12, sp,#st.int_off
+					| add r12, sp,#st.int_off+st.extra
 					| ldmia r12, {r2, r3}
 					st.int_off+=8;
 				}else{
@@ -577,7 +579,6 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
                 }else{
 					| sxtb r1, r1
 				}
-				st.int_off+=4;
                 | lcall extern push_int
                 break;
 
@@ -589,7 +590,6 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
                 }else{
 					| sxth r1, r1
 				}
-				st.int_off+=4;
                 | lcall extern push_int
                 break;
 
@@ -616,7 +616,7 @@ cfunction compile_callback(lua_State* L, int fidx, int ct_usr, const struct ctyp
 				#elif CK_ALGIN
 				FIX_ALIGN(st.int_off,8);
 				if(st.int_off<16){
-					| add r12, sp,#st.int_off
+					| add r12, sp,#st.int_off+st.extra
 					| ldmia r12, {r2, r3}
 					st.int_off+=8;
 				}else{
@@ -828,7 +828,7 @@ static ALWAYS_INLINE void save_int64_stack_align(struct jit* Dst,reg_info* regs,
 		regs->exs++;
 		| add DATA, DATA, #4
 	}
-	| stmia DATA, {r0,r1}
+	| stmia DATA!, {r0,r1}
 	regs->exs+=2;
 }
 static ALWAYS_INLINE void save_int64_align(struct jit* Dst,reg_info* regs,int align){
@@ -964,11 +964,8 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
             lua_getuservalue(L, -1);
             num_upvals += 2;
 
-            | ldr r3, [pc, #4]
-            | ldr r2, [pc, #4]
-            | b >1
-            |.long mt, lua_upvalueindex(num_upvals)
-            |1:
+            | load32 r3, mt
+            | load32 r2, lua_upvalueindex(num_upvals)
             | mov r1, #i
 			
             if (mt->pointers || mt->is_reference) {
@@ -1055,7 +1052,11 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 				if(regs.ints<4){
 					| add r0,sp,#(regs.ints<<2)
 				}else{
-					| mov DATA ,r0
+					if(!ALIGNED(regs.exs,2)){
+						++regs.exs;
+						| add DATA, DATA,# 4
+					}
+					| mov r0,DATA
 				}
 				| bl extern check_complex_double
 				regs.ints+=4;
@@ -1075,7 +1076,7 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 				if(regs.ints<4){
 					| add r0,sp,#(regs.ints<<2)
 				}else{
-					| mov DATA ,r0
+					| mov r0,DATA
 				}
 				| bl extern check_complex_float
 				regs.ints+=2;
@@ -1163,11 +1164,8 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
         lua_getuservalue(L, -1);
         num_upvals += 2;
         | mov DATA, r0
-        | ldr r2, [pc, #4]
-        | ldr r1, [pc, #4]
-        | b >1
-        |.long mt, lua_upvalueindex(num_upvals)
-        |1:
+        | load32 r2, mt
+        | load32 r1, lua_upvalueindex(num_upvals)
         | lcall extern push_cdata
         | str DATA, [r0]
         | mov r0, #1
@@ -1275,11 +1273,8 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 			#if ARM_HF
 			|.if ARM_HF
 			| mov DATA, r0
-			| ldr r2, [pc, #4]
-			| ldr r1, [pc, #4]
-			| b >1
-			|.long mt, lua_upvalueindex(num_upvals)
-			|1:
+			| load32 r2, mt
+			| load32 r1,lua_upvalueindex(num_upvals)
 			| lcall extern push_cdata
 			if(mt->type==COMPLEX_DOUBLE_TYPE){
 				| vstr d0,[r0]
@@ -1291,15 +1286,11 @@ void compile_function(lua_State* L, cfunction func, int ct_usr, const struct cty
 			#else
             // value are stored in return storage in r0 for softfp, set usr value here
 			if(!lua_isnil(L,-1)){
-				| ldr r12, [pc, #8]
-				| ldr DATA, [pc, #8]
-				| ldr r1, [pc, #8]
-				| b >1
-				|.long lua_pushvalue,lua_setuservalue, lua_upvalueindex(num_upvals)
-				|1:
+				| load32 r12,lua_pushvalue
+				| load32 DATA, lua_setuservalue
+				| load32 r1, lua_upvalueindex(num_upvals)
 				| mov r0, L_ARG
 				| blx r12 // lua_pushvalue(L,lua_upvalueindex(num_upvals))
-				| load32 r12, 
 				| mvn r1, #1 //-2
 				| mov r0, L_ARG
 				| blx DATA // lua_setuservalue(L,-2)
