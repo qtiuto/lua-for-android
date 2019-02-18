@@ -56,7 +56,7 @@ void lsec_pushx509(lua_State* L, X509 *cert)
   luaL_getmetatable(L, "SSL:Certificate");
   lua_setmetatable(L, -2);
 }
-extern int EVP_PKEY_base_id() __attribute__((weak));
+extern int EVP_PKEY_base_id(const EVP_PKEY *pkey) __attribute__((weak));
 
 int EVP_PKEY_base_id(const EVP_PKEY *pkey)
 {
