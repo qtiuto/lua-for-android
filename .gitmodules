@@ -1,0 +1,3 @@
+[submodule "luasec/src/main/boringssl"]
+	path = luasec/src/main/boringssl
+	url = https://github.com/qtiuto/boringssl.git
