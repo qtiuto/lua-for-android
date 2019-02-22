@@ -21,15 +21,13 @@ local function loadlib(lib)
     error("Unable to load", lib)
 end
 
-if _VERSION == 'Lua 5.1' then
-    --dlls.__cdecl = loadlib('ffi/libtest')
-else
-    --dlls.__cdecl = ffi.load(package.searchpath('ffi.libtest', package.cpath))
+if ffi.debug then
+    dlls.__cdecl = ffi.load('libffitest')
 end
 
 if ffi.arch == 'x86' and ffi.os == 'Windows' then
-    dlls.__stdcall = ffi.load('test_stdcall')
-    dlls.__fastcall = ffi.load('test_fastcall')
+    --dlls.__stdcall = ffi.load('ffitest_stdcall')
+    --dlls.__fastcall = ffi.load('ffitest_fastcall')
 end
 
 local function check(a, b, msg)
@@ -343,6 +341,8 @@ local i64 = ffi.typeof('int64_t')
 local first = true
 
 for convention,c in pairs(dlls) do
+
+    
     check(c.add_i8(1,1), 2)
     check(c.add_i8(256,1), 1)
     check(c.add_i8(127,1), -128)
@@ -382,11 +382,20 @@ for convention,c in pairs(dlls) do
     check(c.g_i8, -8)
     check(c.g_i16, -16)
     check(c.g_i32, -32)
-    check(c.g_i64, i64(-64))
+    if _VERSION=='Lua 5.1' or _VERSION=='Lua 5.2' then
+        check(c.g_i64, i64(-64))
+    else
+        check(c.g_i64, -64)
+    end
+
     check(c.g_u8, 8)
     check(c.g_u16, 16)
     check(c.g_u32, 32)
-    check(c.g_u64, u64(64))
+    if _VERSION=='Lua 5.1' or _VERSION=='Lua 5.2' then
+        check(c.g_u64, u64(64))
+    else
+        check(c.g_u64, 64)
+    end
     check(c.g_f, 3)
     check(c.g_d, 5)
     if c.have_complex() then
@@ -403,16 +412,26 @@ for convention,c in pairs(dlls) do
     check(c.g_date.nMonthDay, 2)
     check(c.g_date.nMonth, 3)
     check(c.g_date.nYear, 4)
-
+    
     c.g_b = false; check(c.g_b, false)
     c.g_i8 = -108; check(c.g_i8, -108)
     c.g_i16 = -1016; check(c.g_i16, -1016)
     c.g_i32 = -1032; check(c.g_i32, -1032)
-    c.g_i64 = -1064; check(c.g_i64, i64(-1064))
+    c.g_i64 = -1064;
+    if _VERSION=='Lua 5.1' or _VERSION=='Lua 5.2' then
+        check(c.g_i64, i64(-1064))
+    else
+        check(c.g_i64, -1064)
+    end
     c.g_u8 = 208; check(c.g_u8, 208)
     c.g_u16 = 2016; check(c.g_u16, 2016)
     c.g_u32 = 2032; check(c.g_u32, 2032)
-    c.g_u64 = 2064; check(c.g_u64, u64(2064))
+    c.g_u64 = 2064;
+    if _VERSION=='Lua 5.1' or _VERSION=='Lua 5.2' then
+        check(c.g_u64, u64(2064))
+    else
+        check(c.g_u64, 2064)
+    end
     c.g_f = 13; check(c.g_f, 13)
     c.g_d = 15; check(c.g_d, 15)
     if c.have_complex() then
@@ -424,7 +443,7 @@ for convention,c in pairs(dlls) do
     c.g_e16 = c.BAR16; check(c.g_e16, c.BAR16)
     c.g_e32 = c.BAR32; check(c.g_e32, c.BAR32)
     c.g_date.nWeekDay = 3; check(c.g_date.nWeekDay, 3)
-
+    
     local align_attr = c.is_msvc and [[
         struct align_attr_ALIGN_SUFFIX {
             char pad;
@@ -441,6 +460,7 @@ for convention,c in pairs(dlls) do
         int print_align_attr_ALIGN_SUFFIX(char* buf, struct align_attr_ALIGN_SUFFIX* p);
         ]]
 
+    
     for suffix, type in pairs(types) do
         local test = test_values[type]
         --print('checkbuf', suffix, type, buf, test)
@@ -472,7 +492,6 @@ for convention,c in pairs(dlls) do
                 checkalign(type, v2, c['print_align_attr_' .. align .. '_' .. suffix](buf, v2))
             end
         end
-
         if not c.is_msvc then
             if first then
                 local h = [[
@@ -496,13 +515,13 @@ for convention,c in pairs(dlls) do
     local psz = ffi.new('size_t[1]')
     local palign = ffi.new('size_t[1]')
     local function check_align(type, test, ret)
-        --print('check_align', type, test, ret, ffi.string(buf), psz[0], palign[0])
+        --print('check_align', type, palign[0],ffi.alignof(type))
         check(tonumber(palign[0]), ffi.alignof(type))
         check(tonumber(psz[0]), ffi.sizeof(type))
         check(ret, #test)
         check(test, ffi.string(buf))
     end
-
+    
     for _, tnum in ipairs{8, 16, 32, 64} do
         if first then
             ffi.cdef(bitfields:gsub('TNUM',tnum))
@@ -533,7 +552,7 @@ for convention,c in pairs(dlls) do
             check_align('struct ba_'..tnum..'_'..bnum, '1 2', c['print_ba_'..tnum..'_'..bnum](psz, palign, buf, {1,2}))
         end
     end
-
+    
     check_align('struct Date', '1 2 3 4', c.print_date(psz, palign, buf, {1,2,3,4}))
     check_align('struct Date2', '1 2 3 4', c.print_date2(psz, palign, buf, {1,2,3,4}))
     check_align('struct sysv1', '1 2 3', c.print_sysv1(psz, palign, buf, {1,2,3}))
@@ -543,7 +562,7 @@ for convention,c in pairs(dlls) do
     check_align('struct sysv5', '1 2 3', c.print_sysv5(psz, palign, buf, {1,2,3}))
     check_align('struct sysv6', '1 2 3', c.print_sysv6(psz, palign, buf, {1,2,3}))
     check_align('struct sysv7', '1 2 3 4 5', c.print_sysv7(psz, palign, buf, {1,2,3,4,5}))
-
+    
     local cbs = [[
     typedef const char* (*__cdecl sfunc)(const char*);
     int call_i(int (*__cdecl func)(int), int arg);
@@ -559,7 +578,7 @@ for convention,c in pairs(dlls) do
     ]]
 
     ffi.cdef(cbs:gsub('__cdecl', convention))
-
+    
     local u3 = ffi.new('uint64_t', 3)
     check(c.call_i(function(a) return 2*a end, 3), 6)
     assert(math.abs(c.call_d(function(a) return 2*a end, 3.2) - 6.4) < 0.0000000001)
@@ -592,7 +611,7 @@ for convention,c in pairs(dlls) do
     check(err:gsub('^.*: ',''), "can't set the function for a non-lua callback")
 
     check(c.call_fptr({function(a) return 3*a end}, 5), 15)
-
+    
     local suc, err = pcall(c.call_s, function(s) error(ffi.string(s), 0) end, 'my error')
     check(suc, false)
     check(err, 'my error')
@@ -604,7 +623,7 @@ for convention,c in pairs(dlls) do
     check(ffi.errno(4), 3)
     check(ffi.errno(), 4)
     check(c.get_errno(), 4)
-
+    
     local gccattr = {
         __cdecl = 'int test_pow(int v) __attribute__((cdecl));',
         __stdcall = 'int test_pow(int v) __attribute__(stdcall);',
@@ -613,7 +632,7 @@ for convention,c in pairs(dlls) do
 
     ffi.cdef(gccattr[convention])
     check(c.test_pow(5), 25)
-
+    
     ffi.cdef [[
         int va_list_size, va_list_align;
         int vsnprintf(char* buf, size_t sz, const char* fmt, va_list ap);
@@ -624,7 +643,7 @@ for convention,c in pairs(dlls) do
     assert(ffi.istype('va_list', ffi.new('__gnuc_va_list')))
     check(ffi.sizeof('va_list'), c.va_list_size)
     check(ffi.alignof('va_list'), c.va_list_align)
-
+    
     first = false
 end
 
@@ -1010,32 +1029,8 @@ local str = f:read('*l')
 assert(str == 'test: foo', str)
 f:close()
 
---Calling test
 
-ffi.cdef[[
-double fabs(double);
-long labs(long);
-float fabsf(float);
-double creal(complex double);
-double cimag(complex double);
-double cabs(complex double);
-float crealf(complex float);
-float cimagf(complex float);
-float cabsf(complex float);
-complex float clogf(complex float);
-]]
-c=ffi.C;
-assert(c.fabs(1)==1)
-assert(c.labs(1)==1)
-assert(c.fabsf(1)==1)
-assert(c.creal(ffi.new('complex double',1,1))==1)
-assert(c.cimag(ffi.new('complex double',1,1))==1)
-assert(c.cabs(ffi.new('complex double',1,1))==math.sqrt(2))
-assert(c.crealf(ffi.new('complex double',1,1))==1)
-assert(c.cimagf(ffi.new('complex double',1,1))==1)
-assert(c.cabsf(ffi.new('complex double',1,0))==1)
-assert(c.clogf(ffi.new('complex double',1))==ffi.new('complex float',0))
---Callback test
+--long arg Callback test
 
 function printArgs(...)
     local t={}

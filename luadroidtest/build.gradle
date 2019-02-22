@@ -3,8 +3,6 @@ apply plugin: 'com.android.application'
 android {
     compileSdkVersion 28
 
-
-
     defaultConfig {
         applicationId "com.oslorde.luadroidtest"
         minSdkVersion 14
@@ -14,6 +12,15 @@ android {
 
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
+    }
+
+    externalNativeBuild{
+       /* cmake{
+            path 'CMakeLists.txt'
+        }*/
+        ndkBuild{
+            path 'Android.mk'
+        }
     }
 
     buildTypes {

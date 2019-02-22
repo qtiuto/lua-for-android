@@ -17,6 +17,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        findViewById(R.id.test).setOnClickListener((v)->{
+            ffitest();
+        });
         ffitest();
     }
     static {
@@ -53,8 +56,10 @@ public class MainActivity extends AppCompatActivity {
         try(InputStream stream=manager.open("luaffitest.lua")) {
             context.run(readAll(stream));
         }catch (Exception e){
+            context.flushLog();
             Log.e("ffi","Test failed",e);
         }
+        context.flushLog();
         Log.d("ffi","Test passed");
     }
 }
