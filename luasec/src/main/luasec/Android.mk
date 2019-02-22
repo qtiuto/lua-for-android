@@ -1,6 +1,5 @@
 LOCAL_PATH := $(call my-dir)
 
-
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES  := ssl.c ec.c x509.c config.c context.c \
                     luasocket/buffer.c luasocket/io.c luasocket/usocket.c luasocket/timeout.c
@@ -11,7 +10,6 @@ LOCAL_LDFLAGS := $(LOCAL_PATH)/../../../../luaffi/src/main/lua/$(TARGET_ARCH_ABI
 LOCAL_MODULE :=ssl
 LOCAL_SHARED_LIBRARIES := boringssl boringcrypto
 LOCAL_SHORT_COMMANDS := true
-$(info local c includes=$(LOCAL_C_INCLUDES))
 include $(BUILD_SHARED_LIBRARY)
 
 $(call import-add-path,$(LOCAL_PATH)/../)

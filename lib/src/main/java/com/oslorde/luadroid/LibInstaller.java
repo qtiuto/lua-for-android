@@ -36,8 +36,8 @@ public class LibInstaller {
         return null;
     }
 
-    public static void install(Context context, int versionCode, String dest){
-        install(context,versionCode,dest,"assets/lua/");
+    public static boolean install(Context context, int versionCode, String dest){
+        return install(context,versionCode,dest,"assets/lua/");
     }
 
     /**

@@ -9,8 +9,6 @@ LOCAL_STATIC_LIBRARIES :=$(LUA_LIB)
 LOCAL_CFLAGS := -Os
 LOCAL_LDFLAGS := $(LOCAL_PATH)/../../../../luaffi/src/main/lua/$(TARGET_ARCH_ABI)/libluadroid.so
 LOCAL_MODULE :=socket
-$(info local c includes=$(LOCAL_C_INCLUDES))
-$(info local path=$(LOCAL_PATH))
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -20,6 +18,4 @@ LOCAL_STATIC_LIBRARIES :=$(LUA_LIB)
 LOCAL_CFLAGS := -Os
 LOCAL_LDFLAGS := $(LOCAL_PATH)/../../../../luaffi/src/main/lua/$(TARGET_ARCH_ABI)/libluadroid.so
 LOCAL_MODULE :=mime
-$(info local c includes=$(LOCAL_C_INCLUDES))
-$(info local path=$(LOCAL_PATH))
 include $(BUILD_SHARED_LIBRARY)
