@@ -49,13 +49,24 @@ void luaT_init(lua_State *L) {
     }
 }
 
+static inline const TValue* lua_getoptmt(TValue* optmts,TMS event){
+    int lowLimit= ((int*)&optmts->value_)[1];
+    if(event<lowLimit){
+        return &optmts[event+1];
+    }
+    int des=(/*count*/*(int*)&optmts->value_)-(TM_N)+event;
+    if(des>=lowLimit){
+        return &optmts[des];
+    }
+    return luaO_nilobject;
+}
 
 /*
 ** function to be used with macro "fasttm": optimized for absence of
 ** tag methods
 */
 const TValue *luaT_gettm(Table *events, TMS event, TString *ename) {
-    const TValue *tm = luaH_getshortstr(events, ename);
+    const TValue *tm = events->optimizedMeta? lua_getoptmt(events->optimizedMeta,event):luaH_getshortstr(events, ename);
     lua_assert(event <= TM_EQ);
     if (ttisnil(tm)) {  /* no tag method? */
         events->flags |= cast_byte(1u << event);  /* cache this fact */
@@ -76,7 +87,7 @@ const TValue *luaT_gettmbyobj(lua_State *L, const TValue *o, TMS event) {
         default:
             mt = G(L)->mt[ttnov(o)];
     }
-    return (mt ? luaH_getshortstr(mt, G(L)->tmname[event]) : luaO_nilobject);
+    return (mt ? mt->optimizedMeta? lua_getoptmt(mt->optimizedMeta,event): luaH_getshortstr(mt, G(L)->tmname[event]) : luaO_nilobject);
 }
 
 

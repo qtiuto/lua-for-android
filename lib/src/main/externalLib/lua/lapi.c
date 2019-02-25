@@ -870,10 +870,10 @@ static void optimizeMetaTable(lua_State *L,Table *mt){
     }
     int count = startCount + TM_N - i;
     if(!count)
-        return;;
+        return;
     ++count;
     mt->optimizedMeta=luaM_malloc(L,(count)* sizeof(TValue));
-    mt->optimizedMeta->value_.i=count;
+    mt->optimizedMeta->value_.i=count|(((int64_t)startCount)<<32);
     mt->optimizedMeta->tt_=LUA_TNUMBER;
     for (;i<TM_N;++i) {
         mt->optimizedMeta[count-(TM_N-i)]=*luaH_getshortstr(mt,G(L)->tmname[i]);

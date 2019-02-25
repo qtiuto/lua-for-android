@@ -434,7 +434,7 @@ void luaH_free(lua_State *L, Table *t) {
         luaM_freearray(L, t->node, cast(size_t, sizenode(t)));
     luaM_freearray(L, t->array, t->sizearray);
     if(t->optimizedMeta){
-        luaM_freearray(L,t->optimizedMeta, t->optimizedMeta->value_.i);
+        luaM_freearray(L,t->optimizedMeta, (int)t->optimizedMeta->value_.i);
     }
     luaM_free(L, t);
 }
