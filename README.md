@@ -4,6 +4,13 @@
 
 ## General
 
+This is a friendly and high performance bridge for java and lua in android. With it, you can call java 
+functions, use java objects easily in lua. It supports auto method deduction, auto data conversion, 
+import java package/class, multi-thread, exception handling, class extension/implementation and other facilitative
+features. See [wiki](../../wiki/Home) for more detailed description.
+
+Module **luaffi**,  **luasec**,  **luasocket** are optional package. And module **lfs** is embeded.
+
 Both lua(5.1-5.3) and luajit(2.0.5 and 2.1.0-beta3) are supported.
      
 Configure Android.mk by setting `LUA_LIB :=(lua or luajit)`
@@ -22,6 +29,9 @@ Module **luaffi** is the ffi lib for luadroid to invoke c apis, and it requires 
      
 ## Performance
 
+  Under release mode, the bridge around 3+ times slower than jni  because of consumption
+  in method deduction and data conversion. Yet, if no argument provided, it is almost as fast as jni.
+  
   Around 2500000 method call(Math.abs) per second on my Oneplus 5 device.
   Around 1800000 member access plus with method call(Math.abs) per second.
   Note that if you run it in debug mode,CheckJni mode is enabled by the
