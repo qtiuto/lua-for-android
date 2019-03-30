@@ -1898,21 +1898,21 @@ int javaImport(lua_State *L) {
     SetErrorJMP();
     auto env=context->env;
     if (!luaL_isstring(L, -1)) ERROR( "Should pass a string for import");
-    auto&& s=lua_tostring(L, -1);
+    FakeString s(lua_tostring(L, -1));
     Import *import = context->getImport();
     if(s[0]=='[') TopErrorHandle("Don't import array type!");
-    const char* separate = strrchr(s,'.');
+    uint separate =((const String&)s).rfind('.');
     String pack;
-    if (separate!= nullptr) {
-        auto len = separate - s + 1;
+    if (separate!= String::npos) {
+        auto len = separate  + 1;
         pack.resize(uint(len));
         memcpy(&pack[0],s,len);
     }
     size_t len=strlen(s);
-    if (s[len-1]=='*'&&separate==s+len-2) {//ends with .*
+    if (s[len-1]=='*'&&separate==len-2) {//ends with .*
         import->packages.insert(std::move(pack));
     } else {
-        String name=separate?separate+1:s;
+        FakeString name(separate!=String::npos?&s.c_str()[separate+1]:s.c_str());
         auto &&iter = import->stubbed.find(name);
         if (iter != nullptr) {
             const char *prevName = iter->second.pack;
@@ -1924,7 +1924,7 @@ int javaImport(lua_State *L) {
             goto RET;
         }
         {
-            JClass c(context->findClass(s));
+            JClass c(context->findClass(String((const String&)s)));
             if(c== nullptr){  TopErrorHandle(" Type:%s not found", s); }
             auto type = context->scriptContext->ensureType(env, c);
             Import::TypeInfo info;
