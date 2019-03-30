@@ -786,11 +786,11 @@ namespace std{
         size_type rfind(const value_type* s, size_type pos, size_type n) const noexcept{
             size_type __sz=size();
             const_pointer p=data();
-            if (pos > __sz)
-                return npos;
             if (n == 0)
                 return pos;
-            for (const value_type * __ps = p + pos-n; __ps<p ;--__ps)
+            if (pos >= __sz)
+                pos = __sz-1;
+            for (const value_type * __ps = p + pos-n+1; __ps<p ;--__ps)
             {
                 if(strncmp(__ps,s,n)==0)
                     return static_cast<size_type >(__ps - p);
@@ -800,34 +800,62 @@ namespace std{
         size_type rfind(const value_type* s, size_type pos = npos) const noexcept{
             return rfind(s,pos,strlen(s));
         }
+
         size_type rfind(value_type c, size_type pos = npos) const noexcept{
             size_type n=size();
             const_pointer s=data();
-            if (n < 1)
+            if (n == 0)
                 return npos;
-            if (pos < n)
-                ++pos;
-            else
-                pos = n;
-            for (const value_type * __ps = s + pos; __ps!=s;)
+            if(pos>=n)
+                pos = n-1;
+            for (const value_type * __ps = s + pos; __ps!=s;--__ps)
             {
-                if (*--__ps== c)
+                if (*__ps== c)
                     return static_cast<size_type >(__ps - s);
             }
             return npos;
         }
 
-        /* size_type find_first_of(const MString& str, size_type pos = 0) const noexcept;
-         size_type find_first_of(const value_type* s, size_type pos, size_type n) const noexcept;
-         size_type find_first_of(const value_type* s, size_type pos = 0) const noexcept;
-         size_type find_first_of(value_type c, size_type pos = 0) const noexcept;
+       /* size_type find_first_of(const MString &str, size_type pos = 0) const noexcept;
 
-         size_type find_last_of(const MString& str, size_type pos = npos) const noexcept;
-         size_type find_last_of(const value_type* s, size_type pos, size_type n) const noexcept;
-         size_type find_last_of(const value_type* s, size_type pos = npos) const noexcept;
-         size_type find_last_of(value_type c, size_type pos = npos) const noexcept;
+        size_type find_first_of(const value_type *s, size_type pos, size_type n) const noexcept;
 
-         size_type find_first_not_of(const MString& str, size_type pos = 0) const noexcept;
+        size_type find_first_of(const value_type *s, size_type pos = 0) const noexcept;
+
+        size_type find_first_of(value_type c, size_type pos = 0) const noexcept;*/
+
+        size_type find_last_of(const MString &str, size_type pos = npos) const noexcept{
+            return find_last_of(str.data(),npos,str.size());
+        }
+
+        size_type find_last_of(const value_type *s, size_type pos, size_type n) const noexcept{
+            size_type __sz=size();
+            const_pointer p=data();
+            if (n == 0)
+                return pos;
+            else if(pos>=__sz){
+                pos=__sz-1;
+            }
+            for (const value_type * __ps = p + pos; __ps>=p ;--__ps)
+            {
+                value_type c=*__ps;
+                for (int i = n; i --; ) {
+                    if(c==s[i])
+                        return static_cast<size_type >(__ps - p);
+                }
+            }
+            return npos;
+        }
+
+        size_type find_last_of(const value_type *s, size_type pos = npos) const noexcept{
+            return find_last_of(s,pos,strlen(s));
+        }
+
+        size_type find_last_of(value_type c, size_type pos = npos) const noexcept{
+            return rfind(c,pos);
+        }
+
+          /* size_type find_first_not_of(const MString& str, size_type pos = 0) const noexcept;
          size_type find_first_not_of(const value_type* s, size_type pos, size_type n) const noexcept;
          size_type find_first_not_of(const value_type* s, size_type pos = 0) const noexcept;
          size_type find_first_not_of(value_type c, size_type pos = 0) const noexcept;
