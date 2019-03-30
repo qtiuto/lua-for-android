@@ -144,6 +144,7 @@ public:
     JClass findClass(String& str)  ;
 
     JavaType *ensureType(const String &typeName);
+
     jobject proxy(JavaType *main, Vector<JavaType *> *interfaces,
                   const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
                   BaseFunction* defaultFunc= nullptr,

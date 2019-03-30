@@ -26,4 +26,5 @@
 #define LOGI(msg, ...) __android_log_print(ANDROID_LOG_INFO,"Lua",msg,##__VA_ARGS__)
 #define LOGW(msg, ...) __android_log_print(ANDROID_LOG_WARN,"Lua",msg,##__VA_ARGS__)
 #endif
+
 #endif //LUADROID_MACROS_H

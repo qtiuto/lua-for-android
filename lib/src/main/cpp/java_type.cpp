@@ -597,7 +597,7 @@ const Member* JavaType::findMockMember(TJNIEnv *env, const String &name, bool ge
         return get?iter->second.getter:iter->second.setter;
     }
 }
-const FieldInfo *JavaType::deductField(TJNIEnv* env,const FieldArray* array, JavaType *type){
+const FieldInfo *JavaType::deductField(const FieldArray* array, JavaType *type){
     if (unlikely(array == nullptr))
         return nullptr;
     if (type == nullptr) {
@@ -633,4 +633,23 @@ JObject JavaType::getSingleInterface(TJNIEnv* env) {
         if (ret != nullptr) singleInterface = env->FromReflectedMethod(ret);
         return ret;
     } else return env->ToReflectedMethod(type, singleInterface, JNI_FALSE);
+}
+
+JavaType *JavaType::ensureInnerClass(ThreadContext *threadContext, const String &inner) {
+    auto && iter=innerClasses.find(inner);
+    if(iter!= nullptr) return iter->second;
+    JString k=name(threadContext->env);
+    String fullName;
+    fullName.reserve(strlen(k.str())+inner.length()+2);
+    fullName=k;
+    fullName+='$';
+    fullName+=inner;
+    JClass c=threadContext->findClass(fullName);
+    if(c== nullptr){
+        return nullptr;
+    }
+    JavaType* ret= threadContext->scriptContext->ensureType(
+            threadContext->env,c);
+    innerClasses.emplace(inner,ret);
+    return ret;
 }

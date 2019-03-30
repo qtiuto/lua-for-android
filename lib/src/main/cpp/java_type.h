@@ -145,6 +145,7 @@ private:
 
     MemberMap staticMembers;
     MemberMap objectMembers;
+    Map<String,JavaType*> innerClasses;
     Map<String,MockField> mockFields;
     jmethodID singleInterface = invalid<jmethodID>();
     JavaType *componentType = invalid<JavaType *>();
@@ -174,10 +175,9 @@ public:
         return deductMethod(env,ensureMethod(env,name,isStatic),types,arguments);
     }
     const Member* findMockMember(TJNIEnv *env, const String &name, bool getter);
-    /*const FieldInfo *findField(TJNIEnv* env,const String &name, bool isStatic, JavaType *type){
-        return deductField(env,ensureField(env,name,isStatic),type);
-    }*/
-    const FieldInfo *deductField(TJNIEnv* env,const FieldArray* array,  JavaType *type);
+
+    const FieldInfo *deductField(const FieldArray* array,  JavaType *type);
+
     MethodArray *ensureMethod(TJNIEnv* env,const String &s, bool isStatic){
         auto members= ensureMember(env, s, isStatic);
         if(members&&members->methods.size())
@@ -192,6 +192,7 @@ public:
         return nullptr;
     }
 
+    JavaType* ensureInnerClass(ThreadContext* threadContext,const String& inner);
 
     jclass getType() const { return type; }
 

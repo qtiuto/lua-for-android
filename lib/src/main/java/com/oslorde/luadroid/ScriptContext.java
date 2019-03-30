@@ -20,6 +20,7 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -108,11 +109,8 @@ public class ScriptContext {
             return true;
         }
     };
-    private static final Comparator<String> sClassPrefixComparator = (o1, o2) -> {
-        int length = o2.length();
-        if (o1.length()> length +1&&o1.charAt(length)=='.'&&o1.startsWith(o2)&&o1.indexOf('.', length +1)==-1) return 0;
-        return o1.compareTo(o2);
-    };
+    private static final Comparator<String> sClassPrefixComparator = (cl, pack) -> startsWithPackage(cl,pack)?0:classCompare(cl,pack);
+    private static final Comparator<String> sClassComparator = ScriptContext::classCompare;
     private static Method sEqualNameAndParameters;
     //Optimize  for the redundant call in new Class Api
     private static  Method sUnchecked;
@@ -145,10 +143,10 @@ public class ScriptContext {
     private ByteBuffer rawLogBuffer;
     private CharBuffer logBuffer;
     //Too many memory usages.
-    private LightSet<String> dexFiles;
+    private LightSet<String> dexFileNames;
 
     //private native static void nativeClean(long ptr);
-    private ArrayList<String[]> classes;
+    private ArrayList<Dex> dexFiles;
 
     public ScriptContext() {
         this(true, false);
@@ -196,6 +194,27 @@ public class ScriptContext {
     private static native String[][] getBootClassList();
 
     private static native String[][] getClassList(Object cookie);
+
+    private static  int classCompare(String orig,String other){
+        int len=orig.length();
+        int len2=other.length();
+
+        char c1;
+        char c2;
+        for(int i=0,N=Math.min(len,len2);i<N;++i) {
+            c1=orig.charAt(i);
+            c2=other.charAt(i);
+            int dif=c1-c2;
+            if(dif!=0&&!(c1=='$'&&c2=='.'))
+                return dif;
+        }
+        if(len==len2) return 0;
+        else if(len<len2){//inner class position lower
+            return other.charAt(len)=='$'?1:-1;
+        } else {
+            return orig.charAt(len2)=='$'?-1:1;
+        }
+    }
 
     /**
      * change a lua function to a functional interface instance
@@ -312,6 +331,21 @@ public class ScriptContext {
             ret[i] = getClassLuaType(type);
         }
         return ret;
+    }
+
+    private static boolean startsWithPackage(String cl,String pack){
+        int len=pack.length();
+        if(cl.length()<len+1) return false;
+        char c=cl.charAt(len);
+        if(c!='.'&&c!='$') return false;
+        char c1;
+        while (len-->0){
+            c=cl.charAt(len);
+            c1=pack.charAt(len);
+            if(c!=c1&&!(c=='$'&&c1=='.'))
+                return false;
+        }
+        return true;
     }
 
     private static  boolean isDirect(int modifier){
@@ -1097,7 +1131,7 @@ public class ScriptContext {
     }
 
     List<String> getClasses(){
-        if(dexFiles==null) {
+        if(dexFileNames ==null) {
             try {
                 initLoader();
             } catch (Exception e) {
@@ -1105,40 +1139,86 @@ public class ScriptContext {
             }
         }
         ArrayList<String> ret=new ArrayList<>();
-        for (String []dex: classes){
-            Collections.addAll(ret,dex);
+        for (Dex dex: dexFiles){
+            Collections.addAll(ret,dex.classes);
         }
         return ret;
     }
 
-    private String[] importAll(String pack) throws Exception {
+    private Object[][] importAll(String pack) throws Exception {
         synchronized (importLock) {
             initLoader();
-            ArrayList<String> ret = new ArrayList<>(16);
+
+            ArrayList<Class> ret = new ArrayList<>(16);
+            ArrayList<String> names=new ArrayList<>(16);
             int fromIndex = pack.length() + 1;
-            for (String[] dexSet :
-                    classes) {
-                int mid = Arrays.binarySearch(dexSet, pack, sClassPrefixComparator);
+            Iterator<Dex> iterator=dexFiles.iterator();
+            while (iterator.hasNext()) {
+                Dex dex=iterator.next();
+                if(!dex.exists()){
+                    iterator.remove();
+                    continue;
+                }
+                String[] classes=dex.classes;
+                int mid = Arrays.binarySearch(classes, pack, sClassPrefixComparator);
                 if (mid < 0) continue;
                 for (int j = mid; j != -1; --j) {
-                    String cl = dexSet[j];
-                    if (cl.startsWith(pack)) {
-                        if (cl.indexOf('.', fromIndex) == -1)
-                            ret.add(cl);
+                    String cl = classes[j];
+                    if (startsWithPackage(cl,pack)) {
+                        if (cl.indexOf('.', fromIndex) == -1&&cl.indexOf('$', fromIndex)==-1){
+                            try {
+                                ret.add(dex.loadClass(cl));
+                                names.add(cl.substring(fromIndex));
+                            }catch (Exception ignored){}
+
+                        }
+
                     } else break;
                 }
-                if (mid != dexSet.length - 1)
-                    for (int j = mid + 1, len = dexSet.length; j < len; ++j) {
-                        String cl = dexSet[j];
-                        if (cl.startsWith(pack)) {
-                            if (cl.indexOf('.', fromIndex) == -1)
-                                ret.add(cl);
+                if (mid != classes.length - 1)
+                    for (int j = mid + 1, len = classes.length; j < len; ++j) {
+                        String cl = classes[j];
+                        if (startsWithPackage(cl,pack)) {
+                            if (cl.indexOf('.', fromIndex) == -1&&cl.indexOf('$', fromIndex)==-1)
+                                try {
+                                    ret.add(dex.loadClass(cl));
+                                    names.add(cl.substring(fromIndex));
+                                }catch (Exception ignored){}
                         } else break;
                     }
             }
-            return ret.toArray(new String[ret.size()]);
+            return new Object[][]{ret.toArray(),names.toArray()};
         }
 
+    }
+
+    private Class loadInnerClass(String cl){
+        if(cl.indexOf('$')!=-1) return null;
+        cl=cl.replace('/','.');
+        synchronized (importLock){
+            try {
+                initLoader();
+            } catch (Exception e) {
+                return null;
+            }
+            Iterator<Dex> iterator=dexFiles.iterator();
+            while (iterator.hasNext()) {
+                Dex dex=iterator.next();
+                if(!dex.exists()){
+                    iterator.remove();
+                    continue;
+                }
+                int idx=Arrays.binarySearch(dex.classes,cl,sClassComparator);
+                if(idx>=0) {
+                    try {
+                        return dex.loadClass(dex.classes[idx]);
+                    }catch (Exception e){
+                        break;
+                    }
+                }
+            }
+            return null;
+        }
     }
 
     private void loadClassLoader(ClassLoader loader) throws Exception {
@@ -1165,8 +1245,8 @@ public class ScriptContext {
                         }
                         DexFile dexFile= (DexFile) fDexFile.get(ele);
                         if(dexFile==null) continue;
-                        if(!dexFiles.contains(dexFile.getName())){
-                            addDexFile(dexFile);
+                        if(!dexFileNames.contains(dexFile.getName())){
+                            addDexFile(dexFile,loader);
                         }
                     }
                 }
@@ -1176,9 +1256,9 @@ public class ScriptContext {
     }
 
     private void initLoader() throws Exception {
-        if (dexFiles == null) {
-            dexFiles = new LightSet<>();
-            classes = new ArrayList<>();
+        if (dexFileNames == null) {
+            dexFileNames = new LightSet<>();
+            dexFiles = new ArrayList<>();
             String[] bootJars = System.getenv("BOOTCLASSPATH").split(":");
             ByteBuffer buffer=null;
             ByteBuffer tmp=null;
@@ -1192,7 +1272,7 @@ public class ScriptContext {
                         FileChannel channel=in.getChannel();
                         MappedByteBuffer byteBuffer=channel.map(FileChannel.MapMode.READ_ONLY,0,channel.size());
                         String[][] list=getClassList(byteBuffer);
-                        Collections.addAll(classes, list);
+                        for (String[] dex:list) dexFiles.add( new Dex(dex,null));
                         channel.close();
                         in.close();
                     }else if(path.matches(".+(\\.jar|\\.zip|\\.apk)$")){
@@ -1226,7 +1306,7 @@ public class ScriptContext {
                         }
                         buffer.position(0);
                         String[][] list=getClassList(buffer);
-                        if(list!=null) Collections.addAll(classes, list);
+                        if(list!=null) for (String[] dex:list) dexFiles.add( new Dex(dex,null));
                         stream.close();
                         zipFile.close();
                     }
@@ -1238,16 +1318,16 @@ public class ScriptContext {
                     if(!file.exists()) continue;
                     try {
                         DexFile dexFile = new DexFile(file);
-                        addDexFile(dexFile);
+                        addDexFile(dexFile,null);
                     }catch (Exception ignored){
                     }
                 }
             } else {
                 String[][] bootClassList = getBootClassList();
                 if (bootClassList != null) {
-                    Collections.addAll(classes, bootClassList);
+                    for (String[] dex:bootClassList) dexFiles.add( new Dex(dex,null));
                 }
-                dexFiles.addAll(bootJars);
+                dexFileNames.addAll(bootJars);
             }
             System.gc();//free memory
             loadClassLoader(ScriptContext.class.getClassLoader());
@@ -1257,19 +1337,19 @@ public class ScriptContext {
     }
 
     //Classes in dex file are sorted before return, so no need to sort it
-    private void addDexFile(DexFile dexFile) throws Exception{
+    private void addDexFile(DexFile dexFile,ClassLoader loader) throws Exception{
         if(Build.VERSION.SDK_INT>=21){
             String[][] list=getClassList(getDexFileCookie(dexFile));
-            Collections.addAll(classes, list);
+            for (String[] dex:list) dexFiles.add(new Dex(dex,loader));
         }else {//generally dalvik only
             Enumeration<String> entries = dexFile.entries();
             Field field=entries.getClass().getDeclaredField("mNameList");
             field.setAccessible(true);
             String[] list= (String[]) field.get(entries);
-            classes.add(list);
+            dexFiles.add(new Dex(list,loader));
         }
 
-        dexFiles.add(dexFile.getName());
+        dexFileNames.add(dexFile.getName());
     }
 
     private native long nativeOpen(boolean importAll, boolean localFunction);
@@ -2253,6 +2333,26 @@ public class ScriptContext {
         @Override
         protected boolean equals(Node<Method> node, Method key) {
             return isMethodSigEquals(node.key,key);
+        }
+    }
+
+
+    static class Dex{
+        String[] classes;
+        WeakReference<ClassLoader> loader;
+
+        public Dex(String[] classes, ClassLoader loader) {
+            this.classes = classes;
+            this.loader = loader==null?null:new WeakReference<>(loader);
+        }
+
+        boolean exists(){
+            return loader==null||loader.get()!=null;
+        }
+
+        Class loadClass(String name) throws ClassNotFoundException{
+            if(loader==null) return Class.forName(name);
+            return loader.get().loadClass(name);
         }
     }
 }

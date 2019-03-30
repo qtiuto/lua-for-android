@@ -257,17 +257,19 @@ inline JClass ThreadContext::getTypeNoCheck(const String &className) const {
     JClass type = env->FindClass(className.data());
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
+        JString jclassName= env->NewStringUTF(className.data());
         if(import->externalLoaders.size() > 0){
             static jmethodID loadClass= env->GetMethodID(loaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-            JString jclassName= env->NewStringUTF(className.data());
             for(auto loader:import->externalLoaders){
                 type= env->CallObjectMethod(loader, loadClass, jclassName.get());
                 if(env->ExceptionCheck()){
                     env->ExceptionClear();
-                } else break;
+                } else return type;
             }
         }
-
+        //we try to resolve inner class from class list;
+        static jmethodID loadInnerClass= env->GetMethodID(contextClass, "loadInnerClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+        type=env->CallObjectMethod(scriptContext->javaRef, loadInnerClass, jclassName.get());
     }
     return type;
 }
