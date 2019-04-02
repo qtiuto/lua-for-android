@@ -1900,7 +1900,7 @@ int javaImport(lua_State *L) {
     if (!luaL_isstring(L, -1)) ERROR( "Should pass a string for import");
     FakeString s(lua_tostring(L, -1));
     Import *import = context->getImport();
-    if(s[0]=='[') TopErrorHandle("Don't import array type!");
+    if(s.c_str()[0]=='[') TopErrorHandle("Don't import array type!");
     uint separate =((const String&)s).rfind('.');
     String pack;
     if (separate!= String::npos) {
@@ -3511,7 +3511,7 @@ static void loggerCallback(JNIEnv*env,const char* data,bool isErr,void* arg){
 
 jlong nativeOpen(TJNIEnv *env, jobject object, jboolean importAll) {
     ScriptContext *context = new ScriptContext(env, object, importAll);
-    requireLogger(loggerCallback,context);
+    context->logID=requireLogger(loggerCallback, context, nullptr);
     return reinterpret_cast<long>(context);
 }
 void nativeFlushLog(TJNIEnv *, jclass){
@@ -3530,8 +3530,8 @@ void registerLogger(TJNIEnv *env, jclass, jlong ptr, jobject out, jobject err) {
 void nativeClose(JNIEnv *, jclass, jlong ptr) {
     ScriptContext *context = (ScriptContext *) ptr;
     if (context != nullptr) {
+        dropLogger(context->logID);
         delete context;
-        dropLogger();
     }
 }
 

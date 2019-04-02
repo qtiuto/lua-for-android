@@ -164,6 +164,8 @@ public class ScriptContext {
         nativePtr = nativeOpen(importAllFunctions, localFunction);
     }
 
+    private native long nativeOpen(boolean importAll, boolean localFunction);
+
     private native static synchronized void nativeClose(long ptr);
 
     private static native void registerLogger(long ptr, Logger out, Logger err);
@@ -194,6 +196,7 @@ public class ScriptContext {
     private static native String[][] getBootClassList();
 
     private static native String[][] getClassList(Object cookie);
+
 
     private static  int classCompare(String orig,String other){
         int len=orig.length();
@@ -1352,7 +1355,6 @@ public class ScriptContext {
         dexFileNames.add(dexFile.getName());
     }
 
-    private native long nativeOpen(boolean importAll, boolean localFunction);
 
     private HashMap<Class, TableConverter> lazyConverts() {
         if (sConverters != null)
