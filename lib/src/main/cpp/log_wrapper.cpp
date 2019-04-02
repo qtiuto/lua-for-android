@@ -10,6 +10,12 @@
 #include "errno.h"
 #include "Vector.h"
 
+struct Info{
+    LoggerCallback callback;
+    void* arg;
+    Destroyer destroyer;
+};
+
 static SpinLock mutex;
 static volatile bool loggerRunning = false;//avoid bug in loop
 static struct pollfd fds[2]{
@@ -17,13 +23,8 @@ static struct pollfd fds[2]{
         {0, POLLIN, 0}
 };
 
-struct Info{
-    LoggerCallback callback;
-    void* arg;
-    Destroyer destroyer;
-};
-
 static Vector<Info,2> listeners;
+
 void* thread_run(void* threadInfo){
     JNIEnv *env;
     vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_4);
@@ -66,7 +67,7 @@ void* thread_run(void* threadInfo){
     return nullptr;
 }
 
-uint requireLogger(LoggerCallback callback, void *arg, Destroyer destroyer) {
+intptr_t requireLogger(LoggerCallback callback, void *arg, Destroyer destroyer) {
 
     ScopeLock sentry(mutex);
     if (listeners.size() == 0) {
@@ -94,17 +95,22 @@ uint requireLogger(LoggerCallback callback, void *arg, Destroyer destroyer) {
     }
     if(loggerRunning){
         listeners.push_back(Info{callback,arg,destroyer});
-        return listeners.size();
+        return (intptr_t)arg;
     } else return 0;
 }
 
-void dropLogger(uint id) {
+void dropLogger(intptr_t id) {
     ScopeLock sentry(mutex);
     if (!loggerRunning)
         return;
 
     if(id){
-        --id;
+        for (int i = 0; i < listeners.size(); ++i) {
+            if((intptr_t)listeners[i].arg==id){
+                id=i;
+                break;
+            }
+        }
         Info info=listeners[id];
         listeners.eraseAt(id);
         if (listeners.size()== 0) {

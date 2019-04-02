@@ -10,8 +10,8 @@
 
 typedef void(*LoggerCallback)(JNIEnv* env,const char *, bool,void* arg);
 typedef void(*Destroyer)(void*);
-uint requireLogger(LoggerCallback callback, void *arg, Destroyer destroyer);
+intptr_t requireLogger(LoggerCallback callback, void *arg, Destroyer destroyer);
 
-void dropLogger(unsigned int id);
+void dropLogger(intptr_t id);
 
 #endif //LUADROID_LOGGERWRAPPER_H
