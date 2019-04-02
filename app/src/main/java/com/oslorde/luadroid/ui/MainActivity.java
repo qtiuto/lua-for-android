@@ -223,35 +223,31 @@ public class MainActivity extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
+    private static void appendLog(SpannableStringBuilder builder,CharSequence log,boolean isError){
+        synchronized (builder){
+            int start = builder.length();
+            builder.append(log);
+            builder.setSpan(new ForegroundColorSpan(isError?Color.RED:0xFF404040), start, builder.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+        }
+    }
+
     private void runCode() {
         SpannableStringBuilder string = new SpannableStringBuilder();
-        final int textColor = 0xFF404040;
         try {
-            Logger out = (log, r) -> {
-                int start = string.length();
-                string.append(log);
-                string.setSpan(new ForegroundColorSpan(textColor), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-            };
-            Logger err = (log,r) -> {
-                int start = string.length();
-                string.append(log);
-                string.setSpan(new ForegroundColorSpan(Color.RED), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
-            };
+            Logger out = (log, r) -> appendLog(string,log,false);
+            Logger err = (log,r) -> appendLog(string,log,true);
             context.setLogger(out, err);
             String result= context.run(editor.getText().toString());
             context.flushLog();
             if (result != null) {
                 StringBuilder res = new StringBuilder();
                 res.append(getString(R.string.return_values)).append(":\n").append(result);
-                int start = string.length();
-                string.append(res);
-                string.setSpan(new ForegroundColorSpan(textColor), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+                appendLog(string,res,false);
             }
 
         } catch (Throwable e) {
-            int start = string.length();
-            string.append(Log.getStackTraceString(e));
-            string.setSpan(new ForegroundColorSpan(Color.RED), start, string.length(), Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+            context.flushLog();
+            appendLog(string,Log.getStackTraceString(e),true);
         }
         result = string;
         save();
