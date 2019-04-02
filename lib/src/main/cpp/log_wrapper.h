@@ -6,7 +6,7 @@
 #define LUADROID_LOGGERWRAPPER_H
 
 #include <jni.h>
-#include <opencl-c.h>
+#include <stdlib.h>
 
 typedef void(*LoggerCallback)(JNIEnv* env,const char *, bool,void* arg);
 typedef void(*Destroyer)(void*);
