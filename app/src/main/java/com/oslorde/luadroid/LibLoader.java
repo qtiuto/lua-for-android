@@ -29,7 +29,7 @@ public class LibLoader {
                     getDeclaredMethod("currentApplication");
             Application application = null;
 
-            if (Build.VERSION.SDK_INT < 18) {
+            if (Build.VERSION.SDK_INT < 18&&Looper.getMainLooper()!=Looper.myLooper()) {
                 Handler handler = new Handler(Looper.getMainLooper());
                 final Application[] outA = new Application[1];
                 while (outA[0] == null) {
