@@ -2107,7 +2107,7 @@ int javaNew(lua_State *L) {
             }else if(len<top-1){
                 ERROR( "%d elements is too many for an array of size %d",top-1 ,len );
             }
-            for (int i=2,max=max(top,len+1); 2 <=max; ++i) {
+            for (int i=2,max=max(top,len+1); i <=max; ++i) {
                 ValidLuaObject object;
                 if (!parseLuaObject( L, context, i, object)) {
                     TopErrorHandle( "Arg unexpected for array");
