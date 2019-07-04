@@ -12,9 +12,6 @@ android:
     - android-sdk-license-.+
     - google-gdk-license-.+
     - android-sdk-license
-install:
-  - cd $ANDROID_HOME/tools/bin| echo y| ./sdkmanager "ndk-bundle"
-  - echo y | ./sdkmanager "lldb;3.1"
 before_cache:
   - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
   - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
@@ -23,9 +20,14 @@ cache:
     - $HOME/.gradle/caches/
     - $HOME/.gradle/wrapper/
     - $HOME/.android/build-cache
-before_script:
-  - export ANDROID_NDK_HOME=$ANDROID_HOME/ndk-bundle
-
+before_install:
+  - sudo chmod +x gradlew
+  - wget https://dl.google.com/android/repository/android-ndk-r20-linux-x86_64.zip
+  - unzip android-ndk-r20-linux-x86_64.zip -d $HOME
+  - export ANDROID_NDK_HOME=$HOME/android-ndk-r20
+  - export PATH=$PATH:$ANDROID_NDK_HOME
+  - mkdir "$ANDROID_HOME/licenses" || true
+  - echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55" > "$ANDROID_HOME/licenses/android-sdk-license"
+  - echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
 script:
-  - chmod +x gradlew
   - ./gradlew clean build
