@@ -51,7 +51,7 @@ public class DefaultScriptContext implements IScriptContext, RemoteObj {
     @Override
     public IClassList getClasses() {
         if(classList==null)
-            classList=new ClassList(context);
+            classList=new ClassList();
         return classList;
     }
 
