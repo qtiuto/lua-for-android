@@ -60,10 +60,12 @@ public class LibLoader {
 //Application loader is initiated when the vm initiates after Android 7.0.
     public static void load() {
         try {
-            loadLib( "luadroid",true);
-            loadLib("ffi",false);
-            loadLib("socket",false);
-            loadLib("mime",false);
+            File dir=loadLib( "luadroid");
+            loadLib("dexresolver");
+            loadLib("ffi");
+            loadLib("socket");
+            loadLib("mime");
+            createNewNativeDir(dir);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -85,7 +87,7 @@ public class LibLoader {
         return null;
     }
 
-    private static void loadLib(String libName,boolean load) throws Exception {
+    private static File loadLib(String libName) throws Exception {
         File dst=null;
         if (isLibExtracted()) {
             String libPath = ((BaseDexClassLoader) ScriptContext.class.getClassLoader()).findLibrary(libName);
@@ -112,10 +114,7 @@ public class LibLoader {
                 dst.deleteOnExit();
             }
         }
-        if(load){
-            createNewNativeDir(dst.getParentFile());
-            System.loadLibrary(libName);
-        }
+        return dst.getParentFile();
     }
 
 
