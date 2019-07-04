@@ -9,6 +9,7 @@ import android.util.SparseLongArray;
 
 import com.android.dx.TypeId;
 import com.android.dx.stock.ProxyBuilder;
+import com.oslorde.dexresolver.DexResolver;
 import com.oslorde.luadroid.set.BaseNode;
 import com.oslorde.luadroid.set.LightNodeSet;
 import com.oslorde.luadroid.set.LightSet;
@@ -18,9 +19,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -37,16 +35,10 @@ import java.lang.reflect.WildcardType;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.CharBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.Deque;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -56,11 +48,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
-
-import dalvik.system.BaseDexClassLoader;
-import dalvik.system.DexFile;
 
 /**
  * For running a lua context
@@ -109,12 +96,9 @@ public class ScriptContext {
             return true;
         }
     };
-    private static final Comparator<String> sClassPrefixComparator = (cl, pack) -> startsWithPackage(cl,pack)?0:classCompare(cl,pack);
-    private static final Comparator<String> sClassComparator = ScriptContext::classCompare;
     private static Method sEqualNameAndParameters;
     //Optimize  for the redundant call in new Class Api
-    private static  Method sUnchecked;
-    private static Field mDexCookie;
+    private static Method sUnchecked;
     private static boolean sUseList;
 
     static {
@@ -133,7 +117,6 @@ public class ScriptContext {
 
     }
 
-    private final Object importLock=new Object();
     private HashMap<Class, TableConverter> sConverters;
     private HashMap<Class,Indexer> indexers;
     private HashMap<Class,IteratorFactory> iterators;
@@ -143,10 +126,8 @@ public class ScriptContext {
     private ByteBuffer rawLogBuffer;
     private CharBuffer logBuffer;
     //Too many memory usages.
-    private LightSet<String> dexFileNames;
+    private DexResolver dexResolver;
 
-    //private native static void nativeClean(long ptr);
-    private ArrayList<Dex> dexFiles;
 
     public ScriptContext() {
         this(true, false);
@@ -192,11 +173,6 @@ public class ScriptContext {
     private static native int getClassType(long ptr,Class c);
 
     private static native boolean sameSigMethod(Method m,Method f,Method worker);
-
-    private static native String[][] getBootClassList();
-
-    private static native String[][] getClassList(Object cookie);
-
 
     private static  int classCompare(String orig,String other){
         int len=orig.length();
@@ -700,7 +676,7 @@ public class ScriptContext {
     }
 
     /** 1-5 is left for box type,6 left for object,interfaces is always 7*/
-    private static int weightObject(Class<?> target, Class<?> from) {
+    /*private static int weightObject(Class<?> target, Class<?> from) {
         if (target.isPrimitive() || from.isPrimitive()) {
             if(target==from) return 7;//left for primitive array
             else return 0;
@@ -723,7 +699,7 @@ public class ScriptContext {
         }
         ret = ret == 0 ? 0 : weight - ret + 6;
         return ret;
-    }
+    }*/
 
     private static int getClassLuaType(Class type) {
         int retType;
@@ -812,18 +788,6 @@ public class ScriptContext {
         return retType;
     }
 
-    private static Object getDexFileCookie(DexFile dexFile){
-        try {
-            if(mDexCookie ==null){
-                mDexCookie =dexFile.getClass().getDeclaredField("mCookie");
-                mDexCookie.setAccessible(true);
-            }
-            return mDexCookie.get(dexFile);
-        }catch (Exception ignored){
-
-        }
-        return null;
-    }
 
     private static void setArray(Object array,int arrayType,int index,Object value){
         switch (arrayType) {
@@ -1133,227 +1097,44 @@ public class ScriptContext {
         return factory.generate(v);
     }
 
-    List<String> getClasses(){
-        if(dexFileNames ==null) {
-            try {
-                initLoader();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    private DexResolver getDexResolver(){
+        DexResolver dexResolver=this.dexResolver;
+        if(dexResolver==null){
+            this.dexResolver=dexResolver=new DexResolver();
         }
-        ArrayList<String> ret=new ArrayList<>();
-        for (Dex dex: dexFiles){
-            Collections.addAll(ret,dex.classes);
-        }
-        return ret;
+        return dexResolver;
     }
 
     private Object[][] importAll(String pack) throws Exception {
-        synchronized (importLock) {
-            initLoader();
+        ArrayList<Class> ret = new ArrayList<>(16);
+        ArrayList<String> names = new ArrayList<>(16);
+        int fromIndex = pack.length() + 1;
+        getDexResolver().listPackage(pack, (dex, className) -> {
+            ret.add(dex.loadClass(className));
+            names.add(className.substring(fromIndex));
+        });
+        return new Object[][]{ret.toArray(), names.toArray()};
 
-            ArrayList<Class> ret = new ArrayList<>(16);
-            ArrayList<String> names=new ArrayList<>(16);
-            int fromIndex = pack.length() + 1;
-            Iterator<Dex> iterator=dexFiles.iterator();
-            while (iterator.hasNext()) {
-                Dex dex=iterator.next();
-                if(!dex.exists()){
-                    iterator.remove();
-                    continue;
-                }
-                String[] classes=dex.classes;
-                int mid = Arrays.binarySearch(classes, pack, sClassPrefixComparator);
-                if (mid < 0) continue;
-                for (int j = mid; j != -1; --j) {
-                    String cl = classes[j];
-                    if (startsWithPackage(cl,pack)) {
-                        if (cl.indexOf('.', fromIndex) == -1&&cl.indexOf('$', fromIndex)==-1){
-                            try {
-                                ret.add(dex.loadClass(cl));
-                                names.add(cl.substring(fromIndex));
-                            }catch (Exception ignored){}
-
-                        }
-
-                    } else break;
-                }
-                if (mid != classes.length - 1)
-                    for (int j = mid + 1, len = classes.length; j < len; ++j) {
-                        String cl = classes[j];
-                        if (startsWithPackage(cl,pack)) {
-                            if (cl.indexOf('.', fromIndex) == -1&&cl.indexOf('$', fromIndex)==-1)
-                                try {
-                                    ret.add(dex.loadClass(cl));
-                                    names.add(cl.substring(fromIndex));
-                                }catch (Exception ignored){}
-                        } else break;
-                    }
-            }
-            return new Object[][]{ret.toArray(),names.toArray()};
-        }
 
     }
 
     private Class loadInnerClass(String cl){
-        if(cl.indexOf('$')!=-1) return null;
-        cl=cl.replace('/','.');
-        synchronized (importLock){
-            try {
-                initLoader();
-            } catch (Exception e) {
-                return null;
-            }
-            Iterator<Dex> iterator=dexFiles.iterator();
-            while (iterator.hasNext()) {
-                Dex dex=iterator.next();
-                if(!dex.exists()){
-                    iterator.remove();
-                    continue;
-                }
-                int idx=Arrays.binarySearch(dex.classes,cl,sClassComparator);
-                if(idx>=0) {
-                    try {
-                        return dex.loadClass(dex.classes[idx]);
-                    }catch (Exception e){
-                        break;
-                    }
-                }
-            }
+        if (cl.indexOf('$') != -1) return null;
+        cl = cl.replace('/', '.');
+        try {
+            return getDexResolver().findClass(cl);
+        } catch (Exception e) {
             return null;
         }
+
+
     }
 
     private void loadClassLoader(ClassLoader loader) throws Exception {
-        synchronized (importLock){
-            initLoader();
-            Field fPathList = BaseDexClassLoader.class.getDeclaredField("pathList");
-            Field fDexElements=null;
-            Field fDexFile=null;
-            while (loader!=null){
-                if(loader instanceof BaseDexClassLoader){
-                    fPathList.setAccessible(true);
-                    Object pathList= fPathList.get(loader);
-                    if(pathList==null) continue;
-                    if(fDexElements==null){
-                        fDexElements = pathList.getClass().getDeclaredField("dexElements");
-                        fDexElements.setAccessible(true);
-                    }
-                    Object[] elements= (Object[]) fDexElements.get(pathList);
-                    if(elements==null) continue;
-                    for (Object ele : elements) {
-                        if(fDexFile==null){
-                            fDexFile = ele.getClass().getDeclaredField("dexFile");
-                            fDexFile.setAccessible(true);
-                        }
-                        DexFile dexFile= (DexFile) fDexFile.get(ele);
-                        if(dexFile==null) continue;
-                        if(!dexFileNames.contains(dexFile.getName())){
-                            addDexFile(dexFile,loader);
-                        }
-                    }
-                }
-                loader=loader.getParent();
-            }
-        }
+        getDexResolver().loadClassLoader(loader);
     }
 
-    private void initLoader() throws Exception {
-        if (dexFileNames == null) {
-            dexFileNames = new LightSet<>();
-            dexFiles = new ArrayList<>();
-            String[] bootJars = System.getenv("BOOTCLASSPATH").split(":");
-            ByteBuffer buffer=null;
-            ByteBuffer tmp=null;
-            if(Build.VERSION.SDK_INT<21){
-                for (String path:bootJars){
-                    File odexSrc=new File(path.replaceAll("\\..*",".odex"));
-                    if(!odexSrc.exists())
-                        odexSrc=new File("/data/dalvik-cache/"+path.replace('/','@')+"@classes.dex");
-                    if(odexSrc.exists()){
-                        FileInputStream in=new FileInputStream(odexSrc);
-                        FileChannel channel=in.getChannel();
-                        MappedByteBuffer byteBuffer=channel.map(FileChannel.MapMode.READ_ONLY,0,channel.size());
-                        String[][] list=getClassList(byteBuffer);
-                        for (String[] dex:list) dexFiles.add( new Dex(dex,null));
-                        channel.close();
-                        in.close();
-                    }else if(path.matches(".+(\\.jar|\\.zip|\\.apk)$")){
-                        ZipFile zipFile;
-                        ZipEntry entry;
-                        try{
-                            zipFile = new ZipFile(path);
-                            entry = zipFile.getEntry("classes.dex");
-                            if(entry==null){
-                                zipFile.close();
-                                continue;
-                            }
-                        }catch (Exception e){//will it be a bad file?
-                            continue;
-                        }
 
-                        InputStream stream =zipFile.getInputStream(entry);
-                        if(tmp==null){
-                            tmp=ByteBuffer.allocate(1024);
-                            tmp.order(ByteOrder.LITTLE_ENDIAN);
-                        }
-                        int size = (int)entry.getSize();
-                        if(buffer==null||buffer.capacity()<size){
-                            buffer=ByteBuffer.allocateDirect(size);
-                        }
-                        int read;
-                        while ((read=stream.read(tmp.array()))>0){
-                            tmp.position(0);
-                            tmp.limit(read);
-                            buffer.put(tmp);
-                        }
-                        buffer.position(0);
-                        String[][] list=getClassList(buffer);
-                        if(list!=null) for (String[] dex:list) dexFiles.add( new Dex(dex,null));
-                        stream.close();
-                        zipFile.close();
-                    }
-                }
-            }
-            else if (Build.VERSION.SDK_INT <23) {
-                for (String path : bootJars) {
-                    File file = new File(path);
-                    if(!file.exists()) continue;
-                    try {
-                        DexFile dexFile = new DexFile(file);
-                        addDexFile(dexFile,null);
-                    }catch (Exception ignored){
-                    }
-                }
-            } else {
-                String[][] bootClassList = getBootClassList();
-                if (bootClassList != null) {
-                    for (String[] dex:bootClassList) dexFiles.add( new Dex(dex,null));
-                }
-                dexFileNames.addAll(bootJars);
-            }
-            System.gc();//free memory
-            loadClassLoader(ScriptContext.class.getClassLoader());
-        }
-
-
-    }
-
-    //Classes in dex file are sorted before return, so no need to sort it
-    private void addDexFile(DexFile dexFile,ClassLoader loader) throws Exception{
-        if(Build.VERSION.SDK_INT>=21){
-            String[][] list=getClassList(getDexFileCookie(dexFile));
-            for (String[] dex:list) dexFiles.add(new Dex(dex,loader));
-        }else {//generally dalvik only
-            Enumeration<String> entries = dexFile.entries();
-            Field field=entries.getClass().getDeclaredField("mNameList");
-            field.setAccessible(true);
-            String[] list= (String[]) field.get(entries);
-            dexFiles.add(new Dex(list,loader));
-        }
-
-        dexFileNames.add(dexFile.getName());
-    }
 
 
     private HashMap<Class, TableConverter> lazyConverts() {
@@ -1403,8 +1184,7 @@ public class ScriptContext {
         try {
             boolean isAbstract=Modifier.isAbstract(cls.getModifiers())|| cls.isInterface();
             if (Map.class.isAssignableFrom(cls)&&!isAbstract) {
-                if ((constructor = cls.getConstructor()) == null)
-                    return false;
+                constructor = cls.getConstructor();
                 sConverters.put(cls, table -> {
                     Map<Object, Object> map = (Map) constructor.newInstance();
                     map.putAll(table);
@@ -1413,8 +1193,7 @@ public class ScriptContext {
                 return true;
             }
             if (Collection.class.isAssignableFrom(cls)&&!isAbstract) {
-                if ((constructor = cls.getConstructor()) == null)
-                    return false;
+                constructor = cls.getConstructor();
                 sConverters.put(cls, table -> {
                     Collection list = (Collection) constructor.newInstance();
                     list.addAll(table.values());
@@ -2339,22 +2118,4 @@ public class ScriptContext {
     }
 
 
-    static class Dex{
-        String[] classes;
-        WeakReference<ClassLoader> loader;
-
-        public Dex(String[] classes, ClassLoader loader) {
-            this.classes = classes;
-            this.loader = loader==null?null:new WeakReference<>(loader);
-        }
-
-        boolean exists(){
-            return loader==null||loader.get()!=null;
-        }
-
-        Class loadClass(String name) throws ClassNotFoundException{
-            if(loader==null) return Class.forName(name);
-            return loader.get().loadClass(name);
-        }
-    }
 }
