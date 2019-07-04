@@ -27,7 +27,7 @@
 -keep  class com.oslorde.luadroid.DataMap{
     <init>(...);
 }
--keep public !synthetic class com.oslorde.luadroid.*{
+-keep public class com.oslorde.luadroid.*{
    public !synthetic <methods>;
 }
 -keep public class com.oslorde.luadroid.ScriptContext{
