@@ -299,7 +299,7 @@ namespace std{
         void reserve(size_type __res_arg = 0){
             size_type __cap = capacity();
             size_type __sz = size();
-            __res_arg = _VSTD::max(__res_arg, __sz);
+            __res_arg = std::max(__res_arg, __sz);
             __res_arg = __recommend(__res_arg);
             if (__res_arg != __cap)
             {
