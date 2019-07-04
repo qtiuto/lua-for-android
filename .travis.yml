@@ -13,8 +13,8 @@ android:
     - google-gdk-license-.+
     - android-sdk-license
 install:
-  - cd $ANDROID_HOME/tools/bin| echo y| sdkmanager "ndk-bundle"
-  - echo y | sdkmanager "lldb;3.1"
+  - cd $ANDROID_HOME/tools/bin| echo y| ./sdkmanager "ndk-bundle"
+  - echo y | ./sdkmanager "lldb;3.1"
 before_cache:
   - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
   - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
