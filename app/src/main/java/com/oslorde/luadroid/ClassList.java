@@ -1,5 +1,6 @@
 package com.oslorde.luadroid;
 
+import com.oslorde.dexresolver.DexResolver;
 import com.oslorde.luadroid.ui.IClassList;
 import com.oslorde.luadroid.ui.JClass;
 import com.oslorde.luadroid.ui.RemoteObj;
@@ -51,8 +52,9 @@ public class ClassList implements IClassList, RemoteObj {
    }
 
    private ClassEntry[] entries;
-   public ClassList(ScriptContext context){
-       List<String> classes=context.getClasses();
+   public ClassList(){
+       DexResolver dexResolver=new DexResolver();
+       List<String> classes=dexResolver.getBootClasses();
        Map<ClassEntry,ClassEntry> entries=new HashMap<>();
        for (String cl:classes){
            String name=getSimpleName(cl);
