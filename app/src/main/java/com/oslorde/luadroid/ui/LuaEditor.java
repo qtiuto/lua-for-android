@@ -687,6 +687,7 @@ public class LuaEditor extends FreeScrollingTextField {
     public void open(String filename) {
         mLastSelectedFile = filename;
         File inputFile = new File(filename);
+        if(!inputFile.exists()) return;
         new ReadTask(this, inputFile).start();
     }
 
