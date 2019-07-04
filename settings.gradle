@@ -1,2 +1,2 @@
-include ':app', ':lib', ':luaffi', ':luasocket', ':luasec', ':luadroidtest', 'dexmaker'
-enableFeaturePreview('STABLE_PUBLISHING')
+include ':app', ':lib', ':luaffi', ':luasocket', ':luasec', ':luadroidtest', ':javacompiler', ':dexresolver', 'dexmaker'
+
