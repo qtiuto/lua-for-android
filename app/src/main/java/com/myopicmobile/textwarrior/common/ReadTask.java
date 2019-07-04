@@ -40,7 +40,10 @@ public class ReadTask extends AsyncTask<File,Integer,CharSequence> {
             return Charset.defaultCharset().decode(
                     channel.map(FileChannel.MapMode.READ_ONLY,0,_len));
         } catch (Exception e) {
-            _dlg.setMessage(e.getMessage());
+            LuaEditor editor = _edit.get();
+            if(editor!=null){
+                editor.post(()->_dlg.setMessage(e.getMessage()));
+            }
         }
         return "";
     }
