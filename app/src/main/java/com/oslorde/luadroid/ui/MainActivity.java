@@ -1,13 +1,16 @@
 package com.oslorde.luadroid.ui;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -114,6 +117,9 @@ public class MainActivity extends Activity {
             file=new File(getPreferences(0).getString(LAST,
                     new File(Environment.getExternalStorageDirectory().getPath(),"test.lua").getPath())).getAbsolutePath();
         }
+        if (Build.VERSION.SDK_INT>=23){
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE,Manifest.permission.READ_EXTERNAL_STORAGE},0);
+        }
         loadFile(file);
         new Thread(()->{
             LibLoader.extractLibs(this, BuildConfig.VERSION_CODE);
@@ -137,6 +143,9 @@ public class MainActivity extends Activity {
     @SuppressLint("ApplySharedPref")
     private void loadFile(String path) {
         if(path==null) return;
+        if(!new File(path).exists()){
+            editor.setText("using 'java.lang'\n");
+        }
         editor.open(path);
         getPreferences(0).edit().putString(LAST,path).commit();
     }
@@ -147,7 +156,16 @@ public class MainActivity extends Activity {
         return super.onCreateOptionsMenu(menu);
     }
 
-
+    @Override
+    public void onRequestPermissionsResult(int requestCode,  String[] permissions,  int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        for(int i=permissions.length;i--!=0;){
+            String permission =permissions[i];
+            if(permission.equals(Manifest.permission.WRITE_EXTERNAL_STORAGE)&&grantResults[i]!= PackageManager.PERMISSION_GRANTED)
+                finish();
+            else loadFile(editor.lastFile());
+        }
+    }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
