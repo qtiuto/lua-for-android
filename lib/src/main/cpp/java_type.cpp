@@ -5,8 +5,7 @@
 jmethodID JavaType::sGetComponentType;
 jmethodID JavaType::sFindMembers;
 jmethodID JavaType::sFindMockName;
-jmethodID JavaType::sWeightObject ;
-jmethodID JavaType::sGetSingleInterface ;
+jmethodID JavaType::sGetSingleInterface;
 jmethodID JavaType::sIsTableType;
 jmethodID JavaType::sTableConvert;
 jmethodID JavaType::sIsInterface;
@@ -172,10 +171,10 @@ const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, 
     uint paramsLen =  types.size();
     const MethodInfo *select = nullptr;
     bool varArgMethod=false;
-    uint scores[paramsLen];
-    uint cacheScores[paramsLen];
-    memset(scores, 0, sizeof(int) * paramsLen);
-    memset(cacheScores, 0, sizeof(int) * paramsLen);
+    uintptr_t scores[paramsLen];
+    uintptr_t cacheScores[paramsLen];
+    memset(scores, 0, sizeof(scores[0]) * paramsLen);
+    //memset(cacheScores, 0, sizeof(cacheScores[0]) * paramsLen);
     for (const MethodInfo &info:*array) {
         int expectedArgLen=info.params.size();
         bool isVarArg= false;
@@ -206,12 +205,19 @@ const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, 
                     info.varArgType.rawType:info.params[i].rawType;
             JavaType *provided = types[i];
             switch (luaObject.type) {
-                case T_NIL:
+                case T_NIL:{
                     if (toCheck->isPrimitive()) goto bail;
-                    if (provided&& !env->IsAssignableFrom(
-                            provided->getType(), toCheck->getType()))
-                        goto bail;
+                    if (provided ){
+                        if(!env->IsAssignableFrom(provided->getType(),
+                                                  toCheck->getType())) goto bail;
+                    }
+                    JavaType *existed = (JavaType*)scores[i];
+                    // other type will always rewrite the existed type if it's not the super type of the existed type
+                    if (!existed||!env->IsAssignableFrom(existed->getType(),toCheck->getType())) {
+                        cacheScores[i]=uintptr_t (toCheck);
+                    }
                     break;
+                }
                 case T_BOOLEAN:
                     if(provided&&provided->isBoxedBool())
                         goto Handle_OBJ;
@@ -344,9 +350,14 @@ const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, 
                         break;
                     }
                     if(provided&&provided->isPrimitive()) goto bail;
-                    uint weight = weightObject(env,toCheck, real);
-                    if (scores[i] > weight||!weight) goto bail;
-                    cacheScores[i] = weight;
+                    if(!env->IsAssignableFrom(real->getType(),toCheck->getType()))
+                        goto bail;
+                    uintptr_t score= scores[i];
+                    // other type will always rewrite the existed type if it's not the super type of the existed type
+                    // A score below java.lnag.Object may not be zero if the real is boxed primitive type.
+                    if(score<6||!env->IsAssignableFrom(((JavaType*)score)->getType(),toCheck->getType())){
+                        cacheScores[i]=(uintptr_t)toCheck;
+                    }
                     break;
                 }
                 case T_INTEGER: {
@@ -608,23 +619,6 @@ const FieldInfo *JavaType::deductField(const FieldArray* array, JavaType *type){
         if (info.type.rawType == type) return &info;
     }
     return nullptr;
-}
-
-
-uint JavaType::weightObject(TJNIEnv* env,JavaType *target, JavaType *from) {
-    auto key = std::make_pair<>(target, from);
-    auto weightMap = context->weightMap;
-    context->weightLock.lock();
-    auto&& iter = weightMap.find(key);
-    context->weightLock.unlock();
-    if (iter != weightMap.end()) {
-        return iter->second;
-    }
-    uint ret = uint(env->CallStaticIntMethod(contextClass, sWeightObject, target->type, from->type));
-    context->weightLock.lock();
-    weightMap.emplace(key, ret);
-    context->weightLock.unlock();
-    return ret;
 }
 
 JObject JavaType::getSingleInterface(TJNIEnv* env) {

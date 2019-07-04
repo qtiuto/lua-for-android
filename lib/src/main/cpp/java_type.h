@@ -126,7 +126,6 @@ private:
     static jmethodID sGetComponentType;
     static jmethodID sFindMembers;
     static jmethodID sFindMockName;
-    static jmethodID sWeightObject;
     static jmethodID sGetSingleInterface;
     static jmethodID sIsInterface;
     static jmethodID sIsTableType;
@@ -158,8 +157,6 @@ private:
     inline static JClass getComponentType(TJNIEnv *env, jclass type) {
         return (JClass) env->CallObjectMethod(type, sGetComponentType);
     }
-
-    uint weightObject(TJNIEnv* env,JavaType *target, JavaType *from);
 
 
 public:

@@ -28,7 +28,7 @@ extern "C"
 #else
 extern
 #endif
- JNIEXPORT int getSDK();
+
 
 typedef std::MString String;
 

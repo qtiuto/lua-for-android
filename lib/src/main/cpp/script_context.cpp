@@ -183,8 +183,6 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
         JavaType::sFindMockName = env->GetStaticMethodID(cl, "findMockName"
                 , "(Ljava/lang/Class;Ljava/lang/String;)[Ljava/lang/String;");
 
-        JavaType::sWeightObject = env->GetStaticMethodID(cl, "weightObject",
-                                                         "(Ljava/lang/Class;Ljava/lang/Class;)I");
         JavaType::sGetSingleInterface = env->GetStaticMethodID(cl, "getSingleInterface"
                 , "(Ljava/lang/Class;)Ljava/lang/reflect/Method;");
         JavaType::sIsTableType = env->GetMethodID(cl, "isTableType", "(Ljava/lang/Class;)Z");
@@ -207,16 +205,6 @@ void ScriptContext::init(TJNIEnv *env, const jobject javaObject) {
         objectHash = env->GetMethodID(cObject, "hashCode", "()I");
         objectToString = env->GetMethodID(cObject, "toString", "()Ljava/lang/String;");
     }
-}
-
-extern "C" int getSDK() {
-    static int sdk=0;
-    if(sdk!=0)
-        return sdk;
-    char s[6];
-    __system_property_get("ro.build.version.sdk",s);
-    sdk=atoi(s);
-    return sdk;
 }
 
 lua_State *ScriptContext::getLua() {
@@ -430,11 +418,17 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
     } else if (typeId == JavaType::FLOAT) {
         if (unlikely(luaObject.type == T_OBJECT)) {
             ret.f = float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
-        } else ret.f = (float) luaObject.number;
+        } else if(luaObject.type==T_INTEGER) {
+            ret.f =(float) luaObject.integer;
+        }else {
+            ret.f=(float) luaObject.number;
+        }
     } else if (typeId == JavaType::DOUBLE) {
         if (unlikely(luaObject.type == T_OBJECT)) {
             ret.d = env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
-        } else ret.d = luaObject.number;
+        } else if(luaObject.type==T_INTEGER) {
+            ret.d = luaObject.integer;
+        }else ret.d = luaObject.number;
     } else if (typeId == JavaType::CHAR) {
         if (unlikely(luaObject.type == T_OBJECT)) {
             ret.c = env->CallCharMethod(luaObject.objectRef->object, charValue);

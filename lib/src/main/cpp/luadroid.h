@@ -232,9 +232,7 @@ public:
     JavaType *const FloatClass;
     JavaType *const DoubleClass;
     JavaType *const ObjectClass;
-    Map<std::pair<JavaType *, JavaType *>, uint> const weightMap;
-    SpinLock weightLock;
-    uint logID;
+    intptr_t logID;
     jobject const javaRef;
 
     JavaType *ensureType(TJNIEnv *env, jclass type);

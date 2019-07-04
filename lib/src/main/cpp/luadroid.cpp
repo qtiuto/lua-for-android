@@ -14,7 +14,6 @@
 #include <cstring>
 #include <setjmp.h>
 #include <lua.h>
-#include <dex/DexResolver.h>
 #include <assert.h>
 #include <dlfcn.h>
 #include <ctype.h>
@@ -1853,7 +1852,6 @@ int javaUsing(lua_State*L){
         int length=env->GetArrayLength(classes);
         String importPack=pack;
         if(pack[0])importPack+='.';
-        int packLen=(int)importPack.size();
         if(length!=0){
             pack= import->packages.insert(importPack).first->data();
         }
@@ -3452,15 +3450,6 @@ static void registerNativeMethods(JNIEnv *env) {
     jclass scriptClass = env->FindClass("com/oslorde/luadroid/ScriptContext");
     env->RegisterNatives(scriptClass, nativeMethods,
                          sizeof(nativeMethods) / sizeof(JNINativeMethod));
-    int sdk=getSDK();
-    if(sdk>=23){
-        DexResolver::init();
-        JNINativeMethod method[]={JNINativeMethod{"getBootClassList","()[[Ljava/lang/String;",(void*)DexResolver::getAllBootClasses}};
-        env->RegisterNatives(scriptClass,method,1);
-    }
-
-    JNINativeMethod method[]={JNINativeMethod{"getClassList","(Ljava/lang/Object;)[[Ljava/lang/String;",(void*)DexResolver::getClassList}};
-    env->RegisterNatives(scriptClass,method,1);
 
     env->DeleteLocalRef(scriptClass);
 }
