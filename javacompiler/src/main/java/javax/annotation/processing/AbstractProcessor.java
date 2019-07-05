@@ -25,13 +25,18 @@
 
 package javax.annotation.processing;
 
-import java.util.Set;
-import java.util.HashSet;
 import java.util.Collections;
-import java.util.Objects;
-import javax.lang.model.element.*;
+import java.util.HashSet;
+import java.util.Set;
+
 import javax.lang.model.SourceVersion;
+import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
+
+import java9.util.Objects;
 
 /**
  * An abstract annotation processor designed to be a convenient

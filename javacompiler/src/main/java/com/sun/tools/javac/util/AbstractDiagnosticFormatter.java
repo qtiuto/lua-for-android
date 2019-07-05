@@ -25,7 +25,22 @@
 
 package com.sun.tools.javac.util;
 
-import java.nio.file.Path;
+import com.sun.tools.javac.api.DiagnosticFormatter;
+import com.sun.tools.javac.api.DiagnosticFormatter.Configuration.DiagnosticPart;
+import com.sun.tools.javac.api.DiagnosticFormatter.Configuration.MultilineLimit;
+import com.sun.tools.javac.api.Formattable;
+import com.sun.tools.javac.code.Lint.LintCategory;
+import com.sun.tools.javac.code.Printer;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.Type.CapturedType;
+import com.sun.tools.javac.file.PathFileObject;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.javac.main.Option;
+import com.sun.tools.javac.tree.JCTree.JCExpression;
+import com.sun.tools.javac.tree.JCTree.JCParens;
+import com.sun.tools.javac.tree.Pretty;
+
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -36,23 +51,7 @@ import java.util.Set;
 
 import javax.tools.JavaFileObject;
 
-import com.sun.tools.javac.api.DiagnosticFormatter;
-import com.sun.tools.javac.api.DiagnosticFormatter.Configuration.DiagnosticPart;
-import com.sun.tools.javac.api.DiagnosticFormatter.Configuration.MultilineLimit;
-import com.sun.tools.javac.api.DiagnosticFormatter.PositionKind;
-import com.sun.tools.javac.api.Formattable;
-import com.sun.tools.javac.code.Lint.LintCategory;
-import com.sun.tools.javac.code.Printer;
-import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.code.Type.CapturedType;
-import com.sun.tools.javac.file.PathFileObject;
-import com.sun.tools.javac.jvm.Profile;
-import com.sun.tools.javac.main.Option;
-import com.sun.tools.javac.tree.JCTree.*;
-import com.sun.tools.javac.tree.Pretty;
-
-import static com.sun.tools.javac.util.JCDiagnostic.DiagnosticType.*;
+import static com.sun.tools.javac.util.JCDiagnostic.DiagnosticType.FRAGMENT;
 
 /**
  * This abstract class provides a basic implementation of the functionalities that should be provided
@@ -190,7 +189,7 @@ public abstract class AbstractDiagnosticFormatter implements DiagnosticFormatter
         else if (arg instanceof JCExpression) {
             return expr2String((JCExpression)arg);
         }
-        else if (arg instanceof Iterable<?> && !(arg instanceof Path)) {
+        else if (arg instanceof Iterable<?>) {
             return formatIterable(d, (Iterable<?>)arg, l);
         }
         else if (arg instanceof Type) {

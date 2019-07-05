@@ -25,19 +25,17 @@
 
 package com.sun.tools.javac.code;
 
-import java.lang.annotation.Annotation;
-import java.lang.annotation.Inherited;
-import java.lang.annotation.Repeatable;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-
-import javax.lang.model.AnnotatedConstruct;
-
 import com.sun.tools.javac.model.AnnotationProxyMaker;
 import com.sun.tools.javac.util.DefinedBy;
 import com.sun.tools.javac.util.DefinedBy.Api;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.ListBuffer;
+
+import java.lang.annotation.Annotation;
+import java.lang.annotation.Inherited;
+import java.lang.annotation.Repeatable;
+
+import javax.lang.model.AnnotatedConstruct;
 
 /**
  * Common super type for annotated constructs such as Types and Symbols.
@@ -187,8 +185,12 @@ public abstract class AnnoConstruct implements AnnotatedConstruct {
 
     // Helper to getAnnotationsByType
     private static Class<? extends Annotation> getContainer(Class<? extends Annotation> annoType) {
-        Repeatable repeatable = annoType.getAnnotation(Repeatable.class);
-        return (repeatable == null) ? null : repeatable.value();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            Repeatable repeatable = null;
+            repeatable = annoType.getAnnotation(Repeatable.class);
+            return (repeatable == null) ? null : repeatable.value();
+        }
+        return null;
     }
 
     // Helper to getAnnotationsByType

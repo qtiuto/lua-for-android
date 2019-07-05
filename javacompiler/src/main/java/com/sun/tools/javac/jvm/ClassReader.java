@@ -101,6 +101,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.CharBuffer;
@@ -2868,13 +2869,21 @@ public class ClassReader {
         }
     }
 
+    public int getClassFlag(Class c){
+        int flag=c.getModifiers();
+        if(c.isEnum()) flag|=ENUM;
+        if(c.isSynthetic()) flag|=SYNTHETIC;
+        if(c.isAnnotation()) flag|=ANNOTATION;
+        return flag;
+    }
+
     public void readDexClass(ClassSymbol c){
         filling=true;
         try {
             DexClass dexClass=(DexClass) ((PathFileObject) c.classfile).getPath();
             Class cls=dexClass.loadClass();
             c.members_field=WriteableScope.create(c);
-            c.flags_field=cls.getModifiers();
+            c.flags_field=getClassFlag(cls);
             Type.ClassType ct= (Type.ClassType) c.type;
             Class sup=cls.getSuperclass();
             ct.supertype_field=sup==null?Type.noType:enterClass(names.fromString(sup.getName())).erasure(types);
@@ -2885,7 +2894,10 @@ public class ClassReader {
             }
             if (ct.interfaces_field == null)
                 ct.interfaces_field = is.reverse();
+            Field[] fields=cls.getDeclaredFields();
+            for (Field field:fields){
 
+            }
         }catch (Exception e){
             throw badClassFile("bad.class.file",c.flatname);
         }
