@@ -1,6 +1,5 @@
 language: android
 jdk: openjdk8
-os:linux
 sudo: true
 dist:trusty
 android:
