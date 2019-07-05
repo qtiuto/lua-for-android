@@ -25,6 +25,7 @@ before_install:
   - unzip -q android-ndk-r20-linux-x86_64.zip -d $HOME
   - export ANDROID_NDK_HOME=$HOME/android-ndk-r20
   - export PATH=$PATH:$ANDROID_NDK_HOME
-  - yes | sdkmanager --licenses
+  - echo $ANDROID_HOME 
+  - yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses
 script:
   - ./gradlew clean build
