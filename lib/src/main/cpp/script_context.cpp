@@ -404,31 +404,53 @@ void ThreadContext::setPendingException(const String &msg) {
 
 }
 
-jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *type, jobject real) {
+jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *type, jobject realType) {
     jvalue ret;
     auto typeId = type->getTypeID();
     if (type->isInteger()) {
-        if (unlikely(luaObject.type == T_OBJECT)) {
-            ret.j = env->CallLongMethod(luaObject.objectRef->object, longValue);
-        } else ret.j = luaObject.integer;
+        if(luaObject.type==T_INTEGER){
+            ret.j = luaObject.integer;
+        } else if (unlikely(luaObject.type == T_OBJECT)) {
+            ret.j = luaObject.objectRef->type->isBoxedChar()?jlong (env->CallCharMethod(luaObject.objectRef->object, charValue)):
+                    env->CallLongMethod(luaObject.objectRef->object, longValue);
+        } else if(luaObject.type==T_CHAR){
+            ret.j= luaObject.character;
+        } else /*if(luaObject.type==T_STRING)*/{
+            strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
+            ret.j=(jlong) ret.c;
+        }
     } else if (typeId == JavaType::BOOLEAN) {
         if (unlikely(luaObject.type == T_OBJECT)) {
             ret.z = env->CallBooleanMethod(luaObject.objectRef->object, booleanValue);
         } else ret.z = luaObject.isTrue;
     } else if (typeId == JavaType::FLOAT) {
-        if (unlikely(luaObject.type == T_OBJECT)) {
-            ret.f = float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
-        } else if(luaObject.type==T_INTEGER) {
+        if(luaObject.type==T_INTEGER) {
             ret.f =(float) luaObject.integer;
-        }else {
+        }else if(luaObject.type==T_FLOAT){
             ret.f=(float) luaObject.number;
+        } else if (unlikely(luaObject.type == T_OBJECT)) {
+            ret.f = luaObject.objectRef->type->isBoxedChar()?float(env->CallCharMethod(luaObject.objectRef->object, charValue)):
+                    float(env->CallDoubleMethod(luaObject.objectRef->object, doubleValue));
+        } else  if(luaObject.type==T_CHAR){
+            ret.f=(float) luaObject.character;
+        } else /*if(luaObject.type==T_STRING)*/{
+            strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
+            ret.f=(float) ret.c;
         }
     } else if (typeId == JavaType::DOUBLE) {
-        if (unlikely(luaObject.type == T_OBJECT)) {
-            ret.d = env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
-        } else if(luaObject.type==T_INTEGER) {
-            ret.d = luaObject.integer;
-        }else ret.d = luaObject.number;
+        if(luaObject.type==T_INTEGER) {
+            ret.d =luaObject.integer;
+        }else if(luaObject.type==T_FLOAT){
+            ret.d=luaObject.number;
+        } else if (unlikely(luaObject.type == T_OBJECT)) {
+            ret.d = luaObject.objectRef->type->isBoxedChar()?double(env->CallCharMethod(luaObject.objectRef->object, charValue)):
+                    env->CallDoubleMethod(luaObject.objectRef->object, doubleValue);
+        } else if(luaObject.type==T_CHAR){
+            ret.d= luaObject.character;
+        } else /*if(luaObject.type==T_STRING)*/{
+            strcpy8to16((char16_t *) &ret.c, luaObject.string, nullptr);
+            ret.d= ret.c;
+        }
     } else if (typeId == JavaType::CHAR) {
         if (unlikely(luaObject.type == T_OBJECT)) {
             ret.c = env->CallCharMethod(luaObject.objectRef->object, charValue);
@@ -482,8 +504,8 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
                                           JObject(env, value).get());
                 }
                 current->erase(luaObject.lazyTable);
-                ret.l = type->convertTable(env, map, real);
-            } else ret.l = type->convertTable(env, iter->second, real);
+                ret.l = type->convertTable(env, map, realType);
+            } else ret.l = type->convertTable(env, iter->second, realType);
             if (isOwner) {
                 delete current;
                 setValue(ContextStorage::PARSED_TABLE, nullptr);
@@ -507,6 +529,8 @@ jvalue ThreadContext::luaObjectToJValue(ValidLuaObject &luaObject, JavaType *typ
             case JavaType::BOX_CHAR:
                 if (luaObject.type == T_STRING)
                     strcpy8to16(&luaObject.character, luaObject.string, NULL);
+                else if(luaObject.type==T_FLOAT)
+                    luaObject.character=(char16_t) luaObject.number;
                 ret.l = env->CallStaticObjectMethod(type->getType(), type->
                         getBoxMethodForBoxType(env), luaObject.character).invalidate();
                 break;

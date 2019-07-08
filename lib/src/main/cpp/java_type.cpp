@@ -230,33 +230,76 @@ const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, 
                 case T_CHAR:{
                     if(provided&&provided->isBoxedChar())
                         goto Handle_OBJ;
-                    if (toCheck ->isChar())
-                        cacheScores[i]=1;
-                    else if(scores[i]==1||!toCheck ->isBoxedChar())
-                        goto bail;
-                    else cacheScores[i]=0;
+                    switch(toCheck->getTypeID()){
+                        case CHAR:
+                            cacheScores[i]=6;
+                            break;
+                        case BOX_CHAR:
+                            cacheScores[i]=5;
+                            break;
+                        case INT:
+                            cacheScores[i]=4;
+                            break;
+                        case LONG:
+                            cacheScores[i]=3;
+                            break;
+                        case FLOAT:
+                            cacheScores[i]=2;
+                            break;
+                        case DOUBLE:
+                            cacheScores[i]=1;
+                            break;
+                        default: goto bail;
+                    }
+                    if(scores[i]>cacheScores[i]) goto bail;
                     break;
                 }
                 case T_STRING: {
                     if (provided == nullptr) {
                         if (strlen8to16(luaObject.string) == 1){
-                            if (toCheck->isChar()) {
-                                cacheScores[i] = 3;
-                                continue;
-                            } else if (scores[i] == 3) goto bail;
-                            else if(toCheck->isBoxedChar()){
-                                cacheScores[i] = 2;
-                                continue;
+                            switch(toCheck->getTypeID()){
+                                case CHAR:
+                                    cacheScores[i]=9;
+                                    break;
+                                case BOX_CHAR:
+                                    cacheScores[i]=8;
+                                    break;
+                                case INT:
+                                    cacheScores[i]=7;
+                                    break;
+                                case LONG:
+                                    cacheScores[i]=6;
+                                    break;
+                                case FLOAT:
+                                    cacheScores[i]=5;
+                                    break;
+                                case DOUBLE:
+                                    cacheScores[i]=4;
+                                    break;
+                                default: goto bail;
                             }
+                            if(cacheScores[i]>=scores[i]) continue;
                         }
-                        if(scores[i]>1) continue;
-                        if (toCheck->isString())cacheScores[i] = 1;
-                        else if(!toCheck->isStringAssignable(env)){
+                        //if(scores[i]>1) goto bail;
+                        WEIGHT_STRING:
+                        if (toCheck->isString())cacheScores[i] = 3;
+                        else if(toCheck->isObjectClass()){
+                            cacheScores[i]=1;
+                        } else if(toCheck->isStringAssignable(env))
+                            cacheScores[i]=2;
+                        else goto bail;
+                        if(cacheScores[i]<scores[i])
                             goto bail;
-                        } else cacheScores[i]=0;
-                    } else if (provided->isString()||provided->isStringAssignable(env)) {
-                        if (provided != toCheck) goto bail;
-                    } else goto bail;
+                    } else if (provided->isString()) {
+                        goto WEIGHT_STRING;
+                    } else if(provided->isStringAssignable(env)){
+                        if(toCheck->isObjectClass()){
+                            if(scores[i]) goto bail;
+                        } else if(toCheck!=provided){
+                            goto bail;
+                        }
+                        cacheScores[i]=1;
+                    }else goto bail;
                     break;
                 }
                 case T_OBJECT: {
@@ -272,7 +315,6 @@ const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, 
                                 continue;
                             case BOX_CHAR:
                                 if(!toCheck->isChar()) goto bail;
-                                continue;
                             case BOX_BYTE:
                                 switch (toCheck->typeID){
                                     case BYTE:score=5;

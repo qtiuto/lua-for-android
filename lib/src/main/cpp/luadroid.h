@@ -149,7 +149,7 @@ public:
                   const Vector<JObject> &principal, Vector<std::unique_ptr<BaseFunction>> &proxy,
                   BaseFunction* defaultFunc= nullptr,
                   bool shared = false, long nativeInfo = 0, jobject superObject = nullptr);
-    jvalue luaObjectToJValue( ValidLuaObject &luaObject, JavaType *type,jobject real= nullptr);
+    jvalue luaObjectToJValue( ValidLuaObject &luaObject, JavaType *type,jobject realType= nullptr);
 
     jobject luaObjectToJObject( ValidLuaObject &luaObject);
 

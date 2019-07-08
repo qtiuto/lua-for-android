@@ -241,7 +241,7 @@ public:
     }
 
     bool canAcceptBoxedNumber(JavaType* boxed){
-        if(!_isBox||isBoxedChar()||isBoxedBool()) return false;
+        if(!boxed->_isBox||boxed->isBoxedBool()) return false;
         if(typeID==DOUBLE)
             return true;
         if(boxed->typeID==BOX_DOUBLE)
@@ -257,6 +257,8 @@ public:
         if(typeID==INT)
             return true;
         if(boxed->typeID==BOX_INT)
+            return false;
+        if(boxed->typeID==BOX_CHAR)
             return false;
         if(typeID==SHORT)
             return true;
