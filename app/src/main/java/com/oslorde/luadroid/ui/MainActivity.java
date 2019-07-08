@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
     String[] ps = {"(", ")", "[", "]", "{", "}", "\"", "=", ":", ".", ",", "_", "+", "-", "*", "/", "\\", "%", "#", "^", "$", "?", "<", ">", "~", ";", "'"};
     CharSequence result;
     private PopupWindow popupWindow;
-    public static final String[] PRIMITIVE_TYPES = new String[]{"int", "long", "short", "byte", "double", "float"};
+    public static final String[] PRIMITIVE_TYPES = new String[]{"int", "long", "short", "byte", "double", "float","char","boolean"};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
