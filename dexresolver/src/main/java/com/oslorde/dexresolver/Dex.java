@@ -18,6 +18,7 @@ public class Dex {
     private WeakReference<ClassLoader> classLoader;
     private static final Comparator<String> CLASS_COMPARATOR= Dex::classCompare;
     private static final Comparator<String> PACK_COMPARATOR=(cl, pack) -> startsWithPackage(cl,pack)?0:classCompare(cl,pack);
+    private static final Comparator<String> PACK_COMPARATOR_INCLUDE_INNER=(cl,pack)->startsWithPackageIncludeInner(cl,pack)?0:classCompare(cl,pack);
 
     Dex(String[] classes){
         this.classes=classes;
@@ -29,13 +30,23 @@ public class Dex {
         this.classLoader=loader==null?null:new WeakReference<>(loader);
     }
 
-
-    private static boolean startsWithPackage(String cl,String pack){
-        int len=pack.length();
+    private static boolean startsWithPackage(String cl,String pack,boolean includeInner){
+        return includeInner?startsWithPackageIncludeInner(cl,pack):startsWithPackage(cl,pack);
+    }
+    private static boolean startsWithPackageIncludeInner(String cl,String pack){
+        /*int len=pack.length();
         if(cl.length()<len+1) return false;
         char c=cl.charAt(len);
-        if(c!='.'&&c!='$') return false;
-        char c1;
+        if(c!='.') return false;*/
+        return cl.startsWith(pack);
+    }
+    private static boolean startsWithPackage(String cl,String pack){
+        int len=pack.length();
+        if(cl.length()<len) return false;
+        char c,c1;
+        /*if(cl.length()<len+1) return false;
+        c=cl.charAt(len);
+        if(c!='.'&&c!='$') return false;*/
         while (len-->0){
             c=cl.charAt(len);
             c1=pack.charAt(len);
@@ -81,17 +92,35 @@ public class Dex {
         return Arrays.binarySearch(classes,clazzName,CLASS_COMPARATOR)>=0;
     }
 
-    public boolean hasPackage(String pack){
-        return Arrays.binarySearch(classes,pack,PACK_COMPARATOR)>0;
+
+    public boolean isDirectory(String dir,boolean includeInner){
+        dir=fixPackageName(dir,includeInner);
+        int idx= Arrays.binarySearch(classes,dir,includeInner?PACK_COMPARATOR_INCLUDE_INNER:PACK_COMPARATOR);
+        if(idx>=0){
+            int searchBefore=idx;
+            if(classes[searchBefore].equals(dir))searchBefore--;
+            return startsWithPackage(classes[searchBefore],dir,includeInner)
+                ||startsWithPackage(classes[idx+1],dir,includeInner);
+        }
+        return false;
     }
 
+    /**
+     *
+     * @param pack the package to search
+     * @param includeInner  include inner class in the result
+     * @param recursive get all package under the pack
+     * @param callback callback to run
+     */
+
     public void listPackage(String pack, boolean includeInner, boolean recursive, ClassCallback callback){
-        int fromIndex=pack.length()+1;
-        int mid=Arrays.binarySearch(classes,pack,PACK_COMPARATOR);
+        pack = fixPackageName(pack, includeInner);
+        int fromIndex=pack.length();
+        int mid=pack.length()==0?classes.length-1:Arrays.binarySearch(classes,pack,includeInner?PACK_COMPARATOR_INCLUDE_INNER:PACK_COMPARATOR);
         if(mid<0) return ;
-        for (int j = mid; j != -1; --j) {
+        for (int j = mid; j-- != 0; ) {
             String cl = classes[j];
-            if (startsWithPackage(cl,pack)) {
+            if (startsWithPackage(cl,pack,includeInner)) {
                 if (recursive||cl.indexOf('.', fromIndex) == -1&&(includeInner||cl.indexOf('$', fromIndex)==-1)){
                     try {
                         callback.onClass(this,cl);
@@ -102,9 +131,9 @@ public class Dex {
             } else break;
         }
         if (mid != classes.length - 1)
-            for (int j = mid + 1, len = classes.length; j < len; ++j) {
+            for (int j = mid , len = classes.length; j < len; ++j) {
                 String cl = classes[j];
-                if (startsWithPackage(cl,pack)) {
+                if (startsWithPackage(cl,pack,includeInner)) {
                     if (recursive||cl.indexOf('.', fromIndex) == -1&&(includeInner||cl.indexOf('$', fromIndex)==-1))
                         try {
                             callback.onClass(this,cl);
@@ -114,8 +143,17 @@ public class Dex {
 
     }
 
+    public static String fixPackageName(String pack, boolean includeInner) {
+        if(!pack.isEmpty()){
+            char lastChar = pack.charAt(pack.length() - 1);
+            if(lastChar != '.' && (includeInner || lastChar != '$'))
+                pack=pack.concat(".");
+        }
+        return pack;
+    }
+
     private static String getPackageName(String name){
-        int sep=name.lastIndexOf('/');
+        int sep=name.lastIndexOf('.');
         if(sep>=0) return name.substring(0,sep);
         else return name;
     }

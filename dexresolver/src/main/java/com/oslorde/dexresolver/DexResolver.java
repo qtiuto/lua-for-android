@@ -198,6 +198,7 @@ public class DexResolver {
     }
 
     public  void listPackage(String pack, boolean includeInner, boolean recursive, Dex.ClassCallback callback) throws Exception {
+        pack=Dex.fixPackageName(pack,includeInner);
         for (Dex dex:getBootDexFiles()){
             dex.listPackage(pack,includeInner,recursive,callback);
         }
