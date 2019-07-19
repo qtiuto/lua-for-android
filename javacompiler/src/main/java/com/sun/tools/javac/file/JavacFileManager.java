@@ -266,6 +266,7 @@ public class JavacFileManager extends BaseFileManager implements StandardJavaFil
             Container bootContainer=new DexContainer(resolver.getBootDexFiles());
             containers.put(Locations.BOOT_LOCATION,bootContainer);
         } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -376,6 +377,8 @@ public class JavacFileManager extends BaseFileManager implements StandardJavaFil
             } catch (Exception ignore) {
                 return;
             }
+            if(files==null)
+                return;
 
             for (File f : files) {
                 String fname = f.getPath();
@@ -527,27 +530,15 @@ public class JavacFileManager extends BaseFileManager implements StandardJavaFil
 
         @Override
         public void list(File userPath, RelativeDirectory subdirectory, Set<JavaFileObject.Kind> fileKinds, boolean recurse, ListBuffer<JavaFileObject> resultList) throws IOException {
-            //HashSet<String> packages=new HashSet<>();
-            String pack=subdirectory.path;
-            int length=pack.length();
+            String pack=subdirectory.path.replace('/','.');
+            pack=Dex.fixPackageName(pack,true);;
             for(Dex dex:dexes){
                 dex.listPackage(pack,true,recurse,(d,name)->{
-//                    int lastDot=name.indexOf('.',length);
-//                    if(lastDot!=-1){
-//                        String subPack=name.substring(0,lastDot);
-//                        if(packages.add(subPack)){
-//                            resultList.add(PathFileObject.forDexClass(JavacFileManager.this,new DexClass(d,subPack)));
-//                        }
-//                        if(recurse){
-//                            while ((lastDot=name.indexOf('.',lastDot+1))!=-1){
-//                                subPack=name.substring(0,lastDot);
-//                                if(packages.add(subPack)){
-//                                    resultList.add(PathFileObject.forDexClass(JavacFileManager.this,new DexClass(d,subPack)));
-//                                }
-//                            }
-//                        }
-//                    }else
-                    resultList.add(PathFileObject.forDexClass(JavacFileManager.this,new DexClass(d,name)));
+                    try {
+                        resultList.append(PathFileObject.forDexClass(JavacFileManager.this,new DexClass(d,name)));
+                    }catch (Exception e){
+                        e.printStackTrace();
+                    }
                 });
             }
 

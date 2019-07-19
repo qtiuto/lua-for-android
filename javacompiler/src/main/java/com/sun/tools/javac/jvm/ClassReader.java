@@ -25,6 +25,8 @@
 
 package com.sun.tools.javac.jvm;
 
+import android.os.Build;
+
 import com.sun.tools.javac.code.Attribute;
 import com.sun.tools.javac.code.BoundKind;
 import com.sun.tools.javac.code.ClassFinder;
@@ -101,7 +103,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.TypeVariable;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.CharBuffer;
@@ -116,6 +123,8 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.NestingKind;
 import javax.tools.JavaFileManager;
 import javax.tools.JavaFileObject;
+
+import java9.util.stream.StreamSupport;
 
 import static com.sun.tools.javac.code.Flags.ABSTRACT;
 import static com.sun.tools.javac.code.Flags.ACC_BRIDGE;
@@ -2869,7 +2878,7 @@ public class ClassReader {
         }
     }
 
-    public int getClassFlag(Class c){
+    public static int getClassFlag(Class c){
         int flag=c.getModifiers();
         if(c.isEnum()) flag|=ENUM;
         if(c.isSynthetic()) flag|=SYNTHETIC;
@@ -2877,31 +2886,219 @@ public class ClassReader {
         return flag;
     }
 
+    public static long getMemberFlag(Field field){
+        int flag=field.getModifiers();
+        if(field.isSynthetic()) flag|=SYNTHETIC;
+        if(field.isEnumConstant()) flag|=ENUM;
+        return flag;
+    }
+    public static long getMemberFlag(Method member){
+        int flag=member.getModifiers();
+        if(member.isSynthetic()) flag|=SYNTHETIC;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N&&member.isDefault()) {
+            flag|=DEFAULT;
+        }
+        if(member.isBridge()) flag|=BRIDGE;
+        if(member.isVarArgs()) flag|=VARARGS;
+        return flag;
+    }
+    public static long getMemberFlag(Constructor member){
+        int flag=member.getModifiers();
+        if(member.isSynthetic()) flag|=SYNTHETIC;
+        if(member.isVarArgs()) flag|=VARARGS;
+        return flag;
+    }
+
+    public Type classToType(Class c){
+        if(c.isPrimitive()){
+            if(c==boolean.class) return syms.booleanType;
+            else if(c==char.class) return syms.charType;
+            else if(c==byte.class) return syms.byteType;
+            else if(c==short.class) return syms.shortType;
+            else if(c==int.class) return syms.intType;
+            else if(c==long.class) return syms.longType;
+            else if(c==float.class) return syms.floatType;
+            else if(c==double.class) return syms.doubleType;
+            else if(c==void.class) return syms.voidType;
+            else return null;
+        }else if(c.isArray()){
+            return types.makeArrayType(classToType(c.getComponentType()));
+        }else return enterClass(names.fromString(c.getName())).erasure(types);
+    }
+
+
+
+    public Type javaTypeToType(java.lang.reflect.Type type){
+        if(type instanceof Class) return classToType((Class) type);
+        else if(type instanceof java.lang.reflect.WildcardType){
+            java.lang.reflect.Type[] lowerBounds=((java.lang.reflect.WildcardType) type).getLowerBounds();
+            java.lang.reflect.Type[] upperBounds=((java.lang.reflect.WildcardType) type).getUpperBounds();
+            if(lowerBounds.length>0){
+                if(upperBounds.length>1||lowerBounds.length!=1) {//always have object as its upper bound
+                    throw badClassFile("bad.class.file",type.toString());
+                }
+                return new WildcardType(javaTypeToType(lowerBounds[0]),BoundKind.SUPER,syms.boundClass);
+            }else if(upperBounds.length>0){
+                if(upperBounds.length!=1) {
+                    throw badClassFile("bad.class.file",type.toString());
+                }
+                return new WildcardType(javaTypeToType(upperBounds[0]),BoundKind.EXTENDS,syms.boundClass);
+            }
+            return new WildcardType(syms.objectType,BoundKind.UNBOUND,syms.boundClass);
+        }else if(type instanceof ParameterizedType){
+            java.lang.reflect.Type[] args=((ParameterizedType) type).getActualTypeArguments();
+            List<Type> params=StreamSupport.stream(Arrays.asList(args)).map(this::javaTypeToType).collect(List.collector());
+            ClassSymbol symbol=syms.enterClass(currentModule,names.fromString(((Class)((ParameterizedType) type).getRawType()).getName()));
+            return new ClassType(Type.noType,params,symbol){
+                boolean completed;
+                @Override
+                public Type getEnclosingType() {
+                    if(!completed){
+                        completed=true;
+                        tsym.complete();
+                        super.setEnclosingType(tsym.type.getEnclosingType());
+                    }
+                    return super.getEnclosingType();
+                }
+
+                @Override
+                public void setEnclosingType(Type outer) {
+                    throw new UnsupportedOperationException();
+                }
+            };
+        }else if(type instanceof GenericArrayType){
+            return types.makeArrayType(javaTypeToType(((GenericArrayType) type).getGenericComponentType()));
+        }else if(type instanceof TypeVariable)
+            return findTypeVar(names.fromString(type.toString()));
+        return null;
+    }
+
     public void readDexClass(ClassSymbol c){
         filling=true;
+        currentModule=c.packge().modle;
+        boolean hasTypeVars=false;
+        Symbol prevOwner=currentOwner;
+        JavaFileObject prevClassFile=currentClassFile;
+        currentOwner=c;
+        currentClassFile=c.classfile;
         try {
             DexClass dexClass=(DexClass) ((PathFileObject) c.classfile).getPath();
             Class cls=dexClass.loadClass();
             c.members_field=WriteableScope.create(c);
             c.flags_field=getClassFlag(cls);
+            java.lang.reflect.TypeVariable[] clsparams=cls.getTypeParameters();
             Type.ClassType ct= (Type.ClassType) c.type;
-            Class sup=cls.getSuperclass();
-            ct.supertype_field=sup==null?Type.noType:enterClass(names.fromString(sup.getName())).erasure(types);
+            Class enclosingClass=cls.getEnclosingClass();
+            if(enclosingClass!=null&&ct.getEnclosingType()==null){
+                ClassSymbol enclosing=enterClass(names.fromString(enclosingClass.getName()));
+                enclosing.complete();
+                ct.setEnclosingType(enclosing.erasure(types));
+            }
+            if(clsparams.length>0){
+                Assert.checkNull(ct.typarams_field);
+                typevars=typevars.dup(currentOwner);
+                hasTypeVars=true;
+                ct.typarams_field= enterTypeVariables(clsparams);
+            }
+            java.lang.reflect.Type sup=cls.getGenericSuperclass();
+            ct.supertype_field=sup==null?Type.noType:javaTypeToType(sup);
             List<Type> is = List.nil();
-            for (Class inter:cls.getInterfaces()) {
-                Type _inter = enterClass(names.fromString(inter.getName())).erasure(types);
-                is = is.prepend(_inter);
+            for (java.lang.reflect.Type inter:cls.getGenericInterfaces()) {
+                is = is.prepend(javaTypeToType(inter));
             }
             if (ct.interfaces_field == null)
                 ct.interfaces_field = is.reverse();
             Field[] fields=cls.getDeclaredFields();
             for (Field field:fields){
+                long flag=getMemberFlag(field);
+                Name name=names.fromString(field.getName());
+                Type type=javaTypeToType(field.getGenericType());
+                VarSymbol symbol=new VarSymbol(flag,name,type,c);
+                enterMember(c,symbol);
+            }
+
+            for (Method method:cls.getDeclaredMethods()){
+                long flag=getMemberFlag(method);
+                Name name=names.fromString(method.getName());
+                TypeVariable[] typeParams=method.getTypeParameters();
+                java.lang.reflect.Type genericReturnType = method.getGenericReturnType();
+                java.lang.reflect.Type[] genericParameterTypes = method.getGenericParameterTypes();
+                java.lang.reflect.Type[] genericExceptionTypes = method.getGenericExceptionTypes();
+                readMethod(c, method.isVarArgs(), flag, name, typeParams, genericReturnType,
+                        genericParameterTypes, genericExceptionTypes);
+            }
+
+            for (Constructor constructor:cls.getDeclaredConstructors()){
+                long flag=getMemberFlag(constructor);
+                TypeVariable[] typeParams=constructor.getTypeParameters();
+                java.lang.reflect.Type[] genericParameterTypes = constructor.getGenericParameterTypes();
+                java.lang.reflect.Type[] genericExceptionTypes = constructor.getGenericExceptionTypes();
+                readMethod(c, constructor.isVarArgs(), flag, names.init, typeParams, void.class,
+                        genericParameterTypes, genericExceptionTypes);
 
             }
+
         }catch (Exception e){
             throw badClassFile("bad.class.file",c.flatname);
+        }finally {
+            filling=false;
+            if(hasTypeVars) typevars=typevars.leave();
+            currentOwner=prevOwner;
+            currentClassFile=prevClassFile;
         }
 
+    }
+
+    private void readMethod(ClassSymbol c, boolean isVarArgs, long flag, Name name, TypeVariable[]
+            typeParams, java.lang.reflect.Type genericReturnType, java.lang.reflect.Type[]
+                                    genericParameterTypes, java.lang.reflect.Type[] genericExceptionTypes) {
+        try {
+            List<Type> typeVars = null;
+            if (typeParams.length > 0) {
+                typevars = typevars.dup(currentOwner);
+                typeVars = enterTypeVariables(typeParams);
+            }
+            Type returnType = javaTypeToType(genericReturnType);
+            ListBuffer<Type> pTypes = new ListBuffer<>();
+            for (java.lang.reflect.Type p : genericParameterTypes) {
+                Type pT = javaTypeToType(p);
+                pTypes.append(pT);
+            }
+            List<Type> params = pTypes.toList();
+            if (isVarArgs) {
+                params = adjustMethodParams(flag, params);
+            }
+            ListBuffer<Type> tTypes = new ListBuffer<>();
+            for (java.lang.reflect.Type p : genericExceptionTypes) {
+                Type tT = javaTypeToType(p);
+                tTypes.append(tT);
+            }
+            Type methodType = new MethodType(params, returnType, tTypes.toList(), syms.methodClass);
+            if (typeVars != null) {
+                methodType = new ForAll(typeVars, methodType);
+            }
+            MethodSymbol methodSymbol = new MethodSymbol(flag, name, methodType, c);
+            enterMember(c, methodSymbol);
+        } finally {
+            if(typeParams.length>0)
+                typevars = typevars.leave();
+        }
+    }
+
+    private List<Type> enterTypeVariables(TypeVariable[] clsparams) {
+        ListBuffer<Type> paramsBuff=new ListBuffer<>();
+        for (TypeVariable type:clsparams){
+            Name name=names.fromString(type.getName());
+            TypeVar typeVar=new TypeVar(name,currentOwner,syms.botType);
+            typevars.enter(typeVar.tsym);
+            ListBuffer<Type> bounds=new ListBuffer<>();
+            for (java.lang.reflect.Type bound:type.getBounds()){
+                bounds.append(javaTypeToType(bound));
+            }
+            types.setBounds(typeVar,bounds.toList(),false);
+            paramsBuff.append(typeVar);
+        }
+        return paramsBuff.toList();
     }
 
     // where

@@ -25,7 +25,6 @@
 
 package javax.tools;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -127,7 +126,7 @@ public class ToolProvider {
     private static <T> T getSystemTool(Class<T> clazz, String moduleName, String className) {
         if (useLegacy) {
             try {
-                return Class.forName(className, true, ClassLoader.getSystemClassLoader()).
+                return Class.forName(className).
                     asSubclass(clazz).getConstructor().newInstance();
             } catch (Exception e) {
                 throw new Error(e);

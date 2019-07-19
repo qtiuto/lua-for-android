@@ -25,21 +25,35 @@
 
 package com.sun.tools.javac.jvm;
 
-import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Symtab;
+import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.Resolve;
+import com.sun.tools.javac.jvm.Items.Item;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
-import com.sun.tools.javac.util.*;
-
-import static com.sun.tools.javac.code.Kinds.Kind.MTH;
-import static com.sun.tools.javac.code.TypeTag.*;
-import static com.sun.tools.javac.jvm.ByteCodes.*;
-import static com.sun.tools.javac.tree.JCTree.Tag.PLUS;
-import com.sun.tools.javac.jvm.Items.*;
+import com.sun.tools.javac.util.Assert;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.JCDiagnostic;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.util.Options;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import static com.sun.tools.javac.code.Kinds.Kind.MTH;
+import static com.sun.tools.javac.code.TypeTag.ARRAY;
+import static com.sun.tools.javac.code.TypeTag.DOUBLE;
+import static com.sun.tools.javac.code.TypeTag.LONG;
+import static com.sun.tools.javac.jvm.ByteCodes.dup;
+import static com.sun.tools.javac.jvm.ByteCodes.dup_x1;
+import static com.sun.tools.javac.jvm.ByteCodes.new_;
+import static com.sun.tools.javac.jvm.ByteCodes.string_add;
+import static com.sun.tools.javac.tree.JCTree.Tag.PLUS;
 
 /** This lowers the String concatenation to something that JVM can understand.
  *
@@ -81,7 +95,7 @@ public abstract class StringConcat {
         String opt = Options.instance(context).get("stringConcat");
         if (target.hasStringConcatFactory()) {
             if (opt == null) {
-                opt = "indyWithConstants";
+                opt = "inline";//"indyWithConstants";
             }
         } else {
             if (opt != null && !"inline".equals(opt)) {

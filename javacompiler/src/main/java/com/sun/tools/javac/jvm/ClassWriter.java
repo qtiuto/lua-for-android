@@ -25,38 +25,102 @@
 
 package com.sun.tools.javac.jvm;
 
-import java.io.*;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-
-import javax.tools.JavaFileManager;
-import javax.tools.FileObject;
-import javax.tools.JavaFileManager.Location;
-import javax.tools.JavaFileObject;
-
-import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Attribute;
 import com.sun.tools.javac.code.Attribute.RetentionPolicy;
-import com.sun.tools.javac.code.Directive.*;
-import com.sun.tools.javac.code.Symbol.*;
-import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.code.Directive.ExportsDirective;
+import com.sun.tools.javac.code.Directive.ExportsFlag;
+import com.sun.tools.javac.code.Directive.OpensDirective;
+import com.sun.tools.javac.code.Directive.OpensFlag;
+import com.sun.tools.javac.code.Directive.ProvidesDirective;
+import com.sun.tools.javac.code.Directive.RequiresDirective;
+import com.sun.tools.javac.code.Directive.RequiresFlag;
+import com.sun.tools.javac.code.Directive.UsesDirective;
+import com.sun.tools.javac.code.Scope;
+import com.sun.tools.javac.code.Source;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Symbol.ClassSymbol;
+import com.sun.tools.javac.code.Symbol.CompletionFailure;
+import com.sun.tools.javac.code.Symbol.DelegatedSymbol;
+import com.sun.tools.javac.code.Symbol.DynamicMethodSymbol;
+import com.sun.tools.javac.code.Symbol.MethodSymbol;
+import com.sun.tools.javac.code.Symbol.ModuleFlags;
+import com.sun.tools.javac.code.Symbol.ModuleSymbol;
+import com.sun.tools.javac.code.Symbol.PackageSymbol;
+import com.sun.tools.javac.code.Symbol.VarSymbol;
+import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.Type.MethodType;
+import com.sun.tools.javac.code.TypeAnnotationPosition;
+import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.code.Types.UniqueType;
 import com.sun.tools.javac.file.PathFileObject;
 import com.sun.tools.javac.jvm.Pool.DynamicMethod;
 import com.sun.tools.javac.jvm.Pool.Method;
 import com.sun.tools.javac.jvm.Pool.MethodHandle;
 import com.sun.tools.javac.jvm.Pool.Variable;
-import com.sun.tools.javac.main.Option;
-import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.Assert;
+import com.sun.tools.javac.util.ByteBuffer;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+import com.sun.tools.javac.util.Log;
+import com.sun.tools.javac.util.Name;
+import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.util.Options;
+import com.sun.tools.javac.util.Pair;
 
-import static com.sun.tools.javac.code.Flags.*;
-import static com.sun.tools.javac.code.Kinds.Kind.*;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+
+import javax.tools.FileObject;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileManager.Location;
+import javax.tools.JavaFileObject;
+
+import java9.util.Maps;
+
+import static com.sun.tools.javac.code.Flags.ABSTRACT;
+import static com.sun.tools.javac.code.Flags.ACC_BRIDGE;
+import static com.sun.tools.javac.code.Flags.ACC_MODULE;
+import static com.sun.tools.javac.code.Flags.ACC_SUPER;
+import static com.sun.tools.javac.code.Flags.ACC_VARARGS;
+import static com.sun.tools.javac.code.Flags.ANONCONSTR;
+import static com.sun.tools.javac.code.Flags.BRIDGE;
+import static com.sun.tools.javac.code.Flags.COMPOUND;
+import static com.sun.tools.javac.code.Flags.ClassFlags;
+import static com.sun.tools.javac.code.Flags.DEFAULT;
+import static com.sun.tools.javac.code.Flags.DEPRECATED;
+import static com.sun.tools.javac.code.Flags.FINAL;
+import static com.sun.tools.javac.code.Flags.HYPOTHETICAL;
+import static com.sun.tools.javac.code.Flags.INTERFACE;
+import static com.sun.tools.javac.code.Flags.MANDATED;
+import static com.sun.tools.javac.code.Flags.PROTECTED;
+import static com.sun.tools.javac.code.Flags.PUBLIC;
+import static com.sun.tools.javac.code.Flags.STRICTFP;
+import static com.sun.tools.javac.code.Flags.SYNTHETIC;
+import static com.sun.tools.javac.code.Flags.StandardFlags;
+import static com.sun.tools.javac.code.Flags.VARARGS;
+import static com.sun.tools.javac.code.Kinds.Kind.MDL;
+import static com.sun.tools.javac.code.Kinds.Kind.MTH;
+import static com.sun.tools.javac.code.Kinds.Kind.TYP;
+import static com.sun.tools.javac.code.Kinds.Kind.VAR;
 import static com.sun.tools.javac.code.Scope.LookupKind.NON_RECURSIVE;
-import static com.sun.tools.javac.code.TypeTag.*;
-import static com.sun.tools.javac.main.Option.*;
-
+import static com.sun.tools.javac.code.TypeTag.ARRAY;
+import static com.sun.tools.javac.code.TypeTag.BOOLEAN;
+import static com.sun.tools.javac.code.TypeTag.CLASS;
+import static com.sun.tools.javac.code.TypeTag.INT;
+import static com.sun.tools.javac.code.TypeTag.METHOD;
+import static com.sun.tools.javac.code.TypeTag.UNINITIALIZED_OBJECT;
+import static com.sun.tools.javac.code.TypeTag.UNINITIALIZED_THIS;
+import static com.sun.tools.javac.main.Option.G_CUSTOM;
+import static com.sun.tools.javac.main.Option.PARAMETERS;
+import static com.sun.tools.javac.main.Option.VERBOSE;
+import static com.sun.tools.javac.main.Option.XJCOV;
 import static javax.tools.StandardLocation.CLASS_OUTPUT;
 
 /** This class provides operations to map an internal symbol table graph
@@ -1019,14 +1083,16 @@ public class ClassWriter extends ClassFile {
         // so that each service type only appears once.
         Map<ClassSymbol, Set<ClassSymbol>> mergedProvides = new LinkedHashMap<>();
         for (ProvidesDirective p : m.provides) {
-            mergedProvides.computeIfAbsent(p.service, s -> new LinkedHashSet<>()).addAll(p.impls);
+            Maps.computeIfAbsent(mergedProvides,p.service, s -> new LinkedHashSet<>()).addAll(p.impls);
         }
         databuf.appendChar(mergedProvides.size());
-        mergedProvides.forEach((srvc, impls) -> {
+        for(Map.Entry<ClassSymbol, Set<ClassSymbol>> entry:mergedProvides.entrySet()) {
+            ClassSymbol srvc=entry.getKey();
+            Set<ClassSymbol> impls=entry.getValue();
             databuf.appendChar(pool.put(srvc));
             databuf.appendChar(impls.size());
-            impls.forEach(impl -> databuf.appendChar(pool.put(impl)));
-        });
+            for(ClassSymbol impl: impls) databuf.appendChar(pool.put(impl));
+        }
 
         endAttr(alenIdx);
         return 1;

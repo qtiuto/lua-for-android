@@ -117,10 +117,11 @@ public class ModuleFinder {
         Set<Location> next = null;
 
         Iterator<StandardLocation> outerIter = Arrays.asList(
-                StandardLocation.MODULE_SOURCE_PATH,
-                StandardLocation.UPGRADE_MODULE_PATH,
-                StandardLocation.SYSTEM_MODULES,
-                StandardLocation.MODULE_PATH
+                StandardLocation.SYSTEM_MODULES
+                //,StandardLocation.MODULE_SOURCE_PATH,
+                //StandardLocation.UPGRADE_MODULE_PATH,
+                //StandardLocation.MODULE_PATH
+                //FIXME
         ).iterator();
         Iterator<Set<Location>> innerIter = null;
 

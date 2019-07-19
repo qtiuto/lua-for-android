@@ -252,7 +252,7 @@ public abstract class PathFileObject implements JavaFileObject {
 
         @Override
         String inferBinaryName(Iterable<? extends File> paths) {
-            return toBinaryName(((DexClass)path).getClassName());
+            return ((DexClass)path).getClassName();
         }
 
         @Override

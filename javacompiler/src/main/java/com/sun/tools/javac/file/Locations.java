@@ -99,7 +99,7 @@ public class Locations {
         @Override
         public boolean equals(Object obj) {
             return obj==this;
-        }
+        }//FIXME, may work if actually occurs
     };
 
     /**
@@ -440,7 +440,7 @@ public class Locations {
          * @see JavaFileManager#listLocationsForModules
          */
         Iterable<Set<Location>> listLocationsForModules() throws IOException {
-            return null;
+            return Collections.emptyList();
         }
 
         /**
@@ -1718,7 +1718,7 @@ public class Locations {
      * Setting -bootclasspath or -Xbootclasspath overrides any existing
      * value for -Xbootclasspath/p: and -Xbootclasspath/a:.
      */
-    private class BootClassPathLocationHandler extends BasicLocationHandler {
+    private class BootClassPathLocationHandler extends BasicLocationHandler implements Location{
 
         private Collection<File> searchPath;
         final Map<Option, String> optionValues = new EnumMap<>(Option.class);
@@ -1728,8 +1728,8 @@ public class Locations {
          */
         private boolean isDefault;
 
-        BootClassPathLocationHandler() {
-            super(StandardLocation.PLATFORM_CLASS_PATH,
+        BootClassPathLocationHandler(StandardLocation location) {
+            super(location,
                     BOOT_CLASS_PATH, Option.XBOOTCLASSPATH,
                     XBOOTCLASSPATH_PREPEND,
                     XBOOTCLASSPATH_APPEND,
@@ -1792,6 +1792,30 @@ public class Locations {
             }
         }
 
+        @Override
+        String inferModuleName() {
+            return "java.base";
+        }
+
+        @Override
+        Iterable<Set<Location>> listLocationsForModules() throws IOException {
+            return Collections.singleton(Collections.singleton(this));
+        }
+
+        @Override
+        Location getLocationForModule(String moduleName) throws IOException {
+            if(moduleName.equals("java.base"))
+                return this;
+            return super.getLocationForModule(moduleName);
+        }
+
+        @Override
+        Location getLocationForModule(File file) throws IOException {
+            if(BOOT_LOCATION.equals(file))
+                return this;
+            return super.getLocationForModule(file);
+        }
+
         SearchPath computePath() throws IOException {
             SearchPath path = new SearchPath();
 
@@ -1847,6 +1871,16 @@ public class Locations {
         boolean contains(File file) throws IOException {
             return Locations.this.contains(searchPath, file);
         }
+
+        @Override
+        public String getName() {
+            return BOOT_LOCATION.getPath();
+        }
+
+        @Override
+        public boolean isOutputLocation() {
+            return false;
+        }
     }
 
     Map<Location, LocationHandler> handlersForLocation;
@@ -1857,7 +1891,8 @@ public class Locations {
         handlersForOption = new EnumMap<>(Option.class);
 
         BasicLocationHandler[] handlers = {
-            new BootClassPathLocationHandler(),
+            new BootClassPathLocationHandler(StandardLocation.PLATFORM_CLASS_PATH),
+            new BootClassPathLocationHandler(StandardLocation.SYSTEM_MODULES),
             new ClassFileLocationHandler(),
             new SimpleLocationHandler(StandardLocation.SOURCE_PATH, Option.SOURCE_PATH),
             new SimpleLocationHandler(StandardLocation.ANNOTATION_PROCESSOR_PATH, Option.PROCESSOR_PATH),

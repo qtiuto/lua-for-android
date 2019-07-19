@@ -653,7 +653,7 @@ public class Modules extends JCTree.Visitor {
             ListBuffer<ExportsDirective> exports = new ListBuffer<>();
             Set<String> seenPackages = new HashSet<>();
 
-            for (JavaFileObject clazz : fileManager.list(msym.classLocation, "", EnumSet.of(Kind.CLASS), true)) {
+            for (JavaFileObject clazz : fileManager.list(msym.classLocation, "", EnumSet.of(Kind.CLASS,Kind.DEX_CALSS), true)) {
                 String binName = fileManager.inferBinaryName(msym.classLocation, clazz);
                 String pack = binName.lastIndexOf('.') != (-1) ? binName.substring(0, binName.lastIndexOf('.')) : ""; //unnamed package????
                 if (seenPackages.add(pack)) {

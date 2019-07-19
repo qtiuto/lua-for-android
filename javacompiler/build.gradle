@@ -21,7 +21,9 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-
+    sourceSets {
+        main.resources.srcDirs += 'src/main/java/'
+    }
     compileOptions {
         sourceCompatibility '1.8'
         targetCompatibility '1.8'

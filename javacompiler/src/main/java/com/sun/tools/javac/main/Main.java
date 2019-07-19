@@ -25,12 +25,30 @@
 
 package com.sun.tools.javac.main;
 
+import com.sun.tools.javac.api.BasicJavacTask;
+import com.sun.tools.javac.file.BaseFileManager;
+import com.sun.tools.javac.file.CacheFSInfo;
+import com.sun.tools.javac.file.JavacFileManager;
+import com.sun.tools.javac.jvm.Target;
+import com.sun.tools.javac.main.CommandLine.UnmatchedQuote;
+import com.sun.tools.javac.platform.PlatformDescription;
+import com.sun.tools.javac.processing.AnnotationProcessingError;
+import com.sun.tools.javac.util.ClientCodeException;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.Dependencies;
+import com.sun.tools.javac.util.FatalError;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.Log;
+import com.sun.tools.javac.util.Log.PrefixKind;
+import com.sun.tools.javac.util.Log.WriterKind;
+import com.sun.tools.javac.util.Options;
+import com.sun.tools.javac.util.PropagatedException;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.URL;
-import java.nio.file.NoSuchFileException;
 import java.security.CodeSource;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
@@ -40,18 +58,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.tools.JavaFileManager;
-
-import com.sun.tools.javac.api.BasicJavacTask;
-import com.sun.tools.javac.file.CacheFSInfo;
-import com.sun.tools.javac.file.BaseFileManager;
-import com.sun.tools.javac.file.JavacFileManager;
-import com.sun.tools.javac.jvm.Target;
-import com.sun.tools.javac.main.CommandLine.UnmatchedQuote;
-import com.sun.tools.javac.platform.PlatformDescription;
-import com.sun.tools.javac.processing.AnnotationProcessingError;
-import com.sun.tools.javac.util.*;
-import com.sun.tools.javac.util.Log.PrefixKind;
-import com.sun.tools.javac.util.Log.WriterKind;
 
 /** This class provides a command line interface to the javac compiler.
  *
@@ -212,7 +218,7 @@ public class Main {
         } catch (UnmatchedQuote ex) {
             error("err.unmatched.quote", ex.variableName);
             return Result.CMDERR;
-        } catch (FileNotFoundException | NoSuchFileException e) {
+        } catch (FileNotFoundException e) {
             warning("err.file.not.found", e.getMessage());
             return Result.SYSERR;
         } catch (IOException ex) {

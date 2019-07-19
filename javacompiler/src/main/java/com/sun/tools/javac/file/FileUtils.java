@@ -8,6 +8,9 @@ import java.net.URI;
 
 public class FileUtils {
     public static File resolve(File f,String o){
+        if(o.isEmpty()){
+            return f;
+        }
         if(o.charAt(0)=='/') return new File(o);
         if(f instanceof FakeFile) return ((FakeFile) f).resolve(o);
         return new File(f,o).getAbsoluteFile();

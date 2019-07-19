@@ -302,7 +302,7 @@ public class ClassFinder {
                     classfile.getKind() == JavaFileObject.Kind.OTHER) {
                     reader.readClassFile(c);
                 }else if(classfile.getKind()==Kind.DEX_CALSS){
-
+                    reader.readDexClass(c);
                 }
                 else {
                     if (!sourceCompleter.isTerminal()) {
@@ -650,7 +650,7 @@ public class ClassFinder {
                     allowSigFiles ? EnumSet.of(JavaFileObject.Kind.CLASS,
                                                Kind.DEX_CALSS,
                                                JavaFileObject.Kind.OTHER)
-                                  : EnumSet.of(JavaFileObject.Kind.CLASS)));
+                                  : EnumSet.of(Kind.DEX_CALSS,JavaFileObject.Kind.CLASS)));
     }
     // where
         @SuppressWarnings("fallthrough")
