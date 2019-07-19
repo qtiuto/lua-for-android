@@ -36,7 +36,6 @@ android {
 }
 
 dependencies {
-    // https://mvnrepository.com/artifact/com.jakewharton.android.repackaged/dalvik-dx
     implementation group: 'com.jakewharton.android.repackaged', name: 'dalvik-dx', version: '9.0.0_r3'
 
     testImplementation 'junit:junit:4.13-beta-3'
