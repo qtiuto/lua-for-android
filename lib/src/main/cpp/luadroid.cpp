@@ -2298,7 +2298,7 @@ static int javaUnBox(lua_State* L){
                 break;
             }
             default:
-                break;
+                lua_pushvalue(L,i);
         }
     }
     return n;
