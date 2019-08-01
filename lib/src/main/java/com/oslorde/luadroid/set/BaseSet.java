@@ -17,7 +17,7 @@ abstract class BaseSet<N extends BaseNode<N>,K>{
         int trueCap=(expectedSize<<2)/3;
         if(SetUtils.notPowerOfTwo(trueCap) ||expectedSize==0)
             trueCap= SetUtils.binaryCeil(trueCap);
-        limit=(trueCap*3)>>2+1;
+        limit=((trueCap*3)>>2)+1;
         cap=trueCap;
     }
 
@@ -59,9 +59,10 @@ abstract class BaseSet<N extends BaseNode<N>,K>{
     }
     public boolean add(K key){
         int index = hashKey(key,cap);
+        N[] nodes=this.nodes;
         if(nodes==null){
             //noinspection unchecked
-            nodes= (N[]) new BaseNode[cap];
+            this.nodes=nodes= (N[]) new BaseNode[cap];
         }
         N start = nodes[index];
         for (N node = start; node != null; node = node.next) {
@@ -76,6 +77,7 @@ abstract class BaseSet<N extends BaseNode<N>,K>{
 
     public boolean remove(K key){
         int index = hashKey(key,cap);
+        N[] nodes=this.nodes;
         if(nodes==null){
             //noinspection unchecked
             return false;
@@ -96,6 +98,7 @@ abstract class BaseSet<N extends BaseNode<N>,K>{
 
     public boolean contains(K key){
         int index = hashKey(key,cap);
+        N[] nodes=this.nodes;
         if(nodes==null){
             return false;
         }
