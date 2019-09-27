@@ -258,6 +258,9 @@ const MethodInfo *JavaType::deductMethod(TJNIEnv* env,const MethodArray* array, 
                     if (provided == nullptr) {
                         if (strlen8to16(luaObject.string) == 1){
                             switch(toCheck->getTypeID()){
+                                case OBJECT:
+                                    cacheScores[i]=10;
+                                    break;
                                 case CHAR:
                                     cacheScores[i]=9;
                                     break;
