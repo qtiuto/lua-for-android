@@ -64,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
 
     void test(){
         compilerTest();
+        deductTest();
     }
 
     private static byte[] readAllBytes(InputStream in) throws IOException {
@@ -198,6 +199,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    public void deductTest() {
+        ScriptContext context=new ScriptContext();
+        AssetManager manager=getAssets();
+        try(InputStream stream=manager.open("deduct.lua")) {
+            context.run(readAll(stream));
+        }catch (Exception e){
+            context.flushLog();
+            Log.e("deduct","Test failed",e);
+        }
+        context.flushLog();
+        Log.d("deduct","Test passed");
+    }
 
     public void ffitest() {
         // Context of the app under test.
